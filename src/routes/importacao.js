@@ -15,6 +15,14 @@ function excelDateToISO(serial) {
   return date.toISOString().split('T')[0];
 }
 
+function mapSexo(v) {
+  if (!v) return null;
+  const s = String(v).trim().toUpperCase();
+  if (s === 'M' || s.startsWith('MAS') || s.startsWith('HOM')) return 'M';
+  if (s === 'F' || s.startsWith('FEM') || s.startsWith('MUL')) return 'F';
+  return s.charAt(0) || null;
+}
+
 function limpar(v) {
   if (v === null || v === undefined) return null;
   const s = String(v).trim();
@@ -78,7 +86,7 @@ router.post('/qlp/preview', autenticar, upload.single('arquivo'), async (req, re
         data_admissao: typeof r[idxAdm] === 'number' ? excelDateToISO(r[idxAdm]) : limpar(r[idxAdm]),
         data_demissao: typeof r[idxDem] === 'number' ? excelDateToISO(r[idxDem]) : limpar(r[idxDem]),
         data_nascimento: typeof r[idxNasc] === 'number' ? excelDateToISO(r[idxNasc]) : limpar(r[idxNasc]),
-        sexo: limpar(r[idxSexo]),
+        sexo: mapSexo(r[idxSexo]),
         escolaridade: limpar(r[idxEscol]),
         cpf: limpar(r[idxCpf]),
         raca: limpar(r[idxRaca]),
