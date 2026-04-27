@@ -25,7 +25,9 @@ function parseTime(str) {
 }
 
 function extrairPeriodo(html) {
-  const m = html.match(/Per[íi]odo\s+de\s+refer[êe]ncia[^]*?(\d{2})\/(\d{2})\/(\d{4})[^]*?(\d{2})\/(\d{2})\/(\d{4})/i);
+  // Strip tags e &nbsp; antes de aplicar regex
+  const text = html.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').replace(/\s+/g, ' ');
+  const m = text.match(/Per.{1,30}ncia[^]*?(\d{2})\/(\d{2})\/(\d{4})[^]*?(\d{2})\/(\d{2})\/(\d{4})/i);
   if (!m) return { periodo_inicio: null, periodo_fim: null };
   return {
     periodo_inicio: `${m[3]}-${m[2]}-${m[1]}`,
