@@ -37,117 +37,94 @@ function extrairPeriodo(html) {
 
 function parsePontoHTM(html, prefixo) {
   const $ = cheerio.load(html);
-  const funcionarios = [];
+  const PAGE_H = 1056;
 
-  // Cada funcionário é separado por uma tabela de cabeçalho
-  // Busca todas as células com "Crachá:"
-  const crachaLabels = $('td, span, div').filter((i, el) => {
-    const txt = $(el).text().trim();
-    return txt === 'Crachá:' || txt === 'Cracha:';
-  });
-
-  crachaLabels.each((idx, el) => {
-    try {
-      // O valor do crachá está na célula seguinte
-      const crachaEl = $(el).next('td, span');
-      const cracha = crachaEl.text().trim() || $(el).parent().next('td').text().trim();
-      if (!cracha || !/^\d+$/.test(cracha.replace(/\s/g, ''))) return;
-
-      const matricula = `${prefixo}-${cracha.trim()}`;
-
-      // Navega pela estrutura para encontrar Nome
-      let nome = '';
-      let cargo = '';
-      let admissao = null;
-
-      // Procura no contexto próximo
-      const context = $(el).closest('table').find('td');
-      context.each((i, td) => {
-        const t = $(td).text().trim();
-        if (t === 'Nome:') nome = $(td).next('td').text().trim();
-        if (t === 'Cargo:') cargo = $(td).next('td').text().trim();
-        if (t === 'Admissão:') {
-          const admStr = $(td).next('td').text().trim();
-          if (admStr.match(/\d{2}\/\d{2}\/\d{4}/)) {
-            const [d, mo, y] = admStr.split('/');
-            admissao = `${y}-${mo}-${d}`;
-          }
-        }
-      });
-
-      // Linhas de ponto: células com padrão DD/MM + dia semana
-      const registros = [];
-      const dataPattern = /^(\d{2})\/(\d{2})\s*([a-záéíóúüãõ]{3})$/i;
-
-      $('td, span').filter((i, td) => dataPattern.test($(td).text().trim())).each((i, tdData) => {
-        const txt = $(tdData).text().trim();
-        const m = txt.match(dataPattern);
-        if (!m) return;
-
-        const row = $(tdData).closest('tr');
-        const cells = row.find('td, span').map((j, c) => $(c).text().trim()).get();
-
-        // Encontra posição da célula de data no array de células
-        let dataIdx = -1;
-        cells.forEach((c, j) => { if (c === txt) dataIdx = j; });
-        if (dataIdx < 0) return;
-
-        const remaining = cells.slice(dataIdx + 1).filter(c => c !== '');
-
-        // Tab é o primeiro valor após a data (3 dígitos ou "DSR"/"Folga")
-        const tab = remaining[0] || '';
-        const times = remaining.slice(1);
-
-        const is_dsr = times.some(t => t === 'DSR');
-        const is_folga = times.some(t => t === 'Folga');
-        const sem_marcacao = tab === '000' && times.filter(t => /^\d{1,2}:\d{2}$/.test(t)).length === 0;
-
-        const timePairs = times.filter(t => /^\d{1,2}:\d{2}$/.test(t));
-        // Últimas entradas podem ser H.Trab e extras — h_trab é o último valor de horas do formato HH:MM que excede 04:00
-        let h_trab = null;
-        let h_extra = null;
-        const punchTimes = [];
-
-        for (const t of timePairs) {
-          const [hh] = t.split(':').map(Number);
-          // Marcações de ponto são tipicamente entre 04:00-23:59
-          // H.Trab e extras são acumulados (podem ser 07:20, 00:29 etc.)
-          // Estratégia: os últimos 1-2 valores após as batidas são totais
-          punchTimes.push(t);
-        }
-
-        // Os 2 últimos valores numéricos (se existirem) podem ser H.Trab e H.Extra
-        // Heurística: se tivermos >2 valores e os primeiros são pares ent/sai, os extras vêm no fim
-        // Pares de batida são identificados como valores que alternam ent/sai
-        // Usamos todos os valores e pegamos os pares iniciais como batidas
-        const [ent1, sai1, ent2, sai2, ent3, sai3, ent4, sai4, ent5, sai5, ...extras] = punchTimes;
-
-        // H.Trab: primeiro valor em extras que for ≥ '01:00' (horas trabalhadas no dia)
-        if (extras.length > 0) h_trab = extras[0];
-        if (extras.length > 1) h_extra = extras[1];
-
-        // Ano do período: será passado junto com a importação
-        registros.push({
-          dia: m[1], mes: m[2],
-          tab: tab || null,
-          ent1: parseTime(ent1), sai1: parseTime(sai1),
-          ent2: parseTime(ent2), sai2: parseTime(sai2),
-          ent3: parseTime(ent3), sai3: parseTime(sai3),
-          ent4: parseTime(ent4), sai4: parseTime(sai4),
-          ent5: parseTime(ent5), sai5: parseTime(sai5),
-          h_trab: parseHoraInterval(h_trab),
-          h_extra: parseHoraInterval(h_extra),
-          is_dsr, is_folga, sem_marcacao
-        });
-      });
-
-      if (registros.length > 0) {
-        funcionarios.push({ matricula, cracha: cracha.trim(), nome, cargo, admissao, registros });
-      }
-    } catch (e) {
-      // Ignora erros em funcionários individuais
+  // Extrai todos os divs posicionados com top > 0 (não-aninhados)
+  const items = [];
+  $('div[style]').each((i, el) => {
+    const style = $(el).attr('style') || '';
+    const tm = style.match(/top:\s*(\d+)px/);
+    const lm = style.match(/left:\s*(\d+)px/);
+    if (!tm || !lm) return;
+    const top = parseInt(tm[1]);
+    const left = parseInt(lm[1]);
+    if (top === 0) return;
+    const text = $(el).text().replace(/[ \s]+/g, ' ').trim();
+    if (text) {
+      items.push({ top, left, page: Math.floor(top / PAGE_H), rel: top % PAGE_H, text });
     }
   });
+
+  // Agrupa por página
+  const pages = {};
+  for (const item of items) {
+    if (!pages[item.page]) pages[item.page] = [];
+    pages[item.page].push(item);
+  }
+
+  // Busca valor na página por posição relativa
+  const at = (pageItems, relTop, leftMin, leftMax, tol = 6) =>
+    (pageItems.find(i => Math.abs(i.rel - relTop) <= tol && i.left >= leftMin && i.left < leftMax) || {}).text || null;
+
+  const funcionarios = [];
+
+  for (const pageItems of Object.values(pages)) {
+    const cracha = at(pageItems, 149, 95, 145);
+    if (!cracha || !/^\d+$/.test(cracha.trim())) continue;
+
+    const matricula = `${prefixo}-${cracha.trim()}`;
+    const nome = at(pageItems, 168, 95, 450) || '';
+    const cargo = at(pageItems, 187, 100, 450) || '';
+    const admStr = at(pageItems, 282, 100, 180);
+    let admissao = null;
+    if (admStr && /\d{2}\/\d{2}\/\d{4}/.test(admStr)) {
+      const [d, m, y] = admStr.split('/');
+      admissao = `${y}-${m}-${d}`;
+    }
+
+    const registros = [];
+    // Linhas de dados: rel 349 a 730, step 14px
+    for (let rel = 349; rel <= 730; rel += 14) {
+      const dateStr = at(pageItems, rel, 30, 65);
+      if (!dateStr || !/^\d{2}\/\d{2}$/.test(dateStr)) continue;
+
+      const [dia, mes] = dateStr.split('/');
+      const tab = at(pageItems, rel, 80, 108);
+      const ent1raw = at(pageItems, rel, 105, 143);
+
+      const is_dsr   = ent1raw === 'DSR';
+      const is_folga = ent1raw === 'FOLGA' || ent1raw === 'Folga';
+      const sai1  = at(pageItems, rel, 143, 178);
+      const ent2  = at(pageItems, rel, 178, 213);
+      const sai2  = at(pageItems, rel, 213, 248);
+      const ent3  = at(pageItems, rel, 248, 283);
+      const sai3  = at(pageItems, rel, 283, 318);
+      const ent4  = at(pageItems, rel, 318, 353);
+      const sai4  = at(pageItems, rel, 353, 388);
+      const ent5  = at(pageItems, rel, 388, 423);
+      const sai5  = at(pageItems, rel, 423, 458);
+      const h_trab  = at(pageItems, rel, 458, 495);
+      const h_extra = at(pageItems, rel, 495, 535);
+
+      const sem_marcacao = !is_dsr && !is_folga && !ent1raw;
+
+      registros.push({
+        dia, mes, tab,
+        ent1: parseTime(is_dsr || is_folga ? null : ent1raw),
+        sai1: parseTime(sai1), ent2: parseTime(ent2), sai2: parseTime(sai2),
+        ent3: parseTime(ent3), sai3: parseTime(sai3),
+        ent4: parseTime(ent4), sai4: parseTime(sai4),
+        ent5: parseTime(ent5), sai5: parseTime(sai5),
+        h_trab: parseHoraInterval(h_trab),
+        h_extra: parseHoraInterval(h_extra),
+        is_dsr, is_folga, sem_marcacao
+      });
+    }
+
+    if (registros.length > 0) {
+      funcionarios.push({ matricula, cracha: cracha.trim(), nome, cargo, admissao, registros });
+    }
+  }
 
   return funcionarios;
 }
