@@ -64,16 +64,10 @@ tr:hover td { background: #1a2638; }
         <label>Prefixo da loja</label>
         <input type="text" id="prefixo" placeholder="06" style="width:100px;" maxlength="5">
       </div>
-      <div class="form-group">
-        <label>Período início</label>
-        <input type="date" id="periodoInicio" readonly style="background:#0a1220;color:#64748b;">
-      </div>
-      <div class="form-group">
-        <label>Período fim</label>
-        <input type="date" id="periodoFim" readonly style="background:#0a1220;color:#64748b;">
-      </div>
     </div>
     <div id="periodoDetectado" style="display:none;font-size:12px;color:#34d399;margin-top:8px;"></div>
+    <input type="hidden" id="periodoInicio">
+    <input type="hidden" id="periodoFim">
     <div class="upload-area" id="uploadArea" onclick="document.getElementById('inputArquivo').click()"
          ondragover="event.preventDefault();this.classList.add('drag')"
          ondragleave="this.classList.remove('drag')"
