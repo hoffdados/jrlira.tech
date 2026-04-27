@@ -30,8 +30,7 @@ router.post('/qlp/preview', autenticar, upload.single('arquivo'), async (req, re
     const sheetNames = wb.SheetNames;
 
     // Usa aba "QLP (2)" se existir (ativos), senão "QLP", senão primeira
-    const sheetName = sheetNames.find(n => n === 'QLP (2)') ||
-                      sheetNames.find(n => n === 'QLP') ||
+    const sheetName = sheetNames.find(n => n === 'QLP') ||
                       sheetNames[0];
 
     const ws = wb.Sheets[sheetName];
@@ -106,8 +105,7 @@ router.post('/qlp', autenticar, upload.single('arquivo'), async (req, res) => {
 
     const wb = XLSX.read(req.file.buffer, { type: 'buffer' });
     const sheetNames = wb.SheetNames;
-    const sheetName = sheetNames.find(n => n === 'QLP (2)') ||
-                      sheetNames.find(n => n === 'QLP') ||
+    const sheetName = sheetNames.find(n => n === 'QLP') ||
                       sheetNames[0];
 
     const ws = wb.Sheets[sheetName];
