@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Importar QLP</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: Arial, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+header { background: #1e293b; padding: 14px 20px; display: flex; align-items: center; gap: 16px; border-bottom: 1px solid #334155; }
+header h1 { font-size: 17px; color: #38bdf8; flex: 1; }
+.btn { padding: 8px 16px; border-radius: 8px; border: none; cursor: pointer; font-size: 13px; font-weight: 700; }
+.btn-primary { background: #0ea5e9; color: #fff; }
+.btn-primary:hover { background: #0284c7; }
+.btn-success { background: #059669; color: #fff; }
+.btn-success:hover { background: #047857; }
+.btn-ghost { background: transparent; color: #94a3b8; border: 1px solid #334155; }
+.btn-ghost:hover { background: #1e293b; }
+.container { padding: 24px; max-width: 900px; margin: 0 auto; }
+.section { background: #1e293b; border-radius: 12px; padding: 24px; margin-bottom: 20px; }
+.section h2 { font-size: 15px; color: #38bdf8; margin-bottom: 16px; }
+.upload-area { border: 2px dashed #334155; border-radius: 10px; padding: 40px; text-align: center; cursor: pointer; transition: border .2s; }
+.upload-area:hover, .upload-area.drag { border-color: #38bdf8; }
+.upload-area .icon { font-size: 40px; margin-bottom: 10px; }
+.upload-area p { color: #64748b; font-size: 13px; }
+.upload-area.selected p { color: #34d399; font-weight: 700; }
+.info-box { background: #0f172a; border-radius: 8px; padding: 14px 16px; margin-top: 14px; font-size: 13px; }
+.info-box .label { color: #94a3b8; font-size: 11px; }
+.info-box .val { color: #e2e8f0; font-weight: 700; }
+.amostra { margin-top: 14px; }
+.amostra table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.amostra th { background: #0f172a; padding: 8px 10px; text-align: left; color: #64748b; }
+.amostra td { padding: 8px 10px; border-bottom: 1px solid #0f172a; }
+.resultado { border-radius: 8px; padding: 20px; margin-top: 16px; text-align: center; }
+.resultado.ok { background: #064e3b; }
+.resultado.err { background: #450a0a; }
+.resultado .num { font-size: 36px; font-weight: 900; color: #34d399; }
+.resultado.err .num { color: #f87171; }
+.resultado p { color: #94a3b8; font-size: 13px; margin-top: 4px; }
+.step { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; color: #64748b; font-size: 13px; }
+.step .num-step { width: 24px; height: 24px; border-radius: 50%; background: #334155; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; }
+.step.active .num-step { background: #0ea5e9; color: #fff; }
+.step.done .num-step { background: #059669; color: #fff; }
+</style>
+</head>
+<body>
+<header>
+  <h1>📥 Importar Quadro de Lotação Pessoal (QLP)</h1>
+  <button class="btn btn-ghost" onclick="location.href='/rh'">← RH</button>
+</header>
+
+<div class="container">
+
+  <div class="section">
+    <h2>Instruções</h2>
+    <div class="step" id="step1">
+      <div class="num-step">1</div>
+      Selecione o arquivo <b>QLP-TOTAL.xlsx</b>
+    </div>
+    <div class="step" id="step2">
+      <div class="num-step">2</div>
+      Confirme a pré-visualização dos dados detectados
+    </div>
+    <div class="step" id="step3">
+      <div class="num-step">3</div>
+      Clique em <b>Importar</b> — registros existentes serão atualizados
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Arquivo</h2>
+    <div class="upload-area" id="uploadArea"
+         onclick="document.getElementById('inputArquivo').click()"
+         ondragover="event.preventDefault();this.classList.add('drag')"
+         ondragleave="this.classList.remove('drag')"
+         ondrop="soltar(event)">
+      <div class="icon">📊</div>
+      <p id="uploadLabel">Clique ou arraste o arquivo .xlsx aqui</p>
+    </div>
+    <input type="file" id="inputArquivo" accept=".xlsx,.xls" style="display:none" onchange="selecionarArquivo(this)">
+
+    <div id="preview" style="display:none;">
+      <div class="info-box" style="display:flex;gap:24px;margin-top:16px;">
+        <div><div class="label">Aba utilizada</div><div class="val" id="previewSheet">—</div></div>
+        <div><div class="label">Total de funcionários</div><div class="val" id="previewTotal">—</div></div>
+      </div>
+      <div class="amostra">
+        <div style="font-size:12px;color:#94a3b8;margin-bottom:6px;margin-top:12px;">Primeiros 5 registros:</div>
+        <table>
+          <thead><tr><th>Matrícula</th><th>Nome</th><th>Cargo</th><th>Grupo</th><th>Loja</th><th>Status</th><th>Admissão</th></tr></thead>
+          <tbody id="previewBody"></tbody>
+        </table>
+      </div>
+      <button class="btn btn-success" onclick="importar()" style="width:100%;margin-top:20px;padding:14px;font-size:15px;">
+        Importar todos os funcionários
+      </button>
+    </div>
+
+    <div id="resultado" style="display:none;"></div>
+  </div>
+
+</div>
+
+<script>
+const API = '';
+const token = () => localStorage.getItem('jrlira_token');
+const H = { 'Authorization': `Bearer ${token()}` };
+let arquivoSelecionado = null;
+
+function setStep(n) {
+  for (let i = 1; i <= 3; i++) {
+    const el = document.getElementById(`step${i}`);
+    el.className = 'step' + (i < n ? ' done' : i === n ? ' active' : '');
+    el.querySelector('.num-step').textContent = i < n ? '✓' : i;
+  }
+}
+
+function processarArquivo(file) {
+  arquivoSelecionado = file;
+  document.getElementById('uploadLabel').textContent = `✓ ${file.name}`;
+  document.getElementById('uploadArea').classList.add('selected');
+  setStep(2);
+  previewing();
+}
+
+function selecionarArquivo(input) { if (input.files[0]) processarArquivo(input.files[0]); }
+function soltar(e) {
+  e.preventDefault();
+  document.getElementById('uploadArea').classList.remove('drag');
+  if (e.dataTransfer.files[0]) processarArquivo(e.dataTransfer.files[0]);
+}
+
+async function previewing() {
+  document.getElementById('preview').style.display = 'none';
+  document.getElementById('resultado').style.display = 'none';
+
+  const fd = new FormData();
+  fd.append('arquivo', arquivoSelecionado);
+  const r = await fetch(`${API}/api/importacao/qlp/preview`, { method: 'POST', headers: H, body: fd });
+  const data = await r.json();
+  if (!r.ok) return alert(data.erro);
+
+  document.getElementById('previewSheet').textContent = data.sheet;
+  document.getElementById('previewTotal').textContent = data.total;
+  document.getElementById('previewBody').innerHTML = data.amostra.map(f => `
+    <tr>
+      <td style="font-family:monospace;font-size:11px;">${f.matricula || '—'}</td>
+      <td>${f.nome || '—'}</td>
+      <td style="color:#94a3b8;">${f.cargo || '—'}</td>
+      <td style="color:#94a3b8;">${f.grupo_cargo || '—'}</td>
+      <td style="color:#94a3b8;">${f.loja_id ? 'Loja '+f.loja_id : '—'}</td>
+      <td style="color:#94a3b8;">${f.status || '—'}</td>
+      <td style="color:#94a3b8;">${f.data_admissao || '—'}</td>
+    </tr>
+  `).join('');
+  document.getElementById('preview').style.display = 'block';
+  setStep(3);
+}
+
+async function importar() {
+  if (!arquivoSelecionado) return;
+  const btn = document.querySelector('.btn-success');
+  btn.textContent = 'Importando...'; btn.disabled = true;
+
+  const fd = new FormData();
+  fd.append('arquivo', arquivoSelecionado);
+  const r = await fetch(`${API}/api/importacao/qlp`, { method: 'POST', headers: H, body: fd });
+  const data = await r.json();
+
+  btn.textContent = 'Importar todos os funcionários'; btn.disabled = false;
+
+  const div = document.getElementById('resultado');
+  div.style.display = 'block';
+
+  if (!r.ok) {
+    div.innerHTML = `<div class="resultado err"><div class="num">✕</div><p>${data.erro}</p></div>`;
+    return;
+  }
+
+  div.innerHTML = `
+    <div class="resultado ok">
+      <div class="num">${data.inseridos + data.atualizados}</div>
+      <p>funcionários importados com sucesso</p>
+      <div style="margin-top:16px;display:flex;gap:24px;justify-content:center;font-size:13px;">
+        <div><span style="color:#34d399;font-weight:700;">${data.inseridos}</span> inseridos</div>
+        <div><span style="color:#fbbf24;font-weight:700;">${data.atualizados}</span> atualizados</div>
+        ${data.ignorados ? `<div><span style="color:#f87171;font-weight:700;">${data.ignorados}</span> ignorados</div>` : ''}
+      </div>
+      <div style="margin-top:12px;color:#64748b;font-size:12px;">Aba: ${data.sheet}</div>
+    </div>
+    <div style="text-align:center;margin-top:16px;">
+      <button class="btn btn-primary" onclick="location.href='/rh'">Ver funcionários</button>
+    </div>
+  `;
+  setStep(3);
+}
+
+setStep(1);
+</script>
+</body>
+</html>

@@ -15,11 +15,13 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/api/auth', require('./src/routes/auth'));
 app.use('/api/funcionarios', require('./src/routes/funcionarios'));
 app.use('/api/ponto', require('./src/routes/ponto'));
+app.use('/api/importacao', require('./src/routes/importacao'));
 
 // ── PÁGINAS ───────────────────────────────────────────────────────
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public/index.html')));
 app.get('/rh', (req, res) => res.sendFile(path.join(__dirname, 'public/rh.html')));
 app.get('/ponto', (req, res) => res.sendFile(path.join(__dirname, 'public/ponto.html')));
+app.get('/importar-qlp', (req, res) => res.sendFile(path.join(__dirname, 'public/importar-qlp.html')));
 
 // ── INIT DB ───────────────────────────────────────────────────────
 async function initDB() {
