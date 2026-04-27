@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RH - Quadro de Lotação</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: Arial, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+header { background: #1e293b; padding: 14px 20px; display: flex; align-items: center; gap: 16px; border-bottom: 1px solid #334155; }
+header h1 { font-size: 17px; color: #38bdf8; flex: 1; }
+.btn { padding: 8px 16px; border-radius: 8px; border: none; cursor: pointer; font-size: 13px; font-weight: 700; }
+.btn-primary { background: #0ea5e9; color: #fff; }
+.btn-primary:hover { background: #0284c7; }
+.btn-sm { padding: 5px 10px; font-size: 12px; border-radius: 6px; border: none; cursor: pointer; font-weight: 600; }
+.btn-edit { background: #1d4ed8; color: #fff; }
+.btn-del { background: #dc2626; color: #fff; }
+.btn-view { background: #059669; color: #fff; }
+.btn-ghost { background: transparent; color: #94a3b8; border: 1px solid #334155; }
+.btn-ghost:hover { background: #1e293b; }
+.container { padding: 20px; max-width: 1200px; margin: 0 auto; }
+.filtros { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
+.filtros input, .filtros select { background: #1e293b; border: 1px solid #334155; border-radius: 8px; color: #e2e8f0; padding: 8px 12px; font-size: 13px; }
+.filtros input:focus, .filtros select:focus { outline: none; border-color: #38bdf8; }
+.filtros input { flex: 1; min-width: 200px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { background: #1e293b; padding: 10px 12px; text-align: left; color: #94a3b8; font-weight: 600; border-bottom: 1px solid #334155; }
+td { padding: 10px 12px; border-bottom: 1px solid #1e293b; vertical-align: middle; }
+tr:hover td { background: #1a2638; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+.badge-ativo { background: #064e3b; color: #34d399; }
+.badge-desligado { background: #450a0a; color: #f87171; }
+.badge-inss { background: #1e3a5f; color: #60a5fa; }
+.badge-outros { background: #3b2f1a; color: #fbbf24; }
+.foto-mini { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; background: #334155; }
+.foto-placeholder { width: 36px; height: 36px; border-radius: 50%; background: #334155; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+/* Modal */
+.overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 100; overflow-y: auto; }
+.modal { background: #1e293b; border-radius: 12px; padding: 28px; max-width: 700px; margin: 40px auto; position: relative; }
+.modal h2 { font-size: 17px; color: #38bdf8; margin-bottom: 20px; }
+.close-btn { position: absolute; top: 16px; right: 16px; background: none; border: none; color: #94a3b8; font-size: 20px; cursor: pointer; }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.form-full { grid-column: 1 / -1; }
+.form-group label { display: block; font-size: 11px; color: #94a3b8; margin-bottom: 4px; }
+.form-group input, .form-group select, .form-group textarea { width: 100%; background: #0f172a; border: 1px solid #334155; border-radius: 8px; color: #e2e8f0; padding: 8px 12px; font-size: 13px; }
+.form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: #38bdf8; }
+.form-group textarea { resize: vertical; min-height: 60px; }
+.section-title { font-size: 13px; color: #38bdf8; font-weight: 700; margin: 18px 0 10px; border-bottom: 1px solid #334155; padding-bottom: 6px; grid-column: 1/-1; }
+/* Eventos */
+.evento-card { background: #0f172a; border-radius: 8px; padding: 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: flex-start; }
+.evento-info { font-size: 12px; }
+.evento-tipo { font-weight: 700; color: #38bdf8; font-size: 13px; margin-bottom: 2px; }
+.evento-datas { color: #64748b; }
+.evento-desc { color: #94a3b8; margin-top: 2px; }
+.add-evento { background: #0f172a; border-radius: 8px; padding: 14px; margin-top: 8px; }
+.add-evento .form-grid { grid-template-columns: 1fr 1fr; }
+.foto-preview { width: 80px; height: 80px; border-radius: 50%; object-fit: cover; background: #334155; margin-bottom: 8px; display: flex; align-items: center; justify-content: center; font-size: 28px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>👥 Quadro de Lotação Pessoal</h1>
+  <button class="btn btn-primary" onclick="abrirNovo()">+ Novo Funcionário</button>
+  <button class="btn btn-ghost" onclick="location.href='/'">← Início</button>
+</header>
+
+<div class="container">
+  <div class="filtros">
+    <input type="text" id="busca" placeholder="Buscar por nome ou matrícula..." oninput="filtrar()">
+    <select id="filtroStatus" onchange="filtrar()">
+      <option value="">Todos status</option>
+      <option value="ATIVO">Ativo</option>
+      <option value="DESLIGADO">Desligado</option>
+      <option value="INSS">INSS</option>
+      <option value="LICENSA MATERNIDADE">Lic. Maternidade</option>
+      <option value="TRANSFERIDA">Transferido</option>
+    </select>
+    <select id="filtroGrupo" onchange="filtrar()">
+      <option value="">Todos grupos</option>
+      <option>ACOUGUE</option><option>ADM</option><option>ESTOQUE</option>
+      <option>FLV</option><option>FRENTE LOJA</option><option>FRIOS</option>
+      <option>GESTAO</option><option>LANCHONETE</option><option>LIMPEZA</option>
+      <option>LOGISTICA</option><option>REPOSICAO</option>
+    </select>
+    <select id="filtroLoja" onchange="filtrar()">
+      <option value="">Todas lojas</option>
+      <option value="1">Loja 1</option><option value="2">Loja 2</option>
+      <option value="3">Loja 3</option><option value="4">Loja 4</option>
+      <option value="5">Loja 5</option><option value="6">Loja 6</option>
+    </select>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th></th>
+        <th>Matrícula</th>
+        <th>Nome</th>
+        <th>Cargo</th>
+        <th>Grupo</th>
+        <th>Loja</th>
+        <th>Status</th>
+        <th>Ações</th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+  <div id="semResultados" style="display:none;text-align:center;padding:40px;color:#64748b;">Nenhum funcionário encontrado</div>
+</div>
+
+<!-- MODAL CADASTRO / EDIÇÃO -->
+<div class="overlay" id="overlayForm">
+<div class="modal">
+  <button class="close-btn" onclick="fecharModal()">✕</button>
+  <h2 id="modalTitle">Novo Funcionário</h2>
+
+  <div id="fotoArea" style="text-align:center;margin-bottom:16px;">
+    <div class="foto-preview" id="fotoPreview">👤</div>
+    <input type="file" id="inputFoto" accept="image/*" onchange="previewFoto(this)" style="display:none">
+    <button class="btn btn-sm btn-ghost" onclick="document.getElementById('inputFoto').click()">Alterar foto</button>
+  </div>
+
+  <div class="form-grid">
+    <div class="section-title">Identificação</div>
+    <div class="form-group"><label>Matrícula *</label><input type="text" id="fMatricula" placeholder="06-0000000172"></div>
+    <div class="form-group"><label>Nome *</label><input type="text" id="fNome"></div>
+    <div class="form-group"><label>CPF</label><input type="text" id="fCpf" placeholder="000.000.000-00"></div>
+    <div class="form-group"><label>PIS</label><input type="text" id="fPis"></div>
+    <div class="form-group"><label>Data Nascimento</label><input type="date" id="fNascimento"></div>
+    <div class="form-group"><label>Sexo</label>
+      <select id="fSexo"><option value="">—</option><option value="M">Masculino</option><option value="F">Feminino</option></select>
+    </div>
+    <div class="form-group"><label>Estado Civil</label>
+      <select id="fEstadoCivil"><option value="">—</option><option>Solteiro</option><option>Casado</option><option>Divorciado</option><option>Viúvo</option><option>União Estável</option></select>
+    </div>
+    <div class="form-group"><label>Escolaridade</label><input type="text" id="fEscolaridade"></div>
+    <div class="form-group"><label>Raça</label><input type="text" id="fRaca"></div>
+
+    <div class="section-title">Vínculo</div>
+    <div class="form-group"><label>Cargo</label><input type="text" id="fCargo"></div>
+    <div class="form-group"><label>Grupo/Setor</label>
+      <select id="fGrupoCargo">
+        <option value="">—</option>
+        <option>ACOUGUE</option><option>ADM</option><option>ESTOQUE</option>
+        <option>FLV</option><option>FRENTE LOJA</option><option>FRIOS</option>
+        <option>GESTAO</option><option>LANCHONETE</option><option>LIMPEZA</option>
+        <option>LOGISTICA</option><option>REPOSICAO</option>
+      </select>
+    </div>
+    <div class="form-group"><label>Nível</label><input type="text" id="fNivel"></div>
+    <div class="form-group"><label>Loja</label>
+      <select id="fLoja">
+        <option value="">—</option>
+        <option value="1">Loja 1</option><option value="2">Loja 2</option>
+        <option value="3">Loja 3</option><option value="4">Loja 4</option>
+        <option value="5">Loja 5</option><option value="6">Loja 6</option>
+      </select>
+    </div>
+    <div class="form-group"><label>Salário</label><input type="number" id="fSalario" step="0.01"></div>
+    <div class="form-group"><label>Status</label>
+      <select id="fStatus">
+        <option value="ATIVO">Ativo</option><option value="DESLIGADO">Desligado</option>
+        <option value="INSS">INSS</option><option value="LICENSA MATERNIDADE">Lic. Maternidade</option>
+        <option value="TRANSFERIDA">Transferido</option>
+      </select>
+    </div>
+    <div class="form-group"><label>Data Admissão</label><input type="date" id="fAdmissao"></div>
+    <div class="form-group"><label>Data Demissão</label><input type="date" id="fDemissao"></div>
+    <div class="form-group"><label>Causa Afastamento</label><input type="text" id="fCausaAfastamento"></div>
+    <div class="form-group form-full"><label>Motivo Afastamento</label><textarea id="fMotivoAfastamento"></textarea></div>
+
+    <div class="section-title">Contato & Endereço</div>
+    <div class="form-group"><label>Telefone</label><input type="text" id="fTelefone"></div>
+    <div class="form-group"><label>E-mail</label><input type="email" id="fEmail"></div>
+    <div class="form-group"><label>CEP</label><input type="text" id="fCep"></div>
+    <div class="form-group"><label>UF</label><input type="text" id="fUf" maxlength="2"></div>
+    <div class="form-group form-full"><label>Logradouro</label><input type="text" id="fLogradouro"></div>
+    <div class="form-group"><label>Número</label><input type="text" id="fNumero"></div>
+    <div class="form-group"><label>Complemento</label><input type="text" id="fComplemento"></div>
+    <div class="form-group"><label>Bairro</label><input type="text" id="fBairro"></div>
+    <div class="form-group"><label>Cidade</label><input type="text" id="fCidade"></div>
+  </div>
+
+  <!-- Eventos (só em edição) -->
+  <div id="eventoSection" style="display:none;margin-top:20px;">
+    <div class="section-title" style="border-top:1px solid #334155;padding-top:14px;">Eventos / Ocorrências</div>
+    <div id="listaEventos"></div>
+    <div class="add-evento" id="addEventoForm">
+      <div style="font-size:12px;color:#38bdf8;font-weight:700;margin-bottom:10px;">Novo evento</div>
+      <div class="form-grid">
+        <div class="form-group"><label>Tipo</label>
+          <select id="eTipo">
+            <option value="admissao">Admissão</option><option value="demissao">Demissão</option>
+            <option value="ferias">Férias</option><option value="advertencia">Advertência</option>
+            <option value="suspensao">Suspensão</option><option value="transferencia">Transferência</option>
+            <option value="outro">Outro</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Data início</label><input type="date" id="eDataInicio"></div>
+        <div class="form-group"><label>Data fim</label><input type="date" id="eDataFim"></div>
+        <div class="form-group form-full"><label>Descrição</label><textarea id="eDesc" style="min-height:50px;"></textarea></div>
+      </div>
+      <button class="btn btn-sm btn-primary" onclick="adicionarEvento()" style="margin-top:8px;">Salvar evento</button>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:10px;margin-top:24px;justify-content:flex-end;">
+    <button class="btn btn-ghost" onclick="fecharModal()">Cancelar</button>
+    <button class="btn btn-primary" onclick="salvar()">Salvar</button>
+  </div>
+</div>
+</div>
+
+<script>
+const API = '';
+const token = () => localStorage.getItem('jrlira_token');
+const H = { 'Authorization': `Bearer ${token()}` };
+
+let editId = null;
+let todos = [];
+
+async function carregar() {
+  const q = document.getElementById('busca').value;
+  const status = document.getElementById('filtroStatus').value;
+  const grupo_cargo = document.getElementById('filtroGrupo').value;
+  const loja_id = document.getElementById('filtroLoja').value;
+  const params = new URLSearchParams();
+  if (q) params.set('q', q);
+  if (status) params.set('status', status);
+  if (grupo_cargo) params.set('grupo_cargo', grupo_cargo);
+  if (loja_id) params.set('loja_id', loja_id);
+  const r = await fetch(`${API}/api/funcionarios?${params}`, { headers: H });
+  todos = await r.json();
+  renderTabela(todos);
+}
+
+function filtrar() { carregar(); }
+
+function badgeStatus(s) {
+  const map = { 'ATIVO': 'ativo', 'DESLIGADO': 'desligado', 'INSS': 'inss' };
+  const cls = map[s] || 'outros';
+  return `<span class="badge badge-${cls}">${s}</span>`;
+}
+
+function renderTabela(lista) {
+  const tb = document.getElementById('tbody');
+  document.getElementById('semResultados').style.display = lista.length ? 'none' : 'block';
+  tb.innerHTML = lista.map(f => `
+    <tr>
+      <td>${f.foto_path ? `<img src="${f.foto_path}" class="foto-mini">` : `<div class="foto-placeholder">👤</div>`}</td>
+      <td style="font-family:monospace;font-size:12px;">${f.matricula}</td>
+      <td style="font-weight:600;">${f.nome}</td>
+      <td style="color:#94a3b8;">${f.cargo || '—'}</td>
+      <td style="color:#94a3b8;">${f.grupo_cargo || '—'}</td>
+      <td style="color:#94a3b8;">${f.loja_id ? `Loja ${f.loja_id}` : '—'}</td>
+      <td>${badgeStatus(f.status)}</td>
+      <td>
+        <button class="btn btn-sm btn-edit" onclick="editar(${f.id})">Editar</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function abrirNovo() {
+  editId = null;
+  limparForm();
+  document.getElementById('modalTitle').textContent = 'Novo Funcionário';
+  document.getElementById('eventoSection').style.display = 'none';
+  document.getElementById('overlayForm').style.display = 'block';
+}
+
+async function editar(id) {
+  editId = id;
+  const r = await fetch(`${API}/api/funcionarios/${id}`, { headers: H });
+  const f = await r.json();
+  document.getElementById('modalTitle').textContent = `Editar: ${f.nome}`;
+  preencherForm(f);
+  renderEventos(f.eventos || [], id);
+  document.getElementById('eventoSection').style.display = 'block';
+  document.getElementById('overlayForm').style.display = 'block';
+}
+
+function preencherForm(f) {
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+  set('fMatricula', f.matricula); set('fNome', f.nome); set('fCpf', f.cpf); set('fPis', f.pis);
+  set('fNascimento', f.data_nascimento?.split('T')[0]); set('fSexo', f.sexo);
+  set('fEstadoCivil', f.estado_civil); set('fEscolaridade', f.escolaridade); set('fRaca', f.raca);
+  set('fCargo', f.cargo); set('fGrupoCargo', f.grupo_cargo); set('fNivel', f.nivel);
+  set('fLoja', f.loja_id); set('fSalario', f.salario); set('fStatus', f.status);
+  set('fAdmissao', f.data_admissao?.split('T')[0]); set('fDemissao', f.data_demissao?.split('T')[0]);
+  set('fCausaAfastamento', f.causa_afastamento); set('fMotivoAfastamento', f.motivo_afastamento);
+  set('fTelefone', f.telefone); set('fEmail', f.email); set('fCep', f.cep);
+  set('fLogradouro', f.logradouro); set('fNumero', f.numero); set('fComplemento', f.complemento);
+  set('fBairro', f.bairro); set('fCidade', f.cidade); set('fUf', f.uf);
+  const prev = document.getElementById('fotoPreview');
+  if (f.foto_path) prev.innerHTML = `<img src="${f.foto_path}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;">`;
+  else prev.textContent = '👤';
+}
+
+function limparForm() {
+  ['fMatricula','fNome','fCpf','fPis','fNascimento','fSexo','fEstadoCivil','fEscolaridade','fRaca',
+   'fCargo','fGrupoCargo','fNivel','fLoja','fSalario','fAdmissao','fDemissao',
+   'fCausaAfastamento','fMotivoAfastamento','fTelefone','fEmail','fCep','fLogradouro',
+   'fNumero','fComplemento','fBairro','fCidade','fUf'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  document.getElementById('fStatus').value = 'ATIVO';
+  document.getElementById('fotoPreview').textContent = '👤';
+}
+
+function renderEventos(eventos, funcId) {
+  const tipos = { admissao:'Admissão', demissao:'Demissão', ferias:'Férias', advertencia:'Advertência', suspensao:'Suspensão', transferencia:'Transferência', outro:'Outro' };
+  document.getElementById('listaEventos').innerHTML = eventos.map(e => `
+    <div class="evento-card">
+      <div class="evento-info">
+        <div class="evento-tipo">${tipos[e.tipo] || e.tipo}</div>
+        <div class="evento-datas">${e.data_inicio?.split('T')[0]} ${e.data_fim ? '→ '+e.data_fim.split('T')[0] : ''}</div>
+        ${e.descricao ? `<div class="evento-desc">${e.descricao}</div>` : ''}
+        <div style="color:#475569;font-size:11px;margin-top:2px;">Por: ${e.criado_por}</div>
+      </div>
+      <button class="btn btn-sm btn-del" onclick="excluirEvento(${e.id})">✕</button>
+    </div>
+  `).join('') || '<div style="color:#64748b;font-size:13px;padding:8px 0;">Nenhum evento registrado</div>';
+}
+
+async function adicionarEvento() {
+  if (!editId) return;
+  const body = {
+    tipo: document.getElementById('eTipo').value,
+    data_inicio: document.getElementById('eDataInicio').value,
+    data_fim: document.getElementById('eDataFim').value,
+    descricao: document.getElementById('eDesc').value
+  };
+  if (!body.data_inicio) return alert('Data início obrigatória');
+  const r = await fetch(`${API}/api/funcionarios/${editId}/eventos`, {
+    method: 'POST', headers: { ...H, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (r.ok) editar(editId);
+}
+
+async function excluirEvento(id) {
+  if (!confirm('Excluir evento?')) return;
+  await fetch(`${API}/api/funcionarios/eventos/${id}`, { method: 'DELETE', headers: H });
+  editar(editId);
+}
+
+function previewFoto(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    document.getElementById('fotoPreview').innerHTML = `<img src="${e.target.result}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;">`;
+  };
+  reader.readAsDataURL(file);
+}
+
+async function salvar() {
+  const fd = new FormData();
+  const campos = {
+    matricula:'fMatricula', nome:'fNome', cpf:'fCpf', pis:'fPis',
+    data_nascimento:'fNascimento', sexo:'fSexo', escolaridade:'fEscolaridade',
+    raca:'fRaca', estado_civil:'fEstadoCivil', cargo:'fCargo',
+    grupo_cargo:'fGrupoCargo', nivel:'fNivel', loja_id:'fLoja',
+    salario:'fSalario', status:'fStatus', data_admissao:'fAdmissao',
+    data_demissao:'fDemissao', causa_afastamento:'fCausaAfastamento',
+    motivo_afastamento:'fMotivoAfastamento', telefone:'fTelefone', email:'fEmail',
+    cep:'fCep', logradouro:'fLogradouro', numero:'fNumero',
+    complemento:'fComplemento', bairro:'fBairro', cidade:'fCidade', uf:'fUf'
+  };
+  for (const [k, id] of Object.entries(campos)) {
+    const v = document.getElementById(id)?.value;
+    if (v) fd.append(k, v);
+  }
+  const foto = document.getElementById('inputFoto').files[0];
+  if (foto) fd.append('foto', foto);
+
+  const url = editId ? `${API}/api/funcionarios/${editId}` : `${API}/api/funcionarios`;
+  const method = editId ? 'PUT' : 'POST';
+  const r = await fetch(url, { method, headers: H, body: fd });
+  const data = await r.json();
+  if (!r.ok) return alert(data.erro);
+  fecharModal();
+  carregar();
+}
+
+function fecharModal() { document.getElementById('overlayForm').style.display = 'none'; }
+
+carregar();
+</script>
+</body>
+</html>

@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JR Lira - Sistema RH</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: Arial, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.login-box { background: #1e293b; border-radius: 12px; padding: 40px; width: 360px; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
+h1 { text-align: center; font-size: 22px; color: #38bdf8; margin-bottom: 8px; }
+.sub { text-align: center; font-size: 12px; color: #64748b; margin-bottom: 28px; }
+label { display: block; font-size: 12px; color: #94a3b8; margin-bottom: 4px; margin-top: 16px; }
+input { width: 100%; padding: 10px 14px; background: #0f172a; border: 1px solid #334155; border-radius: 8px; color: #e2e8f0; font-size: 14px; }
+input:focus { outline: none; border-color: #38bdf8; }
+button { width: 100%; margin-top: 24px; padding: 12px; background: #0ea5e9; border: none; border-radius: 8px; color: #fff; font-size: 15px; font-weight: 700; cursor: pointer; }
+button:hover { background: #0284c7; }
+.erro { margin-top: 12px; text-align: center; color: #f87171; font-size: 13px; }
+.dashboard { display: none; width: 100%; max-width: 700px; padding: 24px; }
+.dash-title { font-size: 20px; color: #38bdf8; margin-bottom: 6px; }
+.dash-user { font-size: 13px; color: #64748b; margin-bottom: 28px; }
+.cards { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.card { background: #1e293b; border-radius: 10px; padding: 24px; cursor: pointer; transition: background .2s; text-decoration: none; color: inherit; }
+.card:hover { background: #273549; }
+.card-icon { font-size: 32px; margin-bottom: 10px; }
+.card-title { font-size: 16px; font-weight: 700; color: #e2e8f0; margin-bottom: 4px; }
+.card-desc { font-size: 12px; color: #64748b; }
+.logout { margin-top: 24px; text-align: right; }
+.logout a { font-size: 12px; color: #64748b; cursor: pointer; text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<div class="login-box" id="loginBox">
+  <h1>JR Lira Tech</h1>
+  <p class="sub">Sistema de Recursos Humanos</p>
+  <label>Usuário</label>
+  <input type="text" id="inputUsuario" placeholder="usuario">
+  <label>Senha</label>
+  <input type="password" id="inputSenha" placeholder="••••••••" onkeydown="if(event.key==='Enter')fazerLogin()">
+  <button onclick="fazerLogin()">Entrar</button>
+  <div class="erro" id="erroLogin"></div>
+</div>
+
+<div class="dashboard" id="dashboard">
+  <div class="dash-title">JR Lira Tech</div>
+  <div class="dash-user" id="dashUser"></div>
+  <div class="cards">
+    <a class="card" href="/rh">
+      <div class="card-icon">👥</div>
+      <div class="card-title">Quadro de Lotação</div>
+      <div class="card-desc">Cadastro de funcionários, eventos e histórico</div>
+    </a>
+    <a class="card" href="/ponto">
+      <div class="card-icon">🕐</div>
+      <div class="card-title">Controle de Ponto</div>
+      <div class="card-desc">Importação e análise do cartão de ponto iPonto</div>
+    </a>
+  </div>
+  <div class="logout"><a onclick="sair()">Sair</a></div>
+</div>
+
+<script>
+const API = '';
+function getToken() { return localStorage.getItem('jrlira_token'); }
+
+async function fazerLogin() {
+  const usuario = document.getElementById('inputUsuario').value.trim();
+  const senha = document.getElementById('inputSenha').value;
+  document.getElementById('erroLogin').textContent = '';
+  try {
+    const r = await fetch(`${API}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ usuario, senha })
+    });
+    const data = await r.json();
+    if (!r.ok) return document.getElementById('erroLogin').textContent = data.erro;
+    localStorage.setItem('jrlira_token', data.token);
+    localStorage.setItem('jrlira_nome', data.nome);
+    localStorage.setItem('jrlira_perfil', data.perfil);
+    mostrarDashboard(data.nome);
+  } catch { document.getElementById('erroLogin').textContent = 'Erro de conexão'; }
+}
+
+function mostrarDashboard(nome) {
+  document.getElementById('loginBox').style.display = 'none';
+  document.getElementById('dashboard').style.display = 'block';
+  document.getElementById('dashUser').textContent = `Bem-vindo, ${nome}`;
+}
+
+function sair() {
+  localStorage.removeItem('jrlira_token');
+  localStorage.removeItem('jrlira_nome');
+  localStorage.removeItem('jrlira_perfil');
+  document.getElementById('loginBox').style.display = 'block';
+  document.getElementById('dashboard').style.display = 'none';
+}
+
+if (getToken()) mostrarDashboard(localStorage.getItem('jrlira_nome') || '');
+</script>
+</body>
+</html>

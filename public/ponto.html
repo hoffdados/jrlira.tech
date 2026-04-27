@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Controle de Ponto</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: Arial, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+header { background: #1e293b; padding: 14px 20px; display: flex; align-items: center; gap: 16px; border-bottom: 1px solid #334155; }
+header h1 { font-size: 17px; color: #38bdf8; flex: 1; }
+.btn { padding: 8px 16px; border-radius: 8px; border: none; cursor: pointer; font-size: 13px; font-weight: 700; }
+.btn-primary { background: #0ea5e9; color: #fff; }
+.btn-primary:hover { background: #0284c7; }
+.btn-ghost { background: transparent; color: #94a3b8; border: 1px solid #334155; }
+.btn-ghost:hover { background: #1e293b; }
+.btn-sm { padding: 5px 10px; font-size: 12px; border-radius: 6px; border: none; cursor: pointer; font-weight: 600; }
+.btn-view { background: #059669; color: #fff; }
+.container { padding: 20px; max-width: 1100px; margin: 0 auto; }
+.section { background: #1e293b; border-radius: 12px; padding: 24px; margin-bottom: 24px; }
+.section h2 { font-size: 15px; color: #38bdf8; margin-bottom: 16px; }
+.form-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+.form-group label { display: block; font-size: 11px; color: #94a3b8; margin-bottom: 4px; }
+.form-group input, .form-group select { background: #0f172a; border: 1px solid #334155; border-radius: 8px; color: #e2e8f0; padding: 8px 12px; font-size: 13px; width: 100%; }
+.form-group input:focus, .form-group select:focus { outline: none; border-color: #38bdf8; }
+.upload-area { border: 2px dashed #334155; border-radius: 10px; padding: 32px; text-align: center; cursor: pointer; transition: border .2s; margin-top: 12px; }
+.upload-area:hover, .upload-area.drag { border-color: #38bdf8; }
+.upload-area .icon { font-size: 36px; margin-bottom: 8px; }
+.upload-area p { color: #64748b; font-size: 13px; }
+.upload-area.selected p { color: #34d399; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { background: #0f172a; padding: 10px 12px; text-align: left; color: #94a3b8; font-weight: 600; border-bottom: 1px solid #334155; }
+td { padding: 10px 12px; border-bottom: 1px solid #0f172a; vertical-align: middle; }
+tr:hover td { background: #1a2638; }
+.resultado { background: #0f172a; border-radius: 8px; padding: 16px; margin-top: 16px; }
+.resultado .ok { color: #34d399; font-weight: 700; }
+.resultado .warn { color: #fbbf24; }
+.resultado .err { color: #f87171; }
+.nao-enc { background: #2a1010; border-radius: 6px; padding: 8px 12px; margin-top: 8px; font-size: 12px; color: #f87171; }
+/* Modal detalhe */
+.overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 100; overflow-y: auto; }
+.modal { background: #1e293b; border-radius: 12px; padding: 24px; max-width: 900px; margin: 30px auto; position: relative; }
+.close-btn { position: absolute; top: 14px; right: 14px; background: none; border: none; color: #94a3b8; font-size: 20px; cursor: pointer; }
+.modal h2 { font-size: 16px; color: #38bdf8; margin-bottom: 16px; }
+.time-cell { font-family: monospace; font-size: 12px; }
+.badge-dsr { color: #60a5fa; font-weight: 700; }
+.badge-folga { color: #fbbf24; font-weight: 700; }
+.badge-sem { color: #94a3b8; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🕐 Controle de Ponto</h1>
+  <button class="btn btn-ghost" onclick="location.href='/'">← Início</button>
+</header>
+
+<div class="container">
+
+  <!-- IMPORTAR -->
+  <div class="section">
+    <h2>Importar Cartão de Ponto (iPonto HTML)</h2>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Prefixo da loja</label>
+        <input type="text" id="prefixo" placeholder="06" style="width:100px;" maxlength="5">
+      </div>
+      <div class="form-group">
+        <label>Período início</label>
+        <input type="date" id="periodoInicio">
+      </div>
+      <div class="form-group">
+        <label>Período fim</label>
+        <input type="date" id="periodoFim">
+      </div>
+    </div>
+    <div class="upload-area" id="uploadArea" onclick="document.getElementById('inputArquivo').click()"
+         ondragover="event.preventDefault();this.classList.add('drag')"
+         ondragleave="this.classList.remove('drag')"
+         ondrop="soltar(event)">
+      <div class="icon">📄</div>
+      <p id="uploadLabel">Clique ou arraste o arquivo .htm aqui</p>
+    </div>
+    <input type="file" id="inputArquivo" accept=".htm,.html" style="display:none" onchange="selecionarArquivo(this)">
+    <button class="btn btn-primary" onclick="importar()" style="margin-top:14px;width:100%;">Importar</button>
+    <div id="resultadoImport" style="display:none;"></div>
+  </div>
+
+  <!-- HISTÓRICO -->
+  <div class="section">
+    <h2>Importações anteriores</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Data</th><th>Arquivo</th><th>Prefixo</th><th>Período</th>
+          <th>Funcionários</th><th>Registros</th><th>Ações</th>
+        </tr>
+      </thead>
+      <tbody id="tbodyImport"></tbody>
+    </table>
+    <div id="semImport" style="display:none;text-align:center;padding:24px;color:#64748b;">Nenhuma importação ainda</div>
+  </div>
+
+</div>
+
+<!-- MODAL DETALHE IMPORTAÇÃO -->
+<div class="overlay" id="overlayDetalhe">
+<div class="modal">
+  <button class="close-btn" onclick="fecharDetalhe()">✕</button>
+  <h2 id="detalheTitle">Resumo da importação</h2>
+  <div id="detalheConteudo"></div>
+</div>
+</div>
+
+<script>
+const API = '';
+const token = () => localStorage.getItem('jrlira_token');
+const H = { 'Authorization': `Bearer ${token()}` };
+let arquivoSelecionado = null;
+
+function selecionarArquivo(input) {
+  arquivoSelecionado = input.files[0];
+  if (arquivoSelecionado) {
+    document.getElementById('uploadLabel').textContent = `✓ ${arquivoSelecionado.name}`;
+    document.getElementById('uploadArea').classList.add('selected');
+  }
+}
+
+function soltar(event) {
+  event.preventDefault();
+  document.getElementById('uploadArea').classList.remove('drag');
+  const file = event.dataTransfer.files[0];
+  if (file) {
+    arquivoSelecionado = file;
+    document.getElementById('uploadLabel').textContent = `✓ ${file.name}`;
+    document.getElementById('uploadArea').classList.add('selected');
+  }
+}
+
+async function importar() {
+  const prefixo = document.getElementById('prefixo').value.trim();
+  const inicio = document.getElementById('periodoInicio').value;
+  const fim = document.getElementById('periodoFim').value;
+  if (!prefixo) return alert('Informe o prefixo da loja');
+  if (!inicio || !fim) return alert('Informe o período');
+  if (!arquivoSelecionado) return alert('Selecione o arquivo HTM');
+
+  const fd = new FormData();
+  fd.append('arquivo', arquivoSelecionado);
+  fd.append('prefixo', prefixo);
+  fd.append('periodo_inicio', inicio);
+  fd.append('periodo_fim', fim);
+
+  document.getElementById('resultadoImport').style.display = 'none';
+  const btn = document.querySelector('.btn-primary');
+  btn.textContent = 'Importando...'; btn.disabled = true;
+
+  try {
+    const r = await fetch(`${API}/api/ponto/importar`, { method: 'POST', headers: H, body: fd });
+    const data = await r.json();
+    btn.textContent = 'Importar'; btn.disabled = false;
+
+    const div = document.getElementById('resultadoImport');
+    div.style.display = 'block';
+    if (!r.ok) {
+      div.innerHTML = `<div class="resultado"><span class="err">Erro: ${data.erro}</span></div>`;
+      return;
+    }
+    let html = `<div class="resultado">
+      <span class="ok">✓ Importado com sucesso</span><br><br>
+      <span>Funcionários: <b>${data.total_funcionarios}</b></span> &nbsp;
+      <span>Registros: <b>${data.total_registros}</b></span>
+    `;
+    if (data.nao_encontrados?.length) {
+      html += `<div class="nao-enc">
+        <b>⚠ ${data.nao_encontrados.length} matrículas não vinculadas ao cadastro:</b><br>
+        ${data.nao_encontrados.join(', ')}
+      </div>`;
+    }
+    html += '</div>';
+    div.innerHTML = html;
+    carregarImportacoes();
+  } catch (err) {
+    btn.textContent = 'Importar'; btn.disabled = false;
+    document.getElementById('resultadoImport').innerHTML = `<div class="resultado"><span class="err">Erro: ${err.message}</span></div>`;
+    document.getElementById('resultadoImport').style.display = 'block';
+  }
+}
+
+async function carregarImportacoes() {
+  const r = await fetch(`${API}/api/ponto/importacoes`, { headers: H });
+  const lista = await r.json();
+  const tb = document.getElementById('tbodyImport');
+  document.getElementById('semImport').style.display = lista.length ? 'none' : 'block';
+  tb.innerHTML = lista.map(i => `
+    <tr>
+      <td>${new Date(i.importado_em).toLocaleString('pt-BR')}</td>
+      <td style="font-size:12px;color:#94a3b8;">${i.nome_arquivo}</td>
+      <td><b>${i.prefixo_loja}</b></td>
+      <td style="font-size:12px;">${i.periodo_inicio?.split('T')[0]} → ${i.periodo_fim?.split('T')[0]}</td>
+      <td>${i.total_funcionarios}</td>
+      <td>${i.total_registros}</td>
+      <td><button class="btn btn-sm btn-view" onclick="verDetalhe(${i.id}, '${i.periodo_inicio?.split('T')[0]} → ${i.periodo_fim?.split('T')[0]}')">Ver</button></td>
+    </tr>
+  `).join('');
+}
+
+async function verDetalhe(id, periodo) {
+  document.getElementById('detalheTitle').textContent = `Resumo — ${periodo}`;
+  document.getElementById('detalheConteudo').innerHTML = '<div style="color:#64748b;padding:20px;text-align:center;">Carregando...</div>';
+  document.getElementById('overlayDetalhe').style.display = 'block';
+
+  const r = await fetch(`${API}/api/ponto/resumo/${id}`, { headers: H });
+  const rows = await r.json();
+
+  document.getElementById('detalheConteudo').innerHTML = `
+    <table>
+      <thead>
+        <tr><th>Matrícula</th><th>Nome</th><th>Dias Trab.</th><th>DSR</th><th>Folgas</th><th>Sem Marcação</th><th>Detalhe</th></tr>
+      </thead>
+      <tbody>
+        ${rows.map(r => `
+          <tr>
+            <td style="font-family:monospace;font-size:12px;">${r.matricula}</td>
+            <td>${r.nome || '<span style="color:#64748b">Não vinculado</span>'}</td>
+            <td><b>${r.dias_trab}</b></td>
+            <td style="color:#60a5fa;">${r.dsrs}</td>
+            <td style="color:#fbbf24;">${r.folgas}</td>
+            <td style="color:${r.sem_marcacao > 0 ? '#f87171' : '#64748b'}">${r.sem_marcacao}</td>
+            <td><button class="btn btn-sm btn-view" onclick="verRegistros('${r.matricula}', ${id}, '${r.nome||r.matricula}')">Ver</button></td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+async function verRegistros(matricula, importacao_id, nome) {
+  document.getElementById('detalheTitle').textContent = `Ponto — ${nome}`;
+  document.getElementById('detalheConteudo').innerHTML = '<div style="color:#64748b;padding:20px;text-align:center;">Carregando...</div>';
+
+  const r = await fetch(`${API}/api/ponto/registros/${matricula}?importacao_id=${importacao_id}`, { headers: H });
+  const rows = await r.json();
+
+  const t = v => v ? v.substring(0,5) : '—';
+  document.getElementById('detalheConteudo').innerHTML = `
+    <button class="btn btn-sm btn-ghost" onclick="verDetalhe(${importacao_id},'')" style="margin-bottom:12px;">← Voltar</button>
+    <table>
+      <thead>
+        <tr><th>Data</th><th>Tab</th><th>Ent1</th><th>Sai1</th><th>Ent2</th><th>Sai2</th><th>Ent3</th><th>Sai3</th><th>H.Trab</th><th>Extra</th></tr>
+      </thead>
+      <tbody>
+        ${rows.map(r => {
+          if (r.is_dsr) return `<tr><td>${r.data?.split('T')[0]}</td><td>${r.tab||''}</td><td colspan="8" class="badge-dsr">DSR</td></tr>`;
+          if (r.is_folga) return `<tr><td>${r.data?.split('T')[0]}</td><td>${r.tab||''}</td><td colspan="8" class="badge-folga">Folga</td></tr>`;
+          if (r.sem_marcacao) return `<tr><td>${r.data?.split('T')[0]}</td><td>${r.tab||''}</td><td colspan="8" class="badge-sem">Sem marcação</td></tr>`;
+          return `<tr>
+            <td>${r.data?.split('T')[0]}</td>
+            <td>${r.tab||''}</td>
+            <td class="time-cell">${t(r.ent1)}</td><td class="time-cell">${t(r.sai1)}</td>
+            <td class="time-cell">${t(r.ent2)}</td><td class="time-cell">${t(r.sai2)}</td>
+            <td class="time-cell">${t(r.ent3)}</td><td class="time-cell">${t(r.sai3)}</td>
+            <td class="time-cell" style="color:#34d399;">${r.h_trab ? r.h_trab.substring(0,5) : '—'}</td>
+            <td class="time-cell" style="color:#fbbf24;">${r.h_extra ? r.h_extra.substring(0,5) : '—'}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function fecharDetalhe() { document.getElementById('overlayDetalhe').style.display = 'none'; }
+
+carregarImportacoes();
+</script>
+</body>
+</html>
