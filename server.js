@@ -45,7 +45,7 @@ async function initDB() {
         cpf VARCHAR(14),
         pis VARCHAR(20),
         data_nascimento DATE,
-        sexo CHAR(1),
+        sexo VARCHAR(20),
         escolaridade VARCHAR(100),
         raca VARCHAR(50),
         estado_civil VARCHAR(50),
@@ -66,7 +66,7 @@ async function initDB() {
         complemento VARCHAR(100),
         bairro VARCHAR(100),
         cidade VARCHAR(100),
-        uf CHAR(2),
+        uf VARCHAR(10),
         telefone VARCHAR(20),
         email VARCHAR(150),
         criado_em TIMESTAMPTZ DEFAULT NOW(),
@@ -118,6 +118,12 @@ async function initDB() {
         UNIQUE (matricula, data, importacao_id)
       );
     `);
+
+    // Migrations
+    await client.query(`
+      ALTER TABLE funcionarios ALTER COLUMN sexo TYPE VARCHAR(20);
+      ALTER TABLE funcionarios ALTER COLUMN uf TYPE VARCHAR(10);
+    `).catch(() => {});
 
     // Admin padrão
     const { rows } = await client.query("SELECT id FROM rh_usuarios WHERE usuario = 'admin'");
