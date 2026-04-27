@@ -152,17 +152,12 @@ function soltar(event) {
 
 async function importar() {
   const prefixo = document.getElementById('prefixo').value.trim();
-  const inicio = document.getElementById('periodoInicio').value;
-  const fim = document.getElementById('periodoFim').value;
   if (!prefixo) return alert('Informe o prefixo da loja');
-  if (!inicio || !fim) return alert('Informe o período');
   if (!arquivoSelecionado) return alert('Selecione o arquivo HTM');
 
   const fd = new FormData();
   fd.append('arquivo', arquivoSelecionado);
   fd.append('prefixo', prefixo);
-  fd.append('periodo_inicio', inicio);
-  fd.append('periodo_fim', fim);
 
   document.getElementById('resultadoImport').style.display = 'none';
   const btn = document.querySelector('.btn-primary');
