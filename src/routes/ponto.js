@@ -24,6 +24,15 @@ function parseTime(str) {
   return s;
 }
 
+function extrairPeriodo(html) {
+  const m = html.match(/Per[íi]odo\s+de\s+refer[êe]ncia[^]*?(\d{2})\/(\d{2})\/(\d{4})[^]*?(\d{2})\/(\d{2})\/(\d{4})/i);
+  if (!m) return { periodo_inicio: null, periodo_fim: null };
+  return {
+    periodo_inicio: `${m[3]}-${m[2]}-${m[1]}`,
+    periodo_fim:    `${m[6]}-${m[5]}-${m[4]}`
+  };
+}
+
 function parsePontoHTM(html, prefixo) {
   const $ = cheerio.load(html);
   const funcionarios = [];
@@ -144,12 +153,18 @@ function parsePontoHTM(html, prefixo) {
 // ── IMPORTAR HTM ──────────────────────────────────────────────────
 router.post('/importar', autenticar, upload.single('arquivo'), async (req, res) => {
   try {
-    const { prefixo, periodo_inicio, periodo_fim } = req.body;
+    const { prefixo } = req.body;
     if (!req.file) return res.status(400).json({ erro: 'Arquivo obrigatório' });
     if (!prefixo) return res.status(400).json({ erro: 'Prefixo da loja obrigatório' });
-    if (!periodo_inicio || !periodo_fim) return res.status(400).json({ erro: 'Período obrigatório' });
 
     const html = req.file.buffer.toString('latin1');
+
+    // Extrai período do próprio arquivo; aceita override do body como fallback
+    const periodoArquivo = extrairPeriodo(html);
+    const periodo_inicio = periodoArquivo.periodo_inicio || req.body.periodo_inicio;
+    const periodo_fim    = periodoArquivo.periodo_fim    || req.body.periodo_fim;
+    if (!periodo_inicio || !periodo_fim) return res.status(400).json({ erro: 'Período não encontrado no arquivo e não informado' });
+
     const funcionarios = parsePontoHTM(html, prefixo);
 
     if (funcionarios.length === 0) {

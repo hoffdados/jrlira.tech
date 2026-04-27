@@ -66,13 +66,14 @@ tr:hover td { background: #1a2638; }
       </div>
       <div class="form-group">
         <label>Período início</label>
-        <input type="date" id="periodoInicio">
+        <input type="date" id="periodoInicio" readonly style="background:#0a1220;color:#64748b;">
       </div>
       <div class="form-group">
         <label>Período fim</label>
-        <input type="date" id="periodoFim">
+        <input type="date" id="periodoFim" readonly style="background:#0a1220;color:#64748b;">
       </div>
     </div>
+    <div id="periodoDetectado" style="display:none;font-size:12px;color:#34d399;margin-top:8px;"></div>
     <div class="upload-area" id="uploadArea" onclick="document.getElementById('inputArquivo').click()"
          ondragover="event.preventDefault();this.classList.add('drag')"
          ondragleave="this.classList.remove('drag')"
@@ -117,23 +118,42 @@ const token = () => localStorage.getItem('jrlira_token');
 const H = { 'Authorization': `Bearer ${token()}` };
 let arquivoSelecionado = null;
 
+function extrairPeriodoHTML(texto) {
+  const m = texto.match(/Per[íi]odo\s+de\s+refer[êe]ncia[^]*?(\d{2})\/(\d{2})\/(\d{4})[^]*?(\d{2})\/(\d{2})\/(\d{4})/i);
+  if (!m) return null;
+  return {
+    inicio: `${m[3]}-${m[2]}-${m[1]}`,
+    fim:    `${m[6]}-${m[5]}-${m[4]}`
+  };
+}
+
+function processarArquivo(file) {
+  arquivoSelecionado = file;
+  document.getElementById('uploadLabel').textContent = `✓ ${file.name}`;
+  document.getElementById('uploadArea').classList.add('selected');
+  const reader = new FileReader();
+  reader.onload = e => {
+    const periodo = extrairPeriodoHTML(e.target.result);
+    if (periodo) {
+      document.getElementById('periodoInicio').value = periodo.inicio;
+      document.getElementById('periodoFim').value = periodo.fim;
+      document.getElementById('periodoDetectado').style.display = 'block';
+      document.getElementById('periodoDetectado').textContent =
+        `Período detectado: ${periodo.inicio.split('-').reverse().join('/')} → ${periodo.fim.split('-').reverse().join('/')}`;
+    }
+  };
+  reader.readAsText(file, 'latin1');
+}
+
 function selecionarArquivo(input) {
-  arquivoSelecionado = input.files[0];
-  if (arquivoSelecionado) {
-    document.getElementById('uploadLabel').textContent = `✓ ${arquivoSelecionado.name}`;
-    document.getElementById('uploadArea').classList.add('selected');
-  }
+  if (input.files[0]) processarArquivo(input.files[0]);
 }
 
 function soltar(event) {
   event.preventDefault();
   document.getElementById('uploadArea').classList.remove('drag');
   const file = event.dataTransfer.files[0];
-  if (file) {
-    arquivoSelecionado = file;
-    document.getElementById('uploadLabel').textContent = `✓ ${file.name}`;
-    document.getElementById('uploadArea').classList.add('selected');
-  }
+  if (file) processarArquivo(file);
 }
 
 async function importar() {
