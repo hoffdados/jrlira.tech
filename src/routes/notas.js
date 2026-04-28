@@ -41,15 +41,39 @@ async function parseNFe(buf) {
   const detRaw = inf.det;
   const dets = !detRaw ? [] : (Array.isArray(detRaw) ? detRaw : [detRaw]);
 
+  // Extrai campo de qualquer subgrupo ICMS (ICMS10, ICMS30, ICMS60, etc.)
+  function doICMS(icms, campo) {
+    if (!icms) return 0;
+    for (const val of Object.values(icms)) {
+      if (val && typeof val === 'object' && val[campo] != null) return n(val[campo]);
+    }
+    return 0;
+  }
+
   const itens = dets.map((det, idx) => {
     const prod = det.prod || {};
-    const imp = det.imposto || {};
+    const imp  = det.imposto || {};
+
+    const qCom   = n(prod.qCom) || n(prod.qTrib) || 1;
+    const vProd  = n(prod.vProd);
+    const vDesc  = n(prod.vDesc);
+    const vFrete = n(prod.vFrete);
+    const vSeg   = n(prod.vSeg);
+    const vOutro = n(prod.vOutro);
+
+    // IPI
     const vIPI = n(imp.IPI?.IPITrib?.vIPI) + n(imp.IPI?.IPINT?.vIPI);
-    const qCom = n(prod.qCom) || n(prod.qTrib) || 1;
-    const vProd = n(prod.vProd);
-    const vDesc = n(prod.vDesc);
-    const vUnCom = n(prod.vUnCom) || n(prod.vUnTrib);
-    const preco_total = parseFloat((vProd - vDesc + vIPI).toFixed(4));
+
+    // ICMS ST e FCP ST (presentes em qualquer subgrupo ICMS)
+    const vST    = doICMS(imp.ICMS, 'vST');
+    const vFCPST = doICMS(imp.ICMS, 'vFCPST');
+
+    // Custo total do item = valor bruto - desconto + todos os impostos/adicionais
+    const preco_total = parseFloat((vProd - vDesc + vIPI + vST + vFCPST + vFrete + vSeg + vOutro).toFixed(4));
+
+    // Custo unitário efetivo (usado para comparar com custofabrica)
+    const preco_unitario = parseFloat((preco_total / qCom).toFixed(4));
+
     const eanRaw = prod.cEAN;
     const ean = (!eanRaw || eanRaw === 'SEM GTIN') ? null : String(eanRaw).trim();
     return {
@@ -57,7 +81,7 @@ async function parseNFe(buf) {
       ean_nota: ean,
       descricao_nota: String(prod.xProd || '').trim(),
       quantidade: qCom,
-      preco_unitario_nota: vUnCom,
+      preco_unitario_nota: preco_unitario,
       preco_total_nota: preco_total,
     };
   });
