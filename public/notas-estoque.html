@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Conferência de Estoque</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+nav{background:#1e293b;padding:14px 24px;display:flex;align-items:center;gap:16px;border-bottom:1px solid #334155}
+nav .brand{font-size:16px;font-weight:700;color:#38bdf8}
+nav .sep{color:#475569}
+nav .page{font-size:14px;color:#94a3b8}
+nav .user{margin-left:auto;font-size:13px;color:#64748b}
+nav .btn-nav{background:#0ea5e9;color:#fff;border:none;padding:7px 14px;border-radius:6px;font-size:13px;cursor:pointer}
+nav .btn-nav:hover{background:#0284c7}
+.layout{display:grid;grid-template-columns:280px 1fr;height:calc(100vh - 53px)}
+.sidebar{background:#1e293b;border-right:1px solid #334155;overflow-y:auto;padding:16px}
+.sidebar h3{font-size:13px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px}
+.nota-card{background:#0f172a;border:1px solid #334155;border-radius:8px;padding:12px;margin-bottom:8px;cursor:pointer;transition:.15s}
+.nota-card:hover{border-color:#38bdf8}
+.nota-card.ativo{border-color:#38bdf8;background:#0c2340}
+.nc-num{font-size:13px;font-weight:700;color:#e2e8f0}
+.nc-forn{font-size:12px;color:#94a3b8;margin:2px 0}
+.nc-info{font-size:11px;color:#64748b}
+.nc-tags{display:flex;gap:4px;margin-top:6px;flex-wrap:wrap}
+.main{padding:24px;overflow-y:auto}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700}
+.b-em_conferencia{background:#1a4731;color:#34d399}
+.b-em_auditoria{background:#451a03;color:#fbbf24}
+.b-fechada{background:#1e293b;color:#64748b}
+.nota-info{background:#1e293b;border-radius:10px;padding:16px;margin-bottom:20px;display:flex;gap:24px;flex-wrap:wrap;align-items:center}
+.nota-info span{font-size:13px;color:#94a3b8}
+.nota-info strong{color:#e2e8f0}
+.rodada-info{background:#0c2340;border:1px solid #1d4ed8;border-radius:8px;padding:12px 16px;margin-bottom:20px;font-size:14px;color:#93c5fd}
+.rodada-info.c2{background:#1c1300;border-color:#b45309;color:#fcd34d}
+.item-card{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:16px;margin-bottom:12px;transition:.2s}
+.item-card.ok{border-color:#16a34a;opacity:.6}
+.item-card.divergente{border-color:#dc2626}
+.item-card .ic-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px}
+.item-card .ic-desc{font-size:14px;font-weight:700;color:#e2e8f0}
+.item-card .ic-ean{font-size:11px;color:#64748b;font-family:monospace}
+.ic-num{background:#334155;color:#94a3b8;font-size:12px;padding:2px 8px;border-radius:4px}
+.item-card .ic-fields{display:grid;grid-template-columns:120px 1fr;gap:12px;align-items:start}
+.ic-qty label{font-size:12px;color:#64748b;margin-bottom:4px;display:block}
+.ic-qty input{width:100%;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;padding:8px 10px;font-size:15px;font-weight:700}
+.ic-qty input:focus{outline:none;border-color:#38bdf8}
+.ic-lotes label{font-size:12px;color:#64748b;margin-bottom:4px;display:block}
+.lote-row{display:grid;grid-template-columns:1fr 1fr 90px;gap:6px;margin-bottom:6px;align-items:center}
+.lote-row input{background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;padding:7px 8px;font-size:12px;width:100%}
+.lote-row input:focus{outline:none;border-color:#38bdf8}
+.btn-add-lote{background:transparent;border:1px dashed #334155;color:#64748b;border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;width:100%}
+.btn-add-lote:hover{border-color:#94a3b8;color:#e2e8f0}
+button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 16px;font-weight:600}
+.btn-primary{background:#0ea5e9;color:#fff}
+.btn-primary:hover{background:#0284c7}
+.btn-primary:disabled{background:#334155;color:#64748b;cursor:not-allowed}
+.btn-success{background:#16a34a;color:#fff;width:100%;margin-top:20px;padding:14px;font-size:15px}
+.btn-success:hover{background:#15803d}
+.btn-success:disabled{background:#334155;color:#64748b;cursor:not-allowed}
+.btn-outline{background:transparent;border:1px solid #334155;color:#94a3b8}
+.ic-status{font-size:12px;margin-top:8px;padding:6px 10px;border-radius:6px}
+.ic-status.ok{background:#14532d;color:#4ade80}
+.ic-status.divergente{background:#450a0a;color:#f87171}
+.msg{padding:12px 16px;border-radius:8px;margin-bottom:16px;font-size:14px}
+.msg-ok{background:#14532d;color:#4ade80}
+.msg-err{background:#450a0a;color:#f87171}
+.msg-warn{background:#431407;color:#f97316}
+.empty{text-align:center;color:#475569;padding:48px;font-size:14px}
+.resultado{background:#1e293b;border-radius:10px;padding:20px}
+.resultado h3{color:#38bdf8;margin-bottom:16px}
+.res-item{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #334155}
+.res-item:last-child{border-bottom:none}
+</style>
+</head>
+<body>
+<nav>
+  <span class="brand">JR Lira Tech</span>
+  <span class="sep">/</span>
+  <span class="page">Conferência de Estoque</span>
+  <span class="user" id="nomeUsuario"></span>
+  <button class="btn-nav" onclick="location.href='/'">← Início</button>
+</nav>
+
+<div class="layout">
+  <div class="sidebar">
+    <h3>Notas Pendentes</h3>
+    <div id="listaNota"><p class="empty">Carregando...</p></div>
+  </div>
+
+  <div class="main">
+    <div id="msg" style="display:none"></div>
+
+    <div id="placeholder" class="empty" style="padding-top:80px">
+      Selecione uma nota para iniciar a conferência
+    </div>
+
+    <div id="conferencia" style="display:none">
+      <div class="nota-info" id="notaInfo"></div>
+      <div id="rodadaInfo" class="rodada-info"></div>
+      <div id="listaItens"></div>
+      <button class="btn-success" id="btnEnviar" onclick="enviarConferencia()" disabled>Enviar Conferência</button>
+    </div>
+
+    <div id="resultado" style="display:none"></div>
+  </div>
+</div>
+
+<script>
+const API = '';
+const token = () => localStorage.getItem('jrlira_token');
+if (!token()) location.href = '/';
+document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
+
+let notaAtualId = null;
+let itensConf = [];
+let rodadaAtual = 1;
+let itensValidados = new Set();
+
+async function fetchApi(url, method = 'GET', body = null) {
+  const opts = { method, headers: { Authorization: `Bearer ${token()}` } };
+  if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+  const r = await fetch(API + url, opts);
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.erro || 'Erro');
+  return data;
+}
+
+function fmtData(d) { if (!d) return '—'; return d.substring(0, 10).split('-').reverse().join('/'); }
+function fmtMoeda(v) { return 'R$ ' + parseFloat(v || 0).toFixed(2).replace('.', ','); }
+
+function showMsg(txt, tipo = 'ok') {
+  const el = document.getElementById('msg');
+  el.className = `msg msg-${tipo}`;
+  el.textContent = txt;
+  el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', 5000);
+}
+
+async function carregarNotas() {
+  try {
+    const notas = await fetchApi('/api/notas');
+    const pendentes = notas.filter(n => n.status === 'em_conferencia');
+    const el = document.getElementById('listaNota');
+    if (!pendentes.length) {
+      el.innerHTML = '<p class="empty" style="padding:24px 0">Nenhuma nota aguardando conferência</p>';
+      return;
+    }
+    el.innerHTML = pendentes.map(n => {
+      const rodada = (n.conferencia_rodada || 0) + 1;
+      return `<div class="nota-card" id="card-${n.id}" onclick="abrirNota(${n.id})">
+        <div class="nc-num">NF ${n.numero_nota}/${n.serie}</div>
+        <div class="nc-forn">${n.fornecedor_nome}</div>
+        <div class="nc-info">${fmtData(n.data_emissao)} · ${fmtMoeda(n.valor_total)}</div>
+        <div class="nc-tags"><span class="badge b-em_conferencia">Conferência ${rodada}</span></div>
+      </div>`;
+    }).join('');
+  } catch (e) { showMsg(e.message, 'err'); }
+}
+
+async function abrirNota(id) {
+  notaAtualId = id;
+  itensValidados = new Set();
+  document.querySelectorAll('.nota-card').forEach(c => c.classList.remove('ativo'));
+  const card = document.getElementById(`card-${id}`);
+  if (card) card.classList.add('ativo');
+  document.getElementById('placeholder').style.display = 'none';
+  document.getElementById('resultado').style.display = 'none';
+  document.getElementById('conferencia').style.display = 'block';
+
+  try {
+    const { nota, itens } = await fetchApi(`/api/notas/${id}`);
+    rodadaAtual = (nota.conferencia_rodada || 0) + 1;
+
+    document.getElementById('notaInfo').innerHTML = `
+      <span>NF <strong>${nota.numero_nota}/${nota.serie}</strong></span>
+      <span>Fornecedor: <strong>${nota.fornecedor_nome}</strong></span>
+      <span>Data: <strong>${fmtData(nota.data_emissao)}</strong></span>
+      <span>Valor: <strong>${fmtMoeda(nota.valor_total)}</strong></span>
+    `;
+
+    const ri = document.getElementById('rodadaInfo');
+    if (rodadaAtual === 1) {
+      ri.className = 'rodada-info';
+      ri.innerHTML = `<strong>1ª Conferência</strong> — Confira todos os itens. Não utilize a quantidade da nota.`;
+    } else {
+      ri.className = 'rodada-info c2';
+      ri.innerHTML = `<strong>2ª Conferência</strong> — Apenas itens com divergência na 1ª conferência. Atenção redobrada.`;
+    }
+
+    // Para C2: mostrar apenas itens divergentes da C1
+    if (rodadaAtual === 2) {
+      itensConf = itens.filter(i => {
+        const c1 = (i.conferencias || []).find(c => c.rodada === 1);
+        return c1?.status === 'divergente';
+      });
+    } else {
+      itensConf = itens;
+    }
+
+    renderItens();
+  } catch (e) { showMsg(e.message, 'err'); }
+}
+
+function renderItens() {
+  const el = document.getElementById('listaItens');
+  if (!itensConf.length) {
+    el.innerHTML = '<p class="empty">Nenhum item para conferência</p>';
+    return;
+  }
+
+  el.innerHTML = itensConf.map((item, idx) => {
+    const c1 = rodadaAtual === 2 ? (item.conferencias || []).find(c => c.rodada === 1) : null;
+    return `<div class="item-card" id="card-item-${item.id}">
+      <div class="ic-header">
+        <div>
+          <div class="ic-desc">${item.descricao_nota}</div>
+          <div class="ic-ean">${item.ean_nota || 'Sem EAN'}</div>
+          ${c1 ? `<div style="font-size:12px;color:#fcd34d;margin-top:4px">C1: ${parseFloat(c1.qtd_contada).toFixed(0)} unidades</div>` : ''}
+        </div>
+        <span class="ic-num">#${item.numero_item}</span>
+      </div>
+      <div class="ic-fields">
+        <div class="ic-qty">
+          <label>Quantidade contada</label>
+          <input type="number" id="qty-${item.id}" min="0" step="1" placeholder="0"
+            oninput="checarPreenchimento()" data-esperada="${parseFloat(item.quantidade)}" autocomplete="off">
+        </div>
+        <div class="ic-lotes">
+          <label>Lote / Validade</label>
+          <div id="lotes-${item.id}">
+            ${loteRow(item.id, 0)}
+          </div>
+          <button class="btn-add-lote" onclick="addLote(${item.id})">+ Adicionar lote</button>
+        </div>
+      </div>
+      <div class="ic-status" id="status-${item.id}" style="display:none"></div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('btnEnviar').disabled = true;
+}
+
+function loteRow(itemId, idx) {
+  return `<div class="lote-row" id="lote-${itemId}-${idx}">
+    <input type="text" placeholder="Lote" id="lote-l-${itemId}-${idx}" autocomplete="off">
+    <input type="date" id="lote-v-${itemId}-${idx}">
+    <input type="number" placeholder="Qtd" id="lote-q-${itemId}-${idx}" min="0" step="1">
+  </div>`;
+}
+
+const loteCount = {};
+function addLote(itemId) {
+  if (!loteCount[itemId]) loteCount[itemId] = 1;
+  else loteCount[itemId]++;
+  const container = document.getElementById(`lotes-${itemId}`);
+  const div = document.createElement('div');
+  div.innerHTML = loteRow(itemId, loteCount[itemId]);
+  container.appendChild(div.firstElementChild);
+}
+
+function checarPreenchimento() {
+  const todosPreenchidos = itensConf.every(i => {
+    const v = document.getElementById(`qty-${i.id}`)?.value;
+    return v !== '' && v !== null && v !== undefined;
+  });
+  document.getElementById('btnEnviar').disabled = !todosPreenchidos;
+}
+
+async function enviarConferencia() {
+  const btn = document.getElementById('btnEnviar');
+  btn.disabled = true;
+  btn.textContent = 'Enviando...';
+
+  const payload = itensConf.map(item => {
+    const qtdInput = document.getElementById(`qty-${item.id}`);
+    const qtd_contada = parseFloat(qtdInput?.value || 0);
+
+    // Coletar lotes
+    const lotes = [];
+    let idx = 0;
+    while (document.getElementById(`lote-l-${item.id}-${idx}`) || idx === 0) {
+      const lEl = document.getElementById(`lote-l-${item.id}-${idx}`);
+      const vEl = document.getElementById(`lote-v-${item.id}-${idx}`);
+      const qEl = document.getElementById(`lote-q-${item.id}-${idx}`);
+      if (!lEl) break;
+      if (lEl.value || vEl.value) {
+        lotes.push({ lote: lEl.value || null, validade: vEl.value || null, quantidade: parseFloat(qEl?.value || qtd_contada) });
+      }
+      idx++;
+    }
+
+    return { item_id: item.id, qtd_contada, lotes };
+  });
+
+  try {
+    const res = await fetchApi(`/api/notas/${notaAtualId}/conferencia`, 'POST', { itens_conferidos: payload });
+    mostrarResultado(res, payload);
+    await carregarNotas();
+  } catch (e) {
+    showMsg(e.message, 'err');
+    btn.disabled = false;
+    btn.textContent = 'Enviar Conferência';
+  }
+}
+
+function mostrarResultado(res, payload) {
+  document.getElementById('conferencia').style.display = 'none';
+  const el = document.getElementById('resultado');
+  el.style.display = 'block';
+
+  const itensPorId = {};
+  itensConf.forEach(i => itensPorId[i.id] = i);
+
+  const divergentes = res.resultados.filter(r => r.status === 'divergente');
+  const oks = res.resultados.filter(r => r.status === 'ok');
+
+  let html = `<div class="resultado">
+    <h3>${res.rodada === 1 ? '1ª Conferência' : '2ª Conferência'} — Resultado</h3>`;
+
+  if (res.divergentes === 0) {
+    html += `<div style="background:#14532d;color:#4ade80;padding:16px;border-radius:8px;margin-bottom:16px;font-size:15px">
+      ✓ Todos os itens conferidos corretamente. Nota ${res.novo_status === 'fechada' ? '<strong>FECHADA</strong>' : 'atualizada'}.
+    </div>`;
+  } else if (res.novo_status === 'em_auditoria') {
+    html += `<div style="background:#451a03;color:#fbbf24;padding:16px;border-radius:8px;margin-bottom:16px;font-size:15px">
+      ⚠ ${res.divergentes} item(s) com divergência na 2ª conferência. <strong>Nota encaminhada para AUDITORIA.</strong>
+    </div>`;
+  } else {
+    html += `<div style="background:#431407;color:#f97316;padding:16px;border-radius:8px;margin-bottom:16px;font-size:15px">
+      ⚠ ${res.divergentes} item(s) com divergência. <strong>2ª conferência necessária.</strong>
+    </div>`;
+  }
+
+  res.resultados.forEach(r => {
+    const item = itensPorId[r.item_id];
+    const p = payload.find(p => p.item_id === r.item_id);
+    html += `<div class="res-item">
+      <span>${item?.descricao_nota || r.item_id}</span>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span style="font-size:12px;color:#64748b">Contado: ${p?.qtd_contada ?? '?'}</span>
+        <span class="badge" style="background:${r.status === 'ok' ? '#14532d' : '#450a0a'};color:${r.status === 'ok' ? '#4ade80' : '#f87171'}">
+          ${r.status === 'ok' ? '✓ OK' : '✗ DIVERGENTE'}
+        </span>
+      </div>
+    </div>`;
+  });
+
+  html += `<button class="btn-primary" style="margin-top:16px" onclick="voltarLista()">← Voltar à lista</button>`;
+  if (res.novo_status === 'em_conferencia' && res.rodada === 1) {
+    html += ` <button class="btn-success" style="width:auto;margin-top:16px;margin-left:8px" onclick="abrirNota(${notaAtualId})">Iniciar 2ª Conferência</button>`;
+  }
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+function voltarLista() {
+  document.getElementById('resultado').style.display = 'none';
+  document.getElementById('placeholder').style.display = 'block';
+  notaAtualId = null;
+  document.querySelectorAll('.nota-card').forEach(c => c.classList.remove('ativo'));
+}
+
+carregarNotas();
+</script>
+</body>
+</html>

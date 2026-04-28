@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Notas de Entrada - Cadastro</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+a{color:inherit;text-decoration:none}
+nav{background:#1e293b;padding:14px 24px;display:flex;align-items:center;gap:16px;border-bottom:1px solid #334155}
+nav .brand{font-size:16px;font-weight:700;color:#38bdf8}
+nav .sep{color:#475569}
+nav .page{font-size:14px;color:#94a3b8}
+nav .user{margin-left:auto;font-size:13px;color:#64748b}
+nav .btn-nav{background:#0ea5e9;color:#fff;border:none;padding:7px 14px;border-radius:6px;font-size:13px;cursor:pointer}
+nav .btn-nav:hover{background:#0284c7}
+.layout{display:grid;grid-template-columns:300px 1fr;height:calc(100vh - 53px)}
+.sidebar{background:#1e293b;border-right:1px solid #334155;overflow-y:auto;padding:16px}
+.sidebar h3{font-size:13px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px}
+.nota-card{background:#0f172a;border:1px solid #334155;border-radius:8px;padding:12px;margin-bottom:8px;cursor:pointer;transition:.15s}
+.nota-card:hover{border-color:#38bdf8}
+.nota-card.ativo{border-color:#38bdf8;background:#0c2340}
+.nota-card .nc-num{font-size:13px;font-weight:700;color:#e2e8f0}
+.nota-card .nc-forn{font-size:12px;color:#94a3b8;margin:2px 0}
+.nota-card .nc-info{font-size:11px;color:#64748b}
+.nota-card .nc-tags{display:flex;gap:4px;margin-top:6px;flex-wrap:wrap}
+.main{padding:24px;overflow-y:auto}
+.upload-area{border:2px dashed #334155;border-radius:12px;padding:48px;text-align:center;cursor:pointer;transition:.2s;background:#1e293b}
+.upload-area:hover{border-color:#38bdf8}
+.upload-area input{display:none}
+.upload-area .icon{font-size:40px;margin-bottom:12px}
+.upload-area p{color:#64748b;font-size:14px}
+.upload-area p strong{color:#38bdf8}
+.nota-header{background:#1e293b;border-radius:10px;padding:20px;margin-bottom:20px}
+.nota-header h2{font-size:16px;color:#38bdf8;margin-bottom:12px}
+.nh-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.nh-field label{font-size:11px;color:#64748b;display:block;margin-bottom:2px}
+.nh-field span{font-size:14px;color:#e2e8f0}
+.nh-actions{margin-top:16px;display:flex;gap:10px;align-items:center}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead th{background:#1e293b;padding:10px 12px;text-align:left;color:#94a3b8;font-weight:600;border-bottom:1px solid #334155;white-space:nowrap}
+tbody tr{border-bottom:1px solid #1e293b}
+tbody tr:hover{background:#1a2744}
+tbody tr.novo-prod{background:#1a1033}
+tbody tr.novo-prod:hover{background:#211240}
+td{padding:9px 12px;vertical-align:middle}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700}
+.b-igual{background:#14532d;color:#4ade80}
+.b-divergente{background:#431407;color:#f97316}
+.b-sem_cadastro,.b-novo{background:#2e1065;color:#a78bfa}
+.b-importada{background:#1e3a5f;color:#60a5fa}
+.b-em_conferencia{background:#1a4731;color:#34d399}
+.b-em_auditoria{background:#451a03;color:#fbbf24}
+.b-fechada{background:#1e293b;color:#64748b}
+.ean-remap{display:flex;gap:6px;align-items:center}
+.ean-remap input{background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;padding:5px 8px;font-size:12px;width:140px}
+.ean-remap input:focus{outline:none;border-color:#38bdf8}
+button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 16px;font-weight:600}
+.btn-primary{background:#0ea5e9;color:#fff}
+.btn-primary:hover{background:#0284c7}
+.btn-primary:disabled{background:#334155;color:#64748b;cursor:not-allowed}
+.btn-success{background:#16a34a;color:#fff}
+.btn-success:hover{background:#15803d}
+.btn-outline{background:transparent;border:1px solid #334155;color:#94a3b8}
+.btn-outline:hover{border-color:#94a3b8;color:#e2e8f0}
+.btn-sm{padding:4px 10px;font-size:12px}
+.msg{padding:12px 16px;border-radius:8px;margin-bottom:16px;font-size:14px}
+.msg-ok{background:#14532d;color:#4ade80}
+.msg-err{background:#450a0a;color:#f87171}
+.msg-warn{background:#431407;color:#f97316}
+.spinner{display:inline-block;width:16px;height:16px;border:2px solid #334155;border-top-color:#38bdf8;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+.empty{text-align:center;color:#475569;padding:48px;font-size:14px}
+/* PRINT */
+@media print {
+  nav,.sidebar,.nh-actions,.ean-remap button,.btn-primary,.btn-success,.btn-outline,#uploadArea{display:none!important}
+  .layout{display:block}
+  body{background:#fff;color:#000}
+  .nota-header{background:#f1f5f9;border:1px solid #cbd5e1;page-break-inside:avoid}
+  table{font-size:11px}
+  thead th{background:#e2e8f0;color:#1e293b}
+  .badge{border:1px solid #999;color:#000!important;background:#eee!important}
+  tbody tr.novo-prod{background:#faf5ff}
+  .nh-field label{color:#475569}
+  .nh-field span{color:#0f172a}
+}
+</style>
+</head>
+<body>
+<nav>
+  <span class="brand">JR Lira Tech</span>
+  <span class="sep">/</span>
+  <span class="page">Notas de Entrada — Cadastro</span>
+  <span class="user" id="nomeUsuario"></span>
+  <button class="btn-nav" onclick="location.href='/'">← Início</button>
+</nav>
+
+<div class="layout">
+  <div class="sidebar">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <h3 style="margin-bottom:0">Notas</h3>
+      <button class="btn-primary btn-sm" onclick="document.getElementById('fileInput').click()">+ Importar XML</button>
+      <input type="file" id="fileInput" accept=".xml" style="display:none" onchange="importarXML(this.files[0])">
+    </div>
+    <div id="listaNota"><p class="empty">Carregando...</p></div>
+  </div>
+
+  <div class="main">
+    <div id="msg" style="display:none"></div>
+
+    <div id="uploadArea" class="upload-area" onclick="document.getElementById('fileInput2').click()">
+      <input type="file" id="fileInput2" accept=".xml" style="display:none" onchange="importarXML(this.files[0])">
+      <div class="icon">📄</div>
+      <p>Clique ou <strong>selecione um XML</strong> de NF-e para importar</p>
+      <p style="font-size:12px;margin-top:8px">Selecione uma nota da lista para visualizar</p>
+    </div>
+
+    <div id="notaDetalhe" style="display:none">
+      <div class="nota-header">
+        <h2>Nota Fiscal <span id="nhNumero"></span> — Série <span id="nhSerie"></span></h2>
+        <div class="nh-grid">
+          <div class="nh-field"><label>Fornecedor</label><span id="nhFornecedor"></span></div>
+          <div class="nh-field"><label>CNPJ</label><span id="nhCnpj"></span></div>
+          <div class="nh-field"><label>Data Emissão</label><span id="nhData"></span></div>
+          <div class="nh-field"><label>Valor Total</label><span id="nhValor"></span></div>
+          <div class="nh-field"><label>Status</label><span id="nhStatus"></span></div>
+          <div class="nh-field"><label>Importado por</label><span id="nhImportado"></span></div>
+        </div>
+        <div class="nh-actions">
+          <button id="btnLiberar" class="btn-success" onclick="liberarNota()" style="display:none">✓ Liberar para Estoque</button>
+          <button id="btnRelatorio" class="btn-outline" onclick="imprimirRelatorio()" style="display:none">🖨 Imprimir Relatório</button>
+          <span id="statusMsg" style="font-size:13px;color:#64748b"></span>
+        </div>
+      </div>
+
+      <div id="legendaNovos" style="display:none;margin-bottom:12px;padding:10px 14px;background:#2e1065;border-radius:8px;font-size:13px;color:#c4b5fd">
+        ★ Produtos destacados em roxo são <strong>NOVOS</strong> (não encontrados no cadastro). Informe o EAN correto se o produto já existe na unidade.
+      </div>
+
+      <table id="tabelaItens">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Descrição</th>
+            <th>EAN Nota</th>
+            <th>Qtd</th>
+            <th>Preço Unit. Nota</th>
+            <th>Custo Fábrica</th>
+            <th>Status Preço</th>
+            <th>Ação</th>
+          </tr>
+        </thead>
+        <tbody id="tbodyItens"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '';
+const token = () => localStorage.getItem('jrlira_token');
+if (!token()) location.href = '/';
+document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
+
+let notaAtualId = null;
+
+async function fetchApi(url, method = 'GET', body = null) {
+  const opts = { method, headers: { Authorization: `Bearer ${token()}` } };
+  if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+  const r = await fetch(API + url, opts);
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.erro || 'Erro desconhecido');
+  return data;
+}
+
+function fmtMoeda(v) { return 'R$ ' + parseFloat(v || 0).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.'); }
+function fmtData(d) { if (!d) return '—'; return d.substring(0, 10).split('-').reverse().join('/'); }
+
+function showMsg(txt, tipo = 'ok') {
+  const el = document.getElementById('msg');
+  el.className = `msg msg-${tipo}`;
+  el.textContent = txt;
+  el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', 5000);
+}
+
+async function carregarNotas() {
+  try {
+    const notas = await fetchApi('/api/notas');
+    const el = document.getElementById('listaNota');
+    if (!notas.length) { el.innerHTML = '<p class="empty" style="padding:24px 0">Nenhuma nota importada</p>'; return; }
+    el.innerHTML = notas.map(n => `
+      <div class="nota-card" id="card-${n.id}" onclick="abrirNota(${n.id})">
+        <div class="nc-num">NF ${n.numero_nota}/${n.serie}</div>
+        <div class="nc-forn">${n.fornecedor_nome}</div>
+        <div class="nc-info">${fmtData(n.data_emissao)} · ${fmtMoeda(n.valor_total)}</div>
+        <div class="nc-tags">
+          <span class="badge b-${n.status}">${labelStatus(n.status)}</span>
+          ${n.total_novos > 0 ? `<span class="badge b-novo">★ ${n.total_novos} novo(s)</span>` : ''}
+          ${n.total_divergentes > 0 ? `<span class="badge b-divergente">⚠ ${n.total_divergentes} div.</span>` : ''}
+        </div>
+      </div>
+    `).join('');
+  } catch (e) { showMsg(e.message, 'err'); }
+}
+
+function labelStatus(s) {
+  return { importada: 'Importada', em_conferencia: 'Em Conferência', em_auditoria: 'Em Auditoria', fechada: 'Fechada' }[s] || s;
+}
+
+async function importarXML(file) {
+  if (!file) return;
+  showMsg('Importando XML...', 'ok');
+  const fd = new FormData();
+  fd.append('xml', file);
+  try {
+    const r = await fetch(`${API}/api/notas/importar`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token()}` },
+      body: fd
+    });
+    const data = await r.json();
+    if (!r.ok) {
+      if (data.nota_id) { showMsg('Nota já importada. Abrindo...', 'warn'); abrirNota(data.nota_id); }
+      else throw new Error(data.erro);
+      return;
+    }
+    showMsg(`NF importada — ${data.total_itens} itens de ${data.fornecedor}`, 'ok');
+    await carregarNotas();
+    abrirNota(data.nota_id);
+  } catch (e) { showMsg(e.message, 'err'); }
+}
+
+async function abrirNota(id) {
+  notaAtualId = id;
+  document.querySelectorAll('.nota-card').forEach(c => c.classList.remove('ativo'));
+  const card = document.getElementById(`card-${id}`);
+  if (card) card.classList.add('ativo');
+  document.getElementById('uploadArea').style.display = 'none';
+  document.getElementById('notaDetalhe').style.display = 'block';
+
+  try {
+    const { nota, itens } = await fetchApi(`/api/notas/${id}`);
+    document.getElementById('nhNumero').textContent = nota.numero_nota;
+    document.getElementById('nhSerie').textContent = nota.serie;
+    document.getElementById('nhFornecedor').textContent = nota.fornecedor_nome;
+    document.getElementById('nhCnpj').textContent = nota.fornecedor_cnpj || '—';
+    document.getElementById('nhData').textContent = fmtData(nota.data_emissao);
+    document.getElementById('nhValor').textContent = fmtMoeda(nota.valor_total);
+    document.getElementById('nhStatus').innerHTML = `<span class="badge b-${nota.status}">${labelStatus(nota.status)}</span>`;
+    document.getElementById('nhImportado').textContent = `${nota.importado_por || '—'} em ${fmtData(nota.importado_em)}`;
+
+    const temNovos = itens.some(i => i.produto_novo);
+    document.getElementById('legendaNovos').style.display = temNovos ? 'block' : 'none';
+    document.getElementById('btnLiberar').style.display = nota.status === 'importada' ? 'inline-block' : 'none';
+    document.getElementById('btnRelatorio').style.display = nota.status === 'fechada' ? 'inline-block' : 'none';
+    document.getElementById('statusMsg').textContent = nota.status === 'em_conferencia' ? 'Aguardando conferência do estoque' :
+      nota.status === 'em_auditoria' ? 'Em auditoria' : nota.status === 'fechada' ? `Fechada em ${fmtData(nota.fechado_em)}` : '';
+
+    renderItens(itens, nota.status);
+  } catch (e) { showMsg(e.message, 'err'); }
+}
+
+function renderItens(itens, status) {
+  const tbody = document.getElementById('tbodyItens');
+  tbody.innerHTML = itens.map(item => {
+    const isNovo = item.produto_novo;
+    const custo = item.custo_fabrica != null ? fmtMoeda(item.custo_fabrica) : '—';
+    const statusBadge = `<span class="badge b-${item.status_preco}">${labelPreco(item.status_preco, isNovo)}</span>`;
+    const acao = (isNovo && status === 'importada') ? `
+      <div class="ean-remap">
+        <input type="text" id="ean-${item.id}" placeholder="EAN cadastro" title="Informe o EAN do produto cadastrado">
+        <button class="btn-primary btn-sm" onclick="remapearEAN(${item.id})">Associar</button>
+      </div>` : (item.validado_cadastro ? `<span style="color:#4ade80;font-size:12px">✓ Associado</span>` : '—');
+    return `<tr class="${isNovo ? 'novo-prod' : ''}">
+      <td>${item.numero_item}</td>
+      <td>${item.descricao_nota}${isNovo ? ' <span style="color:#a78bfa;font-size:11px">★NOVO</span>' : ''}</td>
+      <td style="font-family:monospace;font-size:12px">${item.ean_nota || '—'}</td>
+      <td>${parseFloat(item.quantidade).toFixed(0)}</td>
+      <td>${fmtMoeda(item.preco_unitario_nota)}</td>
+      <td>${custo}</td>
+      <td>${statusBadge}</td>
+      <td>${acao}</td>
+    </tr>`;
+  }).join('');
+}
+
+function labelPreco(s, isNovo) {
+  if (isNovo) return '★ NOVO';
+  return { igual: '✓ IGUAL', divergente: '⚠ DIVERGENTE', sem_cadastro: 'SEM CADASTRO' }[s] || s;
+}
+
+async function remapearEAN(itemId) {
+  const ean = document.getElementById(`ean-${itemId}`).value.trim();
+  if (!ean) { showMsg('Informe o EAN', 'err'); return; }
+  try {
+    const r = await fetchApi(`/api/notas/${notaAtualId}/itens/${itemId}/remap-ean`, 'PATCH', { ean_novo: ean });
+    showMsg(`EAN associado. Status preço: ${r.status_preco}`, 'ok');
+    abrirNota(notaAtualId);
+  } catch (e) { showMsg(e.message, 'err'); }
+}
+
+async function liberarNota() {
+  if (!confirm('Liberar esta nota para conferência do estoque?')) return;
+  try {
+    await fetchApi(`/api/notas/${notaAtualId}/liberar`, 'PATCH');
+    showMsg('Nota liberada para o estoque', 'ok');
+    await carregarNotas();
+    abrirNota(notaAtualId);
+  } catch (e) { showMsg(e.message, 'err'); }
+}
+
+async function imprimirRelatorio() {
+  window.print();
+}
+
+carregarNotas();
+</script>
+</body>
+</html>

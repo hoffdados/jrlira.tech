@@ -16,12 +16,16 @@ app.use('/api/auth', require('./src/routes/auth'));
 app.use('/api/funcionarios', require('./src/routes/funcionarios'));
 app.use('/api/ponto', require('./src/routes/ponto'));
 app.use('/api/importacao', require('./src/routes/importacao'));
+app.use('/api/notas', require('./src/routes/notas'));
 
 // ── PÁGINAS ───────────────────────────────────────────────────────
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public/index.html')));
 app.get('/rh', (req, res) => res.sendFile(path.join(__dirname, 'public/rh.html')));
 app.get('/ponto', (req, res) => res.sendFile(path.join(__dirname, 'public/ponto.html')));
 app.get('/importar-qlp', (req, res) => res.sendFile(path.join(__dirname, 'public/importar-qlp.html')));
+app.get('/notas-cadastro', (req, res) => res.sendFile(path.join(__dirname, 'public/notas-cadastro.html')));
+app.get('/notas-estoque', (req, res) => res.sendFile(path.join(__dirname, 'public/notas-estoque.html')));
+app.get('/notas-auditoria', (req, res) => res.sendFile(path.join(__dirname, 'public/notas-auditoria.html')));
 
 // ── INIT DB ───────────────────────────────────────────────────────
 async function initDB() {
@@ -116,6 +120,85 @@ async function initDB() {
         sem_marcacao BOOLEAN DEFAULT FALSE,
         criado_em TIMESTAMPTZ DEFAULT NOW(),
         UNIQUE (matricula, data, importacao_id)
+      );
+    `);
+
+    // ── NOTAS DE ENTRADA ──────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS produtos (
+        id SERIAL PRIMARY KEY,
+        ean VARCHAR(20) UNIQUE NOT NULL,
+        descricao VARCHAR(300),
+        custo_fabrica DECIMAL(12,4) DEFAULT 0,
+        unidade VARCHAR(10) DEFAULT 'UN',
+        ativo BOOLEAN DEFAULT TRUE,
+        criado_em TIMESTAMPTZ DEFAULT NOW(),
+        atualizado_em TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS notas_entrada (
+        id SERIAL PRIMARY KEY,
+        chave_nfe VARCHAR(44) UNIQUE,
+        numero_nota VARCHAR(20),
+        serie VARCHAR(5),
+        fornecedor_nome VARCHAR(300),
+        fornecedor_cnpj VARCHAR(18),
+        data_emissao DATE,
+        valor_total DECIMAL(12,2),
+        status VARCHAR(30) DEFAULT 'importada',
+        conferencia_rodada INTEGER DEFAULT 0,
+        importado_por VARCHAR(150),
+        importado_em TIMESTAMPTZ DEFAULT NOW(),
+        fechado_em TIMESTAMPTZ
+      );
+
+      CREATE TABLE IF NOT EXISTS itens_nota (
+        id SERIAL PRIMARY KEY,
+        nota_id INTEGER REFERENCES notas_entrada(id) ON DELETE CASCADE,
+        numero_item INTEGER,
+        ean_nota VARCHAR(20),
+        ean_validado VARCHAR(20),
+        produto_id INTEGER REFERENCES produtos(id),
+        descricao_nota VARCHAR(300),
+        quantidade DECIMAL(12,4),
+        preco_unitario_nota DECIMAL(12,4),
+        preco_total_nota DECIMAL(12,2),
+        custo_fabrica DECIMAL(12,4),
+        status_preco VARCHAR(20) DEFAULT 'sem_cadastro',
+        produto_novo BOOLEAN DEFAULT TRUE,
+        validado_cadastro BOOLEAN DEFAULT FALSE,
+        criado_em TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS conferencias_estoque (
+        id SERIAL PRIMARY KEY,
+        item_id INTEGER REFERENCES itens_nota(id) ON DELETE CASCADE,
+        rodada INTEGER NOT NULL,
+        qtd_contada DECIMAL(12,4),
+        status VARCHAR(20),
+        conferido_por VARCHAR(150),
+        conferido_em TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE (item_id, rodada)
+      );
+
+      CREATE TABLE IF NOT EXISTS conferencia_lotes (
+        id SERIAL PRIMARY KEY,
+        conferencia_id INTEGER REFERENCES conferencias_estoque(id) ON DELETE CASCADE,
+        lote VARCHAR(100),
+        validade DATE,
+        quantidade DECIMAL(12,4)
+      );
+
+      CREATE TABLE IF NOT EXISTS auditoria_itens (
+        id SERIAL PRIMARY KEY,
+        item_id INTEGER REFERENCES itens_nota(id) ON DELETE CASCADE UNIQUE,
+        qtd_contada DECIMAL(12,4),
+        lote VARCHAR(100),
+        validade DATE,
+        status VARCHAR(20),
+        observacao TEXT,
+        auditado_por VARCHAR(150),
+        auditado_em TIMESTAMPTZ DEFAULT NOW()
       );
     `);
 

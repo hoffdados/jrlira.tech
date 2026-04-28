@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Auditoria de Notas</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+nav{background:#1e293b;padding:14px 24px;display:flex;align-items:center;gap:16px;border-bottom:1px solid #334155}
+nav .brand{font-size:16px;font-weight:700;color:#38bdf8}
+nav .sep{color:#475569}
+nav .page{font-size:14px;color:#94a3b8}
+nav .user{margin-left:auto;font-size:13px;color:#64748b}
+nav .btn-nav{background:#0ea5e9;color:#fff;border:none;padding:7px 14px;border-radius:6px;font-size:13px;cursor:pointer}
+nav .btn-nav:hover{background:#0284c7}
+.layout{display:grid;grid-template-columns:280px 1fr;height:calc(100vh - 53px)}
+.sidebar{background:#1e293b;border-right:1px solid #334155;overflow-y:auto;padding:16px}
+.sidebar h3{font-size:13px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px}
+.nota-card{background:#0f172a;border:1px solid #334155;border-radius:8px;padding:12px;margin-bottom:8px;cursor:pointer;transition:.15s}
+.nota-card:hover{border-color:#fbbf24}
+.nota-card.ativo{border-color:#fbbf24;background:#1c0e00}
+.nc-num{font-size:13px;font-weight:700;color:#e2e8f0}
+.nc-forn{font-size:12px;color:#94a3b8;margin:2px 0}
+.nc-info{font-size:11px;color:#64748b}
+.nc-tags{margin-top:6px}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700}
+.b-em_auditoria{background:#451a03;color:#fbbf24}
+.b-fechada{background:#1e293b;color:#64748b}
+.main{padding:24px;overflow-y:auto}
+.nota-info{background:#1e293b;border-radius:10px;padding:16px;margin-bottom:20px;display:flex;gap:24px;flex-wrap:wrap;align-items:center}
+.nota-info span{font-size:13px;color:#94a3b8}
+.nota-info strong{color:#e2e8f0}
+.aviso{background:#1c1300;border:1px solid #b45309;border-radius:8px;padding:12px 16px;margin-bottom:20px;font-size:14px;color:#fcd34d}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead th{background:#1e293b;padding:10px 12px;text-align:left;color:#94a3b8;font-weight:600;border-bottom:1px solid #334155;white-space:nowrap}
+tbody tr{border-bottom:1px solid #1e293b}
+tbody tr:hover{background:#1a2744}
+td{padding:9px 12px;vertical-align:middle}
+.col-c{background:#0c2340;border-left:1px solid #1e3a5f}
+.col-c2{background:#1a1033;border-left:1px solid #2e1065}
+.col-aud{background:#1c1300;border-left:1px solid #451a03}
+input[type=text],input[type=number],input[type=date]{background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;padding:6px 8px;font-size:12px;width:100%}
+input:focus{outline:none;border-color:#38bdf8}
+textarea{background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;padding:6px 8px;font-size:12px;width:100%;resize:vertical;min-height:48px}
+textarea:focus{outline:none;border-color:#38bdf8}
+button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 16px;font-weight:600}
+.btn-primary{background:#0ea5e9;color:#fff}
+.btn-primary:hover{background:#0284c7}
+.btn-danger{background:#dc2626;color:#fff;width:100%;margin-top:20px;padding:14px;font-size:15px}
+.btn-danger:hover{background:#b91c1c}
+.btn-danger:disabled{background:#334155;color:#64748b;cursor:not-allowed}
+.btn-print{background:#334155;color:#e2e8f0;padding:10px 18px;margin-top:12px}
+.btn-print:hover{background:#475569}
+.msg{padding:12px 16px;border-radius:8px;margin-bottom:16px;font-size:14px}
+.msg-ok{background:#14532d;color:#4ade80}
+.msg-err{background:#450a0a;color:#f87171}
+.empty{text-align:center;color:#475569;padding:48px;font-size:14px}
+.chip{display:inline-block;padding:2px 7px;border-radius:4px;font-size:11px}
+.chip-ok{background:#14532d;color:#4ade80}
+.chip-div{background:#450a0a;color:#f87171}
+.chip-none{background:#1e293b;color:#475569}
+/* PRINT */
+@media print {
+  nav,.sidebar,.btn-danger,.btn-print,#msg{display:none!important}
+  .layout{display:block}
+  body{background:#fff;color:#000}
+  .nota-info{background:#f1f5f9;border:1px solid #cbd5e1;padding:12px;font-size:12px}
+  .nota-info span,.nota-info strong{color:#0f172a}
+  .aviso{display:none}
+  table{font-size:10px;page-break-inside:auto}
+  thead th{background:#e2e8f0;color:#1e293b;font-size:10px}
+  td{padding:6px 8px}
+  .col-c{background:#f0f6ff}
+  .col-c2{background:#f5f0ff}
+  .col-aud{background:#fffbf0}
+  input,textarea{border:none;background:transparent;padding:0;font-size:10px}
+  .badge,.chip{border:1px solid #999;color:#000!important;background:#eee!important}
+}
+</style>
+</head>
+<body>
+<nav>
+  <span class="brand">JR Lira Tech</span>
+  <span class="sep">/</span>
+  <span class="page">Auditoria de Notas</span>
+  <span class="user" id="nomeUsuario"></span>
+  <button class="btn-nav" onclick="location.href='/'">← Início</button>
+</nav>
+
+<div class="layout">
+  <div class="sidebar">
+    <h3>Notas em Auditoria</h3>
+    <div id="listaNota"><p class="empty">Carregando...</p></div>
+  </div>
+
+  <div class="main">
+    <div id="msg" style="display:none"></div>
+
+    <div id="placeholder" class="empty" style="padding-top:80px">
+      Selecione uma nota para auditar
+    </div>
+
+    <div id="conteudo" style="display:none">
+      <div class="nota-info" id="notaInfo"></div>
+      <div class="aviso">
+        ⚠ Esta é a conferência final. Após submeter, a nota será <strong>fechada</strong> e o relatório estará disponível para o Cadastro.
+      </div>
+
+      <div style="margin-bottom:16px;display:flex;gap:10px;align-items:center">
+        <button class="btn-primary" id="btnFechar" onclick="fecharNota()">✓ Fechar Nota</button>
+        <button class="btn-print" onclick="window.print()">🖨 Imprimir</button>
+        <span style="font-size:12px;color:#64748b" id="statusNota"></span>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th rowspan="2">#</th>
+            <th rowspan="2">Produto</th>
+            <th rowspan="2">Qtd Nota</th>
+            <th colspan="3" style="text-align:center;background:#0c2340;color:#60a5fa">1ª Conferência</th>
+            <th colspan="3" style="text-align:center;background:#1a1033;color:#a78bfa">2ª Conferência</th>
+            <th colspan="4" style="text-align:center;background:#1c1300;color:#fcd34d">Auditoria</th>
+          </tr>
+          <tr>
+            <th class="col-c">Qtd</th>
+            <th class="col-c">Lote/Val.</th>
+            <th class="col-c">Status</th>
+            <th class="col-c2">Qtd</th>
+            <th class="col-c2">Lote/Val.</th>
+            <th class="col-c2">Status</th>
+            <th class="col-aud">Qtd</th>
+            <th class="col-aud">Lote</th>
+            <th class="col-aud">Validade</th>
+            <th class="col-aud">Obs.</th>
+          </tr>
+        </thead>
+        <tbody id="tbodyAuditoria"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '';
+const token = () => localStorage.getItem('jrlira_token');
+if (!token()) location.href = '/';
+document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
+
+let notaAtualId = null;
+let itensFechados = false;
+
+async function fetchApi(url, method = 'GET', body = null) {
+  const opts = { method, headers: { Authorization: `Bearer ${token()}` } };
+  if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+  const r = await fetch(API + url, opts);
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.erro || 'Erro');
+  return data;
+}
+
+function fmtData(d) { if (!d) return '—'; return d.substring(0, 10).split('-').reverse().join('/'); }
+function fmtMoeda(v) { return 'R$ ' + parseFloat(v || 0).toFixed(2).replace('.', ','); }
+function fmtQtd(v) { if (v == null) return '—'; return parseFloat(v).toFixed(0); }
+function chipStatus(s) {
+  if (!s) return '<span class="chip chip-none">—</span>';
+  return s === 'ok'
+    ? '<span class="chip chip-ok">✓ OK</span>'
+    : '<span class="chip chip-div">✗ DIV.</span>';
+}
+function fmtLotes(lotes) {
+  if (!lotes || !lotes.length) return '—';
+  return lotes.map(l => `${l.lote || ''}${l.validade ? ' / ' + fmtData(l.validade) : ''}`).join('<br>');
+}
+
+function showMsg(txt, tipo = 'ok') {
+  const el = document.getElementById('msg');
+  el.className = `msg msg-${tipo}`;
+  el.textContent = txt;
+  el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', 5000);
+}
+
+async function carregarNotas() {
+  try {
+    const notas = await fetchApi('/api/notas');
+    const auditoria = notas.filter(n => n.status === 'em_auditoria' || n.status === 'fechada');
+    const el = document.getElementById('listaNota');
+    if (!auditoria.length) { el.innerHTML = '<p class="empty" style="padding:24px 0">Nenhuma nota em auditoria</p>'; return; }
+    el.innerHTML = auditoria.map(n => `
+      <div class="nota-card" id="card-${n.id}" onclick="abrirNota(${n.id})">
+        <div class="nc-num">NF ${n.numero_nota}/${n.serie}</div>
+        <div class="nc-forn">${n.fornecedor_nome}</div>
+        <div class="nc-info">${fmtData(n.data_emissao)} · ${fmtMoeda(n.valor_total)}</div>
+        <div class="nc-tags"><span class="badge b-${n.status}">${n.status === 'fechada' ? 'Fechada' : 'Em Auditoria'}</span></div>
+      </div>
+    `).join('');
+  } catch (e) { showMsg(e.message, 'err'); }
+}
+
+async function abrirNota(id) {
+  notaAtualId = id;
+  document.querySelectorAll('.nota-card').forEach(c => c.classList.remove('ativo'));
+  const card = document.getElementById(`card-${id}`);
+  if (card) card.classList.add('ativo');
+  document.getElementById('placeholder').style.display = 'none';
+  document.getElementById('conteudo').style.display = 'block';
+
+  try {
+    const { nota, itens } = await fetchApi(`/api/notas/${id}`);
+    itensFechados = nota.status === 'fechada';
+
+    document.getElementById('notaInfo').innerHTML = `
+      <span>NF <strong>${nota.numero_nota}/${nota.serie}</strong></span>
+      <span>Fornecedor: <strong>${nota.fornecedor_nome}</strong></span>
+      <span>Data: <strong>${fmtData(nota.data_emissao)}</strong></span>
+      <span>Valor: <strong>${fmtMoeda(nota.valor_total)}</strong></span>
+    `;
+
+    const btnFechar = document.getElementById('btnFechar');
+    const statusEl = document.getElementById('statusNota');
+    if (itensFechados) {
+      btnFechar.style.display = 'none';
+      statusEl.textContent = `Nota fechada em ${fmtData(nota.fechado_em)}`;
+    } else {
+      btnFechar.style.display = 'inline-block';
+      statusEl.textContent = '';
+    }
+
+    renderTabela(itens);
+  } catch (e) { showMsg(e.message, 'err'); }
+}
+
+function renderTabela(itens) {
+  const tbody = document.getElementById('tbodyAuditoria');
+  tbody.innerHTML = itens.map(item => {
+    const c1 = (item.conferencias || []).find(c => c.rodada === 1);
+    const c2 = (item.conferencias || []).find(c => c.rodada === 2);
+    const aud = item.auditoria;
+    const readonly = itensFechados ? 'readonly' : '';
+    const tabindex = itensFechados ? 'tabindex="-1"' : '';
+
+    return `<tr>
+      <td>${item.numero_item}</td>
+      <td>${item.descricao_nota}</td>
+      <td style="text-align:center">${fmtQtd(item.quantidade)}</td>
+      <td class="col-c" style="text-align:center">${c1 ? fmtQtd(c1.qtd_contada) : '—'}</td>
+      <td class="col-c" style="font-size:11px">${c1 ? fmtLotes(c1.lotes) : '—'}</td>
+      <td class="col-c">${chipStatus(c1?.status)}</td>
+      <td class="col-c2" style="text-align:center">${c2 ? fmtQtd(c2.qtd_contada) : '—'}</td>
+      <td class="col-c2" style="font-size:11px">${c2 ? fmtLotes(c2.lotes) : '—'}</td>
+      <td class="col-c2">${chipStatus(c2?.status)}</td>
+      <td class="col-aud">
+        <input type="number" id="aud-qty-${item.id}" min="0" step="1" value="${aud ? fmtQtd(aud.qtd_contada) : ''}" placeholder="Qtd" ${readonly} ${tabindex}>
+      </td>
+      <td class="col-aud">
+        <input type="text" id="aud-lote-${item.id}" value="${aud?.lote || ''}" placeholder="Lote" ${readonly} ${tabindex}>
+      </td>
+      <td class="col-aud">
+        <input type="date" id="aud-val-${item.id}" value="${aud?.validade ? aud.validade.substring(0,10) : ''}" ${readonly} ${tabindex}>
+      </td>
+      <td class="col-aud">
+        <textarea id="aud-obs-${item.id}" placeholder="Obs." ${readonly} ${tabindex}>${aud?.observacao || ''}</textarea>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function fecharNota() {
+  if (!confirm('Fechar esta nota? Esta ação não pode ser desfeita.')) return;
+
+  const { nota, itens } = await fetchApi(`/api/notas/${notaAtualId}`);
+  const itens_auditados = itens.map(item => ({
+    item_id: item.id,
+    qtd_contada: parseFloat(document.getElementById(`aud-qty-${item.id}`)?.value || 0),
+    lote: document.getElementById(`aud-lote-${item.id}`)?.value || null,
+    validade: document.getElementById(`aud-val-${item.id}`)?.value || null,
+    observacao: document.getElementById(`aud-obs-${item.id}`)?.value || null,
+  }));
+
+  const semQtd = itens_auditados.some(i => !i.qtd_contada && i.qtd_contada !== 0);
+  if (itens_auditados.some(i => i.qtd_contada == null || i.qtd_contada === '' || isNaN(i.qtd_contada))) {
+    showMsg('Preencha a quantidade de todos os itens', 'err');
+    return;
+  }
+
+  try {
+    document.getElementById('btnFechar').disabled = true;
+    await fetchApi(`/api/notas/${notaAtualId}/auditoria`, 'POST', { itens_auditados });
+    showMsg('Nota fechada com sucesso. Relatório disponível no Cadastro.', 'ok');
+    await carregarNotas();
+    abrirNota(notaAtualId);
+  } catch (e) {
+    showMsg(e.message, 'err');
+    document.getElementById('btnFechar').disabled = false;
+  }
+}
+
+carregarNotas();
+</script>
+</body>
+</html>
