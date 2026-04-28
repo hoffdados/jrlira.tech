@@ -43,6 +43,7 @@ tr:hover td { background: #1a2638; }
 .form-full { grid-column: 1 / -1; }
 .form-group label { display: block; font-size: 11px; color: #94a3b8; margin-bottom: 4px; }
 .form-group input, .form-group select, .form-group textarea { width: 100%; background: #0f172a; border: 1px solid #334155; border-radius: 8px; color: #e2e8f0; padding: 8px 12px; font-size: 13px; }
+.form-group input[type="text"], .form-group input[type="email"], .form-group textarea { text-transform: uppercase; }
 .form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: #38bdf8; }
 .form-group textarea { resize: vertical; min-height: 60px; }
 .section-title { font-size: 13px; color: #38bdf8; font-weight: 700; margin: 18px 0 10px; border-bottom: 1px solid #334155; padding-bottom: 6px; grid-column: 1/-1; }
@@ -491,15 +492,25 @@ async function buscarCep() {
     const r = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
     const d = await r.json();
     if (d.erro) return;
-    document.getElementById('fLogradouro').value = d.logradouro || '';
-    document.getElementById('fBairro').value     = d.bairro     || '';
-    document.getElementById('fCidade').value     = d.localidade || '';
-    document.getElementById('fUf').value         = d.uf         || '';
+    document.getElementById('fLogradouro').value = (d.logradouro || '').toUpperCase();
+    document.getElementById('fBairro').value     = (d.bairro     || '').toUpperCase();
+    document.getElementById('fCidade').value     = (d.localidade || '').toUpperCase();
+    document.getElementById('fUf').value         = (d.uf         || '').toUpperCase();
     document.getElementById('fNumero').focus();
   } catch {}
 }
 
 function fecharModal() { document.getElementById('overlayForm').style.display = 'none'; }
+
+document.getElementById('overlayForm').addEventListener('input', function(e) {
+  const el = e.target;
+  const tipo = (el.type || '').toLowerCase();
+  if (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && ['text','email',''].includes(tipo))) {
+    const pos = el.selectionStart;
+    el.value = el.value.toUpperCase();
+    el.setSelectionRange(pos, pos);
+  }
+});
 
 carregar();
 </script>
