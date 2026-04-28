@@ -196,6 +196,8 @@ async function initDB() {
       ALTER TABLE funcionarios ALTER COLUMN sexo TYPE VARCHAR(20);
       ALTER TABLE funcionarios ALTER COLUMN uf TYPE VARCHAR(10);
     `).catch(() => {});
+    await client.query(`ALTER TABLE rh_usuarios ADD COLUMN IF NOT EXISTS loja_id INTEGER`).catch(() => {});
+    await client.query(`ALTER TABLE notas_entrada ADD COLUMN IF NOT EXISTS loja_id INTEGER`).catch(() => {});
 
     // Admin padrão
     const { rows } = await client.query("SELECT id FROM rh_usuarios WHERE usuario = 'admin'");

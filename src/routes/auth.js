@@ -13,8 +13,8 @@ router.post('/login', async (req, res) => {
     const u = rows[0];
     const ok = await bcrypt.compare(senha, u.senha_hash);
     if (!ok) return res.status(401).json({ erro: 'Senha incorreta' });
-    const token = jwt.sign({ id: u.id, usuario: u.usuario, nome: u.nome, perfil: u.perfil }, JWT_SECRET, { expiresIn: '12h' });
-    res.json({ token, nome: u.nome, perfil: u.perfil });
+    const token = jwt.sign({ id: u.id, usuario: u.usuario, nome: u.nome, perfil: u.perfil, loja_id: u.loja_id || null }, JWT_SECRET, { expiresIn: '12h' });
+    res.json({ token, nome: u.nome, perfil: u.perfil, loja_id: u.loja_id || null });
   } catch (err) {
     res.status(500).json({ erro: err.message });
   }
@@ -30,7 +30,7 @@ router.get('/usuarios', async (req, res) => {
     const jwt = require('jsonwebtoken');
     const u = jwt.verify(token, JWT_SECRET);
     if (u.perfil !== 'admin') return res.status(403).json({ erro: 'Acesso negado' });
-    const rows = await pool.query('SELECT id, usuario, nome, perfil, ativo, criado_em FROM rh_usuarios ORDER BY nome');
+    const rows = await pool.query('SELECT id, usuario, nome, perfil, loja_id, ativo, criado_em FROM rh_usuarios ORDER BY nome');
     res.json(rows);
   } catch (err) { res.status(401).json({ erro: 'Token inválido' }); }
 });
@@ -45,7 +45,7 @@ router.post('/usuarios', async (req, res) => {
     const u = jwt.verify(token, JWT_SECRET);
     if (u.perfil !== 'admin') return res.status(403).json({ erro: 'Acesso negado' });
 
-    const { usuario, nome, senha, perfil } = req.body;
+    const { usuario, nome, senha, perfil, loja_id } = req.body;
     const perfisValidos = ['admin', 'rh', 'cadastro', 'estoque', 'auditor'];
     if (!usuario || !nome || !senha || !perfisValidos.includes(perfil))
       return res.status(400).json({ erro: 'Dados inválidos' });
@@ -53,8 +53,8 @@ router.post('/usuarios', async (req, res) => {
     const bcrypt = require('bcryptjs');
     const hash = await bcrypt.hash(senha, 10);
     const rows = await pool.query(
-      'INSERT INTO rh_usuarios (usuario, nome, senha_hash, perfil) VALUES ($1,$2,$3,$4) RETURNING id, usuario, nome, perfil',
-      [usuario.trim().toLowerCase(), nome.trim(), hash, perfil]
+      'INSERT INTO rh_usuarios (usuario, nome, senha_hash, perfil, loja_id) VALUES ($1,$2,$3,$4,$5) RETURNING id, usuario, nome, perfil, loja_id',
+      [usuario.trim().toLowerCase(), nome.trim(), hash, perfil, loja_id || null]
     );
     res.json(rows[0]);
   } catch (err) {
@@ -73,7 +73,7 @@ router.patch('/usuarios/:id', async (req, res) => {
     const u = jwt.verify(token, JWT_SECRET);
     if (u.perfil !== 'admin') return res.status(403).json({ erro: 'Acesso negado' });
 
-    const { perfil, ativo, senha } = req.body;
+    const { perfil, ativo, senha, loja_id } = req.body;
     const perfisValidos = ['admin', 'rh', 'cadastro', 'estoque', 'auditor'];
 
     if (perfil !== undefined) {
@@ -87,6 +87,9 @@ router.patch('/usuarios/:id', async (req, res) => {
       const bcrypt = require('bcryptjs');
       const hash = await bcrypt.hash(senha, 10);
       await pool.query('UPDATE rh_usuarios SET senha_hash=$1 WHERE id=$2', [hash, req.params.id]);
+    }
+    if (loja_id !== undefined) {
+      await pool.query('UPDATE rh_usuarios SET loja_id=$1 WHERE id=$2', [loja_id || null, req.params.id]);
     }
     res.json({ ok: true });
   } catch (err) {

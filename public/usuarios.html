@@ -80,10 +80,10 @@ td{padding:10px 12px;vertical-align:middle}
         <input type="password" id="novaSenha" placeholder="••••••••">
       </div>
     </div>
-    <div class="form-row" style="grid-template-columns:200px auto">
+    <div class="form-row triple">
       <div>
         <label>Perfil de acesso</label>
-        <select id="novoPerfil">
+        <select id="novoPerfil" onchange="toggleLojaSelector('novaLoja', this.value)">
           <option value="">Selecione...</option>
           <option value="admin">Admin — acesso total</option>
           <option value="rh">RH — Lotação e Ponto</option>
@@ -91,6 +91,10 @@ td{padding:10px 12px;vertical-align:middle}
           <option value="estoque">Estoque — Conferência</option>
           <option value="auditor">Auditor — Auditoria</option>
         </select>
+      </div>
+      <div id="wrapNovaLoja" style="display:none">
+        <label>Loja</label>
+        <select id="novaLoja">${lojaOptions()}</select>
       </div>
       <div style="display:flex;align-items:flex-end">
         <button class="btn-primary" onclick="criarUsuario()">Criar Usuário</button>
@@ -122,6 +126,19 @@ const token = () => localStorage.getItem('jrlira_token');
 document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
 
 const PERFIL_LABEL = { admin: 'Admin', rh: 'RH', cadastro: 'Cadastro', estoque: 'Estoque', auditor: 'Auditor' };
+const LOJAS = {1:'ECONOMICO',2:'BR',3:'JOAO PESSOA',4:'FLORESTA',5:'SAO JOSE',6:'SANTAREM'};
+const LOJAS_FULL = {1:'SUPERASA ECONOMICO',2:'SUPERASA BR',3:'SUPERASA JOAO PESSOA',4:'SUPERASA FLORESTA',5:'SUPERASA SAO JOSE',6:'SUPERASA SANTAREM'};
+
+function lojaOptions(sel) {
+  return `<option value="">— Todas —</option>` +
+    Object.entries(LOJAS_FULL).map(([id, nome]) => `<option value="${id}" ${sel==id?'selected':''}>${nome}</option>`).join('');
+}
+
+function toggleLojaSelector(selectId, perfil) {
+  const wrapId = selectId === 'novaLoja' ? 'wrapNovaLoja' : null;
+  const needs = perfil === 'estoque' || perfil === 'auditor';
+  if (wrapId) document.getElementById(wrapId).style.display = needs ? 'block' : 'none';
+}
 
 async function fetchApi(url, method = 'GET', body = null) {
   const opts = { method, headers: { Authorization: `Bearer ${token()}` } };
@@ -144,29 +161,39 @@ async function carregarUsuarios() {
   try {
     const usuarios = await fetchApi('/api/auth/usuarios');
     const tbody = document.getElementById('tbodyUsuarios');
-    tbody.innerHTML = usuarios.map(u => `
-      <tr id="row-${u.id}">
+    tbody.innerHTML = usuarios.map(u => {
+      const precisaLoja = u.perfil === 'estoque' || u.perfil === 'auditor';
+      return `<tr id="row-${u.id}">
         <td>${u.nome}</td>
         <td style="font-family:monospace;font-size:12px">${u.usuario}</td>
-        <td><span class="badge b-${u.perfil}">${PERFIL_LABEL[u.perfil] || u.perfil}</span></td>
+        <td>
+          <span class="badge b-${u.perfil}">${PERFIL_LABEL[u.perfil] || u.perfil}</span>
+          ${u.loja_id ? `<span style="font-size:11px;color:#94a3b8;margin-left:4px">${LOJAS[u.loja_id] || ''}</span>` : ''}
+        </td>
         <td><span class="badge" style="background:${u.ativo ? '#14532d' : '#1e293b'};color:${u.ativo ? '#4ade80' : '#64748b'}">${u.ativo ? 'Ativo' : 'Inativo'}</span></td>
         <td>
           <div class="inline-edit">
-            <select id="perfil-${u.id}" onchange="alterarPerfil(${u.id})">
+            <select id="perfil-${u.id}" onchange="onPerfilChange(${u.id}, this.value)">
               <option value="admin" ${u.perfil==='admin'?'selected':''}>Admin</option>
               <option value="rh" ${u.perfil==='rh'?'selected':''}>RH</option>
               <option value="cadastro" ${u.perfil==='cadastro'?'selected':''}>Cadastro</option>
               <option value="estoque" ${u.perfil==='estoque'?'selected':''}>Estoque</option>
               <option value="auditor" ${u.perfil==='auditor'?'selected':''}>Auditor</option>
             </select>
+            <select id="loja-${u.id}" style="display:${precisaLoja?'block':'none'};width:120px;padding:4px 8px;font-size:12px">${lojaOptions(u.loja_id)}</select>
             <input type="password" id="senha-${u.id}" placeholder="Nova senha" autocomplete="off">
             <button class="btn-sm btn-edit" onclick="salvarEdicao(${u.id})">Salvar</button>
             <button class="btn-sm btn-toggle" onclick="toggleAtivo(${u.id}, ${u.ativo})">${u.ativo ? 'Desativar' : 'Ativar'}</button>
           </div>
         </td>
-      </tr>
-    `).join('');
+      </tr>`;
+    }).join('');
   } catch (e) { showMsg(e.message, 'err'); }
+}
+
+function onPerfilChange(id, perfil) {
+  const el = document.getElementById(`loja-${id}`);
+  if (el) el.style.display = (perfil === 'estoque' || perfil === 'auditor') ? 'block' : 'none';
 }
 
 async function criarUsuario() {
@@ -174,9 +201,11 @@ async function criarUsuario() {
   const nome = document.getElementById('novoNome').value.trim();
   const senha = document.getElementById('novaSenha').value;
   const perfil = document.getElementById('novoPerfil').value;
+  const loja_id = document.getElementById('novaLoja').value || null;
   if (!usuario || !nome || !senha || !perfil) { showMsg('Preencha todos os campos', 'err'); return; }
+  if ((perfil === 'estoque' || perfil === 'auditor') && !loja_id) { showMsg('Selecione a loja para este perfil', 'err'); return; }
   try {
-    await fetchApi('/api/auth/usuarios', 'POST', { usuario, nome, senha, perfil });
+    await fetchApi('/api/auth/usuarios', 'POST', { usuario, nome, senha, perfil, loja_id: loja_id ? parseInt(loja_id) : null });
     showMsg(`Usuário ${nome} criado com sucesso`, 'ok');
     document.getElementById('novoUsuario').value = '';
     document.getElementById('novoNome').value = '';
@@ -198,7 +227,8 @@ async function alterarPerfil(id) {
 async function salvarEdicao(id) {
   const perfil = document.getElementById(`perfil-${id}`).value;
   const senha = document.getElementById(`senha-${id}`).value;
-  const body = { perfil };
+  const loja_id = document.getElementById(`loja-${id}`)?.value || null;
+  const body = { perfil, loja_id: loja_id ? parseInt(loja_id) : null };
   if (senha) body.senha = senha;
   try {
     await fetchApi(`/api/auth/usuarios/${id}`, 'PATCH', body);

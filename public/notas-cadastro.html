@@ -126,9 +126,21 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 1
           <div class="nh-field"><label>Valor Total</label><span id="nhValor"></span></div>
           <div class="nh-field"><label>Status</label><span id="nhStatus"></span></div>
           <div class="nh-field"><label>Importado por</label><span id="nhImportado"></span></div>
+          <div class="nh-field"><label>Loja destino</label><span id="nhLoja">—</span></div>
         </div>
         <div class="nh-actions">
-          <button id="btnLiberar" class="btn-success" onclick="liberarNota()" style="display:none">✓ Liberar para Estoque</button>
+          <div id="wrapLiberar" style="display:none;display:none;align-items:center;gap:8px">
+            <select id="seletorLoja" style="background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;padding:8px 12px;font-size:13px">
+              <option value="">Selecione a loja...</option>
+              <option value="1">SUPERASA ECONOMICO</option>
+              <option value="2">SUPERASA BR</option>
+              <option value="3">SUPERASA JOAO PESSOA</option>
+              <option value="4">SUPERASA FLORESTA</option>
+              <option value="5">SUPERASA SAO JOSE</option>
+              <option value="6">SUPERASA SANTAREM</option>
+            </select>
+            <button id="btnLiberar" class="btn-success" onclick="liberarNota()">✓ Liberar para Estoque</button>
+          </div>
           <button id="btnRelatorio" class="btn-outline" onclick="imprimirRelatorio()" style="display:none">🖨 Imprimir Relatório</button>
           <span id="statusMsg" style="font-size:13px;color:#64748b"></span>
         </div>
@@ -250,10 +262,13 @@ async function abrirNota(id) {
     document.getElementById('nhValor').textContent = fmtMoeda(nota.valor_total);
     document.getElementById('nhStatus').innerHTML = `<span class="badge b-${nota.status}">${labelStatus(nota.status)}</span>`;
     document.getElementById('nhImportado').textContent = `${nota.importado_por || '—'} em ${fmtData(nota.importado_em)}`;
+    const LOJAS = {1:'SUPERASA ECONOMICO',2:'SUPERASA BR',3:'SUPERASA JOAO PESSOA',4:'SUPERASA FLORESTA',5:'SUPERASA SAO JOSE',6:'SUPERASA SANTAREM'};
+    document.getElementById('nhLoja').textContent = nota.loja_id ? LOJAS[nota.loja_id] || nota.loja_id : '—';
 
     const temNovos = itens.some(i => i.produto_novo);
     document.getElementById('legendaNovos').style.display = temNovos ? 'block' : 'none';
-    document.getElementById('btnLiberar').style.display = nota.status === 'importada' ? 'inline-block' : 'none';
+    const wrapLib = document.getElementById('wrapLiberar');
+    wrapLib.style.display = nota.status === 'importada' ? 'flex' : 'none';
     document.getElementById('btnRelatorio').style.display = nota.status === 'fechada' ? 'inline-block' : 'none';
     document.getElementById('statusMsg').textContent = nota.status === 'em_conferencia' ? 'Aguardando conferência do estoque' :
       nota.status === 'em_auditoria' ? 'Em auditoria' : nota.status === 'fechada' ? `Fechada em ${fmtData(nota.fechado_em)}` : '';
@@ -302,10 +317,13 @@ async function remapearEAN(itemId) {
 }
 
 async function liberarNota() {
-  if (!confirm('Liberar esta nota para conferência do estoque?')) return;
+  const loja_id = document.getElementById('seletorLoja').value;
+  if (!loja_id) { showMsg('Selecione a loja de destino antes de liberar', 'err'); return; }
+  const lojaLabel = document.getElementById('seletorLoja').options[document.getElementById('seletorLoja').selectedIndex].text;
+  if (!confirm(`Liberar para o estoque da loja ${lojaLabel}?`)) return;
   try {
-    await fetchApi(`/api/notas/${notaAtualId}/liberar`, 'PATCH');
-    showMsg('Nota liberada para o estoque', 'ok');
+    await fetchApi(`/api/notas/${notaAtualId}/liberar`, 'PATCH', { loja_id: parseInt(loja_id) });
+    showMsg(`Nota liberada para ${lojaLabel}`, 'ok');
     await carregarNotas();
     abrirNota(notaAtualId);
   } catch (e) { showMsg(e.message, 'err'); }

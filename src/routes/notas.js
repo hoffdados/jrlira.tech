@@ -148,6 +148,11 @@ router.post('/importar', autenticar, upload.single('xml'), async (req, res) => {
 // GET /api/notas
 router.get('/', autenticar, async (req, res) => {
   try {
+    const { perfil, loja_id } = req.usuario;
+    // estoque e auditor só veem notas da própria loja
+    const filtroLoja = (perfil === 'estoque' || perfil === 'auditor') && loja_id
+      ? `AND n.loja_id = ${parseInt(loja_id)}`
+      : '';
     const notas = await query(`
       SELECT n.*,
         COUNT(i.id)::int AS total_itens,
@@ -155,6 +160,7 @@ router.get('/', autenticar, async (req, res) => {
         COUNT(CASE WHEN i.status_preco = 'divergente' THEN 1 END)::int AS total_divergentes
       FROM notas_entrada n
       LEFT JOIN itens_nota i ON i.nota_id = n.id
+      WHERE 1=1 ${filtroLoja}
       GROUP BY n.id
       ORDER BY n.importado_em DESC
     `);
@@ -213,10 +219,12 @@ router.patch('/:id/itens/:itemId/remap-ean', autenticar, async (req, res) => {
 // PATCH /api/notas/:id/liberar
 router.patch('/:id/liberar', autenticar, async (req, res) => {
   try {
+    const { loja_id } = req.body;
+    if (!loja_id) return res.status(400).json({ erro: 'Selecione a loja de destino' });
     const [nota] = await query('SELECT status FROM notas_entrada WHERE id = $1', [req.params.id]);
     if (!nota) return res.status(404).json({ erro: 'Nota não encontrada' });
     if (nota.status !== 'importada') return res.status(400).json({ erro: 'Nota já liberada' });
-    await query('UPDATE notas_entrada SET status=$1 WHERE id=$2', ['em_conferencia', req.params.id]);
+    await query('UPDATE notas_entrada SET status=$1, loja_id=$2 WHERE id=$3', ['em_conferencia', loja_id, req.params.id]);
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ erro: err.message });

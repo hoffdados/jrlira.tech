@@ -68,6 +68,7 @@ async function fazerLogin() {
     localStorage.setItem('jrlira_token', data.token);
     localStorage.setItem('jrlira_nome', data.nome);
     localStorage.setItem('jrlira_perfil', data.perfil);
+    localStorage.setItem('jrlira_loja_id', data.loja_id || '');
     mostrarDashboard(data.nome, data.perfil);
   } catch { document.getElementById('erroLogin').textContent = 'Erro de conexão'; }
 }
