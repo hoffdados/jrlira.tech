@@ -85,9 +85,9 @@ tr:hover td { background: #1a2638; }
     </select>
     <select id="filtroLoja" onchange="filtrar()">
       <option value="">Todas lojas</option>
-      <option value="1">Loja 1</option><option value="2">Loja 2</option>
-      <option value="3">Loja 3</option><option value="4">Loja 4</option>
-      <option value="5">Loja 5</option><option value="6">Loja 6</option>
+      <option value="1">ECONOMICO</option><option value="2">BR</option>
+      <option value="3">JOAO PESSOA</option><option value="4">FLORESTA</option>
+      <option value="5">SAO JOSE</option><option value="6">SANTAREM</option>
     </select>
   </div>
 
@@ -132,29 +132,54 @@ tr:hover td { background: #1a2638; }
       <select id="fSexo"><option value="">—</option><option value="M">Masculino</option><option value="F">Feminino</option></select>
     </div>
     <div class="form-group"><label>Estado Civil</label>
-      <select id="fEstadoCivil"><option value="">—</option><option>Solteiro</option><option>Casado</option><option>Divorciado</option><option>Viúvo</option><option>União Estável</option></select>
+      <select id="fEstadoCivil"><option value="">—</option><option>SOLTEIRO</option><option>CASADO</option><option>DIVORCIADO</option><option>VIUVO</option><option>UNIAO ESTAVEL</option></select>
     </div>
-    <div class="form-group"><label>Escolaridade</label><input type="text" id="fEscolaridade"></div>
-    <div class="form-group"><label>Raça</label><input type="text" id="fRaca"></div>
-
-    <div class="section-title">Vínculo</div>
-    <div class="form-group"><label>Cargo</label><input type="text" id="fCargo"></div>
-    <div class="form-group"><label>Grupo/Setor</label>
-      <select id="fGrupoCargo">
-        <option value="">—</option>
-        <option>ACOUGUE</option><option>ADM</option><option>ESTOQUE</option>
-        <option>FLV</option><option>FRENTE LOJA</option><option>FRIOS</option>
-        <option>GESTAO</option><option>LANCHONETE</option><option>LIMPEZA</option>
-        <option>LOGISTICA</option><option>REPOSICAO</option>
+    <div class="form-group"><label>Escolaridade</label>
+      <select id="fEscolaridade"><option value="">—</option>
+        <option>FUNDAMENTAL INCOMP</option><option>FUNDAMENTAL COMP</option>
+        <option>MEDIO INC</option><option>MEDIO COMP</option>
+        <option>TECNICO</option><option>SUPERIOR INC</option>
+        <option>SUPERIOR COMP</option><option>POS GRADUADO/MESTRE</option>
       </select>
     </div>
-    <div class="form-group"><label>Nível</label><input type="text" id="fNivel"></div>
+    <div class="form-group"><label>Raça</label>
+      <select id="fRaca"><option value="">—</option>
+        <option>BRANCA</option><option>PRETA</option><option>AMARELA</option>
+        <option>PARDA</option><option>INDÍGENA</option><option>SEM DECLARACAO</option>
+      </select>
+    </div>
+
+    <div class="section-title">Vínculo</div>
+    <div class="form-group"><label>Cargo</label>
+      <select id="fCargo" onchange="autoFillCargo()">
+        <option value="">—</option>
+        <option>LIDER DO ACOUGUE</option><option>SUB LIDER DE ACOUGUE</option><option>ACOUGUEIRO</option><option>AJUDANTE ACOUGUEIRO</option>
+        <option>FINANCEIRO</option><option>CADASTRO</option><option>GERENTE DE COMPRAS</option><option>AUDITOR DE QUALIDADE</option>
+        <option>COMPRADOR</option><option>COMPRADOR SENIOR</option><option>COORDENADOR DE PREV E PERDAS</option>
+        <option>ASSISTENTE DE DEP PESSOAL</option><option>ASSISTENTE PREV PERDA</option><option>AUX ADMINISTRATIVO</option>
+        <option>AUX CADASTRO</option><option>AUX DE AVARIA</option><option>AUX DE CADASTRO</option>
+        <option>AUX DE ESCRITORIO</option><option>MECANICO</option><option>AUX DE MECANICO</option>
+        <option>FISCAL DE PREV DE PERDAS</option><option>JOVEM APRENDIZ</option>
+        <option>CONFERENTE</option><option>AUX CONFERENTE</option><option>AUX DE DEPOSITO</option><option>OP DE EMPILHADEIRA</option>
+        <option>LIDER GERAL FLV</option><option>LIDER DE FLV</option><option>REPOSITOR DE FLV</option><option>ATENDENTE DE BALANCA</option>
+        <option>LIDER DE LOJA</option><option>FISCAL DE CAIXA</option><option>OP DE CAIXA</option><option>EMPACOTADOR</option><option>RECEPCIONISTA</option>
+        <option>LIDER GERAL FRIOS</option><option>LIDER DE FRIOS</option><option>REPOSITOR DE FRIOS</option><option>FATIADOR</option>
+        <option>HEAD COMERCIAL</option><option>HEAD OPERACIONAL</option><option>GERENTE</option><option>SUBGERENTE</option>
+        <option>SUBGERENTE ADMINISTRATIVO</option><option>COORDENADOR ADM</option>
+        <option>LIDER DE LANCHONETE</option><option>PADEIRO</option><option>AJUDANTE DE COZINHA</option>
+        <option>ATENDENTE DE LANCHONETE</option><option>AUX DE PADARIA</option>
+        <option>SERVICOS GERAIS</option><option>MOTORISTA</option>
+        <option>LIDER REPOSICAO</option><option>REPOSITOR DE MERCADORIAS</option>
+      </select>
+    </div>
+    <div class="form-group"><label>Grupo/Setor</label><input type="text" id="fGrupoCargo" readonly style="background:#0a1020;color:#94a3b8;cursor:default;"></div>
+    <div class="form-group"><label>Nível</label><input type="text" id="fNivel" readonly style="background:#0a1020;color:#94a3b8;cursor:default;"></div>
     <div class="form-group"><label>Loja</label>
       <select id="fLoja">
         <option value="">—</option>
-        <option value="1">Loja 1</option><option value="2">Loja 2</option>
-        <option value="3">Loja 3</option><option value="4">Loja 4</option>
-        <option value="5">Loja 5</option><option value="6">Loja 6</option>
+        <option value="1">ECONOMICO</option><option value="2">BR</option>
+        <option value="3">JOAO PESSOA</option><option value="4">FLORESTA</option>
+        <option value="5">SAO JOSE</option><option value="6">SANTAREM</option>
       </select>
     </div>
     <div class="form-group"><label>Salário</label><input type="number" id="fSalario" step="0.01"></div>
@@ -217,6 +242,73 @@ const API = '';
 const token = () => localStorage.getItem('jrlira_token');
 const H = { 'Authorization': `Bearer ${token()}` };
 
+const LOJAS = {1:'ECONOMICO',2:'BR',3:'JOAO PESSOA',4:'FLORESTA',5:'SAO JOSE',6:'SANTAREM'};
+
+const CARGOS = {
+  'LIDER DO ACOUGUE':{'grupo':'ACOUGUE','nivel':1,'salario':4854},
+  'SUB LIDER DE ACOUGUE':{'grupo':'ACOUGUE','nivel':2,'salario':4045},
+  'ACOUGUEIRO':{'grupo':'ACOUGUE','nivel':3,'salario':2280},
+  'AJUDANTE ACOUGUEIRO':{'grupo':'ACOUGUE','nivel':4,'salario':2280},
+  'FINANCEIRO':{'grupo':'ADM','nivel':5,'salario':4854},
+  'CADASTRO':{'grupo':'ADM','nivel':6,'salario':4854},
+  'GERENTE DE COMPRAS':{'grupo':'GESTAO','nivel':7,'salario':18550},
+  'AUDITOR DE QUALIDADE':{'grupo':'GESTAO','nivel':8,'salario':8090},
+  'COMPRADOR':{'grupo':'ADM','nivel':9,'salario':5500},
+  'COMPRADOR SENIOR':{'grupo':'ADM','nivel':10,'salario':12144},
+  'COORDENADOR DE PREV E PERDAS':{'grupo':'ADM','nivel':11,'salario':2277},
+  'ASSISTENTE DE DEP PESSOAL':{'grupo':'ADM','nivel':12,'salario':0},
+  'ASSISTENTE PREV PERDA':{'grupo':'ADM','nivel':13,'salario':1900},
+  'AUX ADMINISTRATIVO':{'grupo':'ADM','nivel':14,'salario':4554},
+  'AUX CADASTRO':{'grupo':'ADM','nivel':15,'salario':1880},
+  'AUX DE AVARIA':{'grupo':'ADM','nivel':16,'salario':1880},
+  'AUX DE CADASTRO':{'grupo':'ADM','nivel':17,'salario':0},
+  'AUX DE ESCRITORIO':{'grupo':'ADM','nivel':18,'salario':1780},
+  'MECANICO':{'grupo':'ADM','nivel':19,'salario':6831},
+  'AUX DE MECANICO':{'grupo':'ADM','nivel':20,'salario':3236},
+  'FISCAL DE PREV DE PERDAS':{'grupo':'ADM','nivel':21,'salario':1880},
+  'JOVEM APRENDIZ':{'grupo':'ADM','nivel':22,'salario':1880},
+  'CONFERENTE':{'grupo':'ESTOQUE','nivel':23,'salario':4854},
+  'AUX CONFERENTE':{'grupo':'ESTOQUE','nivel':24,'salario':4554},
+  'AUX DE DEPOSITO':{'grupo':'ESTOQUE','nivel':25,'salario':4045},
+  'OP DE EMPILHADEIRA':{'grupo':'ESTOQUE','nivel':26,'salario':2427},
+  'LIDER GERAL FLV':{'grupo':'FLV','nivel':27,'salario':5663},
+  'LIDER DE FLV':{'grupo':'FLV','nivel':28,'salario':4854},
+  'REPOSITOR DE FLV':{'grupo':'FLV','nivel':29,'salario':3036},
+  'ATENDENTE DE BALANCA':{'grupo':'FLV','nivel':30,'salario':1985},
+  'LIDER DE LOJA':{'grupo':'FRENTE LOJA','nivel':31,'salario':4854},
+  'FISCAL DE CAIXA':{'grupo':'FRENTE LOJA','nivel':32,'salario':4045},
+  'OP DE CAIXA':{'grupo':'FRENTE LOJA','nivel':33,'salario':1985},
+  'EMPACOTADOR':{'grupo':'FRENTE LOJA','nivel':34,'salario':1985},
+  'RECEPCIONISTA':{'grupo':'FRENTE LOJA','nivel':35,'salario':1900},
+  'LIDER GERAL FRIOS':{'grupo':'FRIOS','nivel':36,'salario':5663},
+  'LIDER DE FRIOS':{'grupo':'FRIOS','nivel':37,'salario':4854},
+  'REPOSITOR DE FRIOS':{'grupo':'FRIOS','nivel':38,'salario':4045},
+  'FATIADOR':{'grupo':'FRIOS','nivel':39,'salario':2280},
+  'HEAD COMERCIAL':{'grupo':'GESTAO','nivel':40,'salario':23000},
+  'HEAD OPERACIONAL':{'grupo':'GESTAO','nivel':41,'salario':18000},
+  'GERENTE':{'grupo':'GESTAO','nivel':42,'salario':15000},
+  'SUBGERENTE':{'grupo':'GESTAO','nivel':43,'salario':4854},
+  'SUBGERENTE ADMINISTRATIVO':{'grupo':'GESTAO','nivel':44,'salario':6472},
+  'COORDENADOR ADM':{'grupo':'GESTAO','nivel':45,'salario':8500},
+  'LIDER DE LANCHONETE':{'grupo':'LANCHONETE','nivel':46,'salario':4045},
+  'PADEIRO':{'grupo':'LANCHONETE','nivel':47,'salario':4045},
+  'AJUDANTE DE COZINHA':{'grupo':'LANCHONETE','nivel':48,'salario':2630},
+  'ATENDENTE DE LANCHONETE':{'grupo':'LANCHONETE','nivel':49,'salario':1985},
+  'AUX DE PADARIA':{'grupo':'LANCHONETE','nivel':50,'salario':2630},
+  'SERVICOS GERAIS':{'grupo':'LIMPEZA','nivel':51,'salario':1900},
+  'MOTORISTA':{'grupo':'LOGISTICA','nivel':52,'salario':2135},
+  'LIDER REPOSICAO':{'grupo':'REPOSICAO','nivel':53,'salario':4554},
+  'REPOSITOR DE MERCADORIAS':{'grupo':'REPOSICAO','nivel':54,'salario':1900},
+};
+
+function autoFillCargo() {
+  const cargo = document.getElementById('fCargo').value;
+  const c = CARGOS[cargo];
+  document.getElementById('fGrupoCargo').value = c ? c.grupo : '';
+  document.getElementById('fNivel').value = c ? c.nivel : '';
+  document.getElementById('fSalario').value = c ? (c.salario || '') : '';
+}
+
 let editId = null;
 let todos = [];
 
@@ -253,7 +345,7 @@ function renderTabela(lista) {
       <td style="font-weight:600;">${f.nome}</td>
       <td style="color:#94a3b8;">${f.cargo || '—'}</td>
       <td style="color:#94a3b8;">${f.grupo_cargo || '—'}</td>
-      <td style="color:#94a3b8;">${f.loja_id ? `Loja ${f.loja_id}` : '—'}</td>
+      <td style="color:#94a3b8;">${f.loja_id ? (LOJAS[f.loja_id] || 'Loja '+f.loja_id) : '—'}</td>
       <td>${badgeStatus(f.status)}</td>
       <td>
         <button class="btn btn-sm btn-edit" onclick="editar(${f.id})">Editar</button>
