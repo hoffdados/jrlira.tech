@@ -87,15 +87,14 @@ router.post('/importar', autenticar, upload.single('xml'), async (req, res) => {
     const nota_id = nova.id;
 
     for (const item of itens) {
-      let produto_id = null, custo_fabrica = null, status_preco = 'sem_cadastro', produto_novo = true;
+      let custo_fabrica = null, status_preco = 'sem_cadastro', produto_novo = true;
       if (item.ean_nota) {
         const { rows: prods } = await client.query(
-          'SELECT id, custo_fabrica FROM produtos WHERE ean = $1 AND ativo = TRUE LIMIT 1',
+          'SELECT custofabrica FROM produtos_externo WHERE codigobarra = $1 LIMIT 1',
           [item.ean_nota]
         );
         if (prods.length) {
-          produto_id = prods[0].id;
-          custo_fabrica = parseFloat(prods[0].custo_fabrica) || 0;
+          custo_fabrica = parseFloat(prods[0].custofabrica) || 0;
           produto_novo = false;
           const diff = Math.abs(item.preco_unitario_nota - custo_fabrica);
           status_preco = diff <= 0.01 ? 'igual' : 'divergente';
@@ -103,10 +102,10 @@ router.post('/importar', autenticar, upload.single('xml'), async (req, res) => {
       }
       await client.query(`
         INSERT INTO itens_nota
-          (nota_id, numero_item, ean_nota, ean_validado, produto_id, descricao_nota,
+          (nota_id, numero_item, ean_nota, ean_validado, descricao_nota,
            quantidade, preco_unitario_nota, preco_total_nota, custo_fabrica, status_preco, produto_novo)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-      `, [nota_id, item.numero_item, item.ean_nota, item.ean_nota, produto_id,
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      `, [nota_id, item.numero_item, item.ean_nota, item.ean_nota,
           item.descricao_nota, item.quantidade, item.preco_unitario_nota, item.preco_total_nota,
           custo_fabrica, status_preco, produto_novo]);
     }
@@ -172,16 +171,15 @@ router.patch('/:id/itens/:itemId/remap-ean', autenticar, async (req, res) => {
     if (!ean_novo) return res.status(400).json({ erro: 'EAN obrigatório' });
     const [item] = await query('SELECT * FROM itens_nota WHERE id = $1 AND nota_id = $2', [req.params.itemId, req.params.id]);
     if (!item) return res.status(404).json({ erro: 'Item não encontrado' });
-    const prods = await query('SELECT id, custo_fabrica FROM produtos WHERE ean = $1 AND ativo = TRUE LIMIT 1', [ean_novo]);
+    const prods = await query('SELECT custofabrica FROM produtos_externo WHERE codigobarra = $1 LIMIT 1', [ean_novo]);
     if (!prods.length) return res.status(404).json({ erro: 'EAN não encontrado no cadastro' });
-    const prod = prods[0];
-    const custo_fabrica = parseFloat(prod.custo_fabrica) || 0;
+    const custo_fabrica = parseFloat(prods[0].custofabrica) || 0;
     const diff = Math.abs(parseFloat(item.preco_unitario_nota) - custo_fabrica);
     const status_preco = diff <= 0.01 ? 'igual' : 'divergente';
     await query(`
-      UPDATE itens_nota SET ean_validado=$1, produto_id=$2, custo_fabrica=$3, status_preco=$4, produto_novo=FALSE, validado_cadastro=TRUE
-      WHERE id=$5
-    `, [ean_novo, prod.id, custo_fabrica, status_preco, item.id]);
+      UPDATE itens_nota SET ean_validado=$1, custo_fabrica=$2, status_preco=$3, produto_novo=FALSE, validado_cadastro=TRUE
+      WHERE id=$4
+    `, [ean_novo, custo_fabrica, status_preco, item.id]);
     res.json({ ok: true, status_preco, custo_fabrica });
   } catch (err) {
     res.status(500).json({ erro: err.message });

@@ -126,17 +126,6 @@ async function initDB() {
 
     // ── NOTAS DE ENTRADA ──────────────────────────────────────────
     await client.query(`
-      CREATE TABLE IF NOT EXISTS produtos (
-        id SERIAL PRIMARY KEY,
-        ean VARCHAR(20) UNIQUE NOT NULL,
-        descricao VARCHAR(300),
-        custo_fabrica DECIMAL(12,4) DEFAULT 0,
-        unidade VARCHAR(10) DEFAULT 'UN',
-        ativo BOOLEAN DEFAULT TRUE,
-        criado_em TIMESTAMPTZ DEFAULT NOW(),
-        atualizado_em TIMESTAMPTZ DEFAULT NOW()
-      );
-
       CREATE TABLE IF NOT EXISTS notas_entrada (
         id SERIAL PRIMARY KEY,
         chave_nfe VARCHAR(44) UNIQUE,
@@ -159,7 +148,6 @@ async function initDB() {
         numero_item INTEGER,
         ean_nota VARCHAR(20),
         ean_validado VARCHAR(20),
-        produto_id INTEGER REFERENCES produtos(id),
         descricao_nota VARCHAR(300),
         quantidade DECIMAL(12,4),
         preco_unitario_nota DECIMAL(12,4),
