@@ -242,6 +242,7 @@ tr:hover td { background: #1a2638; }
 const API = '';
 const token = () => localStorage.getItem('jrlira_token');
 const H = { 'Authorization': `Bearer ${token()}` };
+(function(){ const p = localStorage.getItem('jrlira_perfil'); if (!token() || (p !== 'admin' && p !== 'rh')) location.href = '/'; })();
 
 const LOJAS = {1:'SUPERASA ECONOMICO',2:'SUPERASA BR',3:'SUPERASA JOAO PESSOA',4:'SUPERASA FLORESTA',5:'SUPERASA SAO JOSE',6:'SUPERASA SANTAREM'};
 

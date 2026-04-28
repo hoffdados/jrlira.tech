@@ -45,33 +45,7 @@ button:hover { background: #0284c7; }
 <div class="dashboard" id="dashboard">
   <div class="dash-title">JR Lira Tech</div>
   <div class="dash-user" id="dashUser"></div>
-  <div class="cards">
-    <a class="card" href="/rh">
-      <div class="card-icon">👥</div>
-      <div class="card-title">Quadro de Lotação</div>
-      <div class="card-desc">Cadastro de funcionários, eventos e histórico</div>
-    </a>
-    <a class="card" href="/ponto">
-      <div class="card-icon">🕐</div>
-      <div class="card-title">Controle de Ponto</div>
-      <div class="card-desc">Importação e análise do cartão de ponto iPonto</div>
-    </a>
-    <a class="card" href="/notas-cadastro">
-      <div class="card-icon">📄</div>
-      <div class="card-title">Notas — Cadastro</div>
-      <div class="card-desc">Importar XML, validar preços e liberar para estoque</div>
-    </a>
-    <a class="card" href="/notas-estoque">
-      <div class="card-icon">📦</div>
-      <div class="card-title">Notas — Estoque</div>
-      <div class="card-desc">Conferência de mercadorias às cegas com lote e validade</div>
-    </a>
-    <a class="card" href="/notas-auditoria">
-      <div class="card-icon">🔍</div>
-      <div class="card-title">Notas — Auditoria</div>
-      <div class="card-desc">Conferência final e fechamento de notas com divergência</div>
-    </a>
-  </div>
+  <div class="cards" id="cards"></div>
   <div class="logout"><a onclick="sair()">Sair</a></div>
 </div>
 
@@ -94,14 +68,35 @@ async function fazerLogin() {
     localStorage.setItem('jrlira_token', data.token);
     localStorage.setItem('jrlira_nome', data.nome);
     localStorage.setItem('jrlira_perfil', data.perfil);
-    mostrarDashboard(data.nome);
+    mostrarDashboard(data.nome, data.perfil);
   } catch { document.getElementById('erroLogin').textContent = 'Erro de conexão'; }
 }
 
-function mostrarDashboard(nome) {
+const TODOS_CARDS = [
+  { href: '/rh',             icon: '👥', title: 'Quadro de Lotação',   desc: 'Cadastro de funcionários, eventos e histórico',               perfis: ['rh'] },
+  { href: '/ponto',          icon: '🕐', title: 'Controle de Ponto',   desc: 'Importação e análise do cartão de ponto iPonto',              perfis: ['rh'] },
+  { href: '/notas-cadastro', icon: '📄', title: 'Notas — Cadastro',    desc: 'Importar XML, validar preços e liberar para estoque',         perfis: ['cadastro'] },
+  { href: '/notas-estoque',  icon: '📦', title: 'Notas — Estoque',     desc: 'Conferência de mercadorias às cegas com lote e validade',     perfis: ['estoque'] },
+  { href: '/notas-auditoria',icon: '🔍', title: 'Notas — Auditoria',   desc: 'Conferência final e fechamento de notas com divergência',     perfis: ['auditor'] },
+  { href: '/usuarios',       icon: '⚙️', title: 'Usuários',            desc: 'Gerenciar usuários e perfis de acesso',                      perfis: [] }, // admin only
+];
+
+function renderCards(perfil) {
+  const el = document.getElementById('cards');
+  el.innerHTML = TODOS_CARDS
+    .filter(c => perfil === 'admin' || c.perfis.includes(perfil))
+    .map(c => `<a class="card" href="${c.href}">
+      <div class="card-icon">${c.icon}</div>
+      <div class="card-title">${c.title}</div>
+      <div class="card-desc">${c.desc}</div>
+    </a>`).join('');
+}
+
+function mostrarDashboard(nome, perfil) {
   document.getElementById('loginBox').style.display = 'none';
   document.getElementById('dashboard').style.display = 'block';
   document.getElementById('dashUser').textContent = `Bem-vindo, ${nome}`;
+  renderCards(perfil || localStorage.getItem('jrlira_perfil') || '');
 }
 
 function sair() {
@@ -112,7 +107,7 @@ function sair() {
   document.getElementById('dashboard').style.display = 'none';
 }
 
-if (getToken()) mostrarDashboard(localStorage.getItem('jrlira_nome') || '');
+if (getToken()) mostrarDashboard(localStorage.getItem('jrlira_nome') || '', localStorage.getItem('jrlira_perfil') || '');
 </script>
 </body>
 </html>

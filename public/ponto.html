@@ -110,6 +110,7 @@ tr:hover td { background: #1a2638; }
 const API = '';
 const token = () => localStorage.getItem('jrlira_token');
 const H = { 'Authorization': `Bearer ${token()}` };
+(function(){ const p = localStorage.getItem('jrlira_perfil'); if (!token() || (p !== 'admin' && p !== 'rh')) location.href = '/'; })();
 let arquivoSelecionado = null;
 
 function extrairPeriodoHTML(texto) {

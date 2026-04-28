@@ -20,4 +20,78 @@ router.post('/login', async (req, res) => {
   }
 });
 
+
+// GET /api/auth/usuarios (admin)
+router.get('/usuarios', async (req, res) => {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ erro: 'Não autenticado' });
+  try {
+    const { JWT_SECRET } = require('../auth');
+    const jwt = require('jsonwebtoken');
+    const u = jwt.verify(token, JWT_SECRET);
+    if (u.perfil !== 'admin') return res.status(403).json({ erro: 'Acesso negado' });
+    const rows = await pool.query('SELECT id, usuario, nome, perfil, ativo, criado_em FROM rh_usuarios ORDER BY nome');
+    res.json(rows);
+  } catch (err) { res.status(401).json({ erro: 'Token inválido' }); }
+});
+
+// POST /api/auth/usuarios (admin)
+router.post('/usuarios', async (req, res) => {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ erro: 'Não autenticado' });
+  try {
+    const { JWT_SECRET } = require('../auth');
+    const jwt = require('jsonwebtoken');
+    const u = jwt.verify(token, JWT_SECRET);
+    if (u.perfil !== 'admin') return res.status(403).json({ erro: 'Acesso negado' });
+
+    const { usuario, nome, senha, perfil } = req.body;
+    const perfisValidos = ['admin', 'rh', 'cadastro', 'estoque', 'auditor'];
+    if (!usuario || !nome || !senha || !perfisValidos.includes(perfil))
+      return res.status(400).json({ erro: 'Dados inválidos' });
+
+    const bcrypt = require('bcryptjs');
+    const hash = await bcrypt.hash(senha, 10);
+    const rows = await pool.query(
+      'INSERT INTO rh_usuarios (usuario, nome, senha_hash, perfil) VALUES ($1,$2,$3,$4) RETURNING id, usuario, nome, perfil',
+      [usuario.trim().toLowerCase(), nome.trim(), hash, perfil]
+    );
+    res.json(rows[0]);
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ erro: 'Usuário já existe' });
+    res.status(err.name === 'JsonWebTokenError' ? 401 : 500).json({ erro: err.message });
+  }
+});
+
+// PATCH /api/auth/usuarios/:id (admin)
+router.patch('/usuarios/:id', async (req, res) => {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ erro: 'Não autenticado' });
+  try {
+    const { JWT_SECRET } = require('../auth');
+    const jwt = require('jsonwebtoken');
+    const u = jwt.verify(token, JWT_SECRET);
+    if (u.perfil !== 'admin') return res.status(403).json({ erro: 'Acesso negado' });
+
+    const { perfil, ativo, senha } = req.body;
+    const perfisValidos = ['admin', 'rh', 'cadastro', 'estoque', 'auditor'];
+
+    if (perfil !== undefined) {
+      if (!perfisValidos.includes(perfil)) return res.status(400).json({ erro: 'Perfil inválido' });
+      await pool.query('UPDATE rh_usuarios SET perfil=$1 WHERE id=$2', [perfil, req.params.id]);
+    }
+    if (ativo !== undefined) {
+      await pool.query('UPDATE rh_usuarios SET ativo=$1 WHERE id=$2', [ativo, req.params.id]);
+    }
+    if (senha) {
+      const bcrypt = require('bcryptjs');
+      const hash = await bcrypt.hash(senha, 10);
+      await pool.query('UPDATE rh_usuarios SET senha_hash=$1 WHERE id=$2', [hash, req.params.id]);
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(err.name === 'JsonWebTokenError' ? 401 : 500).json({ erro: err.message });
+  }
+});
+
 module.exports = router;

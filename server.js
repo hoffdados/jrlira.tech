@@ -26,6 +26,7 @@ app.get('/importar-qlp', (req, res) => res.sendFile(path.join(__dirname, 'public
 app.get('/notas-cadastro', (req, res) => res.sendFile(path.join(__dirname, 'public/notas-cadastro.html')));
 app.get('/notas-estoque', (req, res) => res.sendFile(path.join(__dirname, 'public/notas-estoque.html')));
 app.get('/notas-auditoria', (req, res) => res.sendFile(path.join(__dirname, 'public/notas-auditoria.html')));
+app.get('/usuarios', (req, res) => res.sendFile(path.join(__dirname, 'public/usuarios.html')));
 
 // ── INIT DB ───────────────────────────────────────────────────────
 async function initDB() {

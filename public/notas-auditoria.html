@@ -145,7 +145,7 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 1
 <script>
 const API = '';
 const token = () => localStorage.getItem('jrlira_token');
-if (!token()) location.href = '/';
+(function(){ const p = localStorage.getItem('jrlira_perfil'); if (!token() || (p !== 'admin' && p !== 'auditor')) location.href = '/'; })();
 document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
 
 let notaAtualId = null;

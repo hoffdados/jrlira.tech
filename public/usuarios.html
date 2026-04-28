@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Usuários - JR Lira</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+nav{background:#1e293b;padding:14px 24px;display:flex;align-items:center;gap:16px;border-bottom:1px solid #334155}
+nav .brand{font-size:16px;font-weight:700;color:#38bdf8}
+nav .sep{color:#475569}
+nav .page{font-size:14px;color:#94a3b8}
+nav .user{margin-left:auto;font-size:13px;color:#64748b}
+nav .btn-nav{background:#0ea5e9;color:#fff;border:none;padding:7px 14px;border-radius:6px;font-size:13px;cursor:pointer}
+nav .btn-nav:hover{background:#0284c7}
+.container{max-width:900px;margin:0 auto;padding:32px 24px}
+h2{font-size:18px;color:#38bdf8;margin-bottom:24px}
+.card{background:#1e293b;border-radius:10px;padding:24px;margin-bottom:24px}
+.card h3{font-size:14px;color:#94a3b8;margin-bottom:16px;text-transform:uppercase;letter-spacing:.05em}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.form-row.triple{grid-template-columns:1fr 1fr 1fr}
+label{display:block;font-size:12px;color:#64748b;margin-bottom:4px}
+input,select{width:100%;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;padding:9px 12px;font-size:13px}
+input:focus,select:focus{outline:none;border-color:#38bdf8}
+select option{background:#1e293b}
+button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:9px 18px;font-weight:600}
+.btn-primary{background:#0ea5e9;color:#fff}
+.btn-primary:hover{background:#0284c7}
+.btn-sm{padding:4px 10px;font-size:12px}
+.btn-edit{background:#1d4ed8;color:#fff}
+.btn-edit:hover{background:#1e40af}
+.btn-toggle{background:#334155;color:#94a3b8}
+.btn-toggle:hover{background:#475569;color:#e2e8f0}
+.msg{padding:10px 14px;border-radius:8px;margin-bottom:16px;font-size:13px}
+.msg-ok{background:#14532d;color:#4ade80}
+.msg-err{background:#450a0a;color:#f87171}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead th{background:#0f172a;padding:10px 12px;text-align:left;color:#64748b;font-weight:600;border-bottom:1px solid #334155}
+tbody tr{border-bottom:1px solid #1e293b}
+tbody tr:hover{background:#1a2744}
+td{padding:10px 12px;vertical-align:middle}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700}
+.b-admin{background:#1e3a5f;color:#60a5fa}
+.b-rh{background:#14532d;color:#4ade80}
+.b-cadastro{background:#2e1065;color:#a78bfa}
+.b-estoque{background:#431407;color:#f97316}
+.b-auditor{background:#1c1300;color:#fbbf24}
+.b-inativo{background:#1e293b;color:#64748b}
+.inline-edit{display:flex;gap:6px;align-items:center}
+.inline-edit select{width:140px;padding:4px 8px;font-size:12px}
+.inline-edit input{width:130px;padding:4px 8px;font-size:12px}
+</style>
+</head>
+<body>
+<nav>
+  <span class="brand">JR Lira Tech</span>
+  <span class="sep">/</span>
+  <span class="page">Gestão de Usuários</span>
+  <span class="user" id="nomeUsuario"></span>
+  <button class="btn-nav" onclick="location.href='/'">← Início</button>
+</nav>
+
+<div class="container">
+  <div id="msg" style="display:none"></div>
+
+  <div class="card">
+    <h3>Novo Usuário</h3>
+    <div class="form-row triple">
+      <div>
+        <label>Usuário (login)</label>
+        <input type="text" id="novoUsuario" placeholder="ex: joao.silva" autocomplete="off">
+      </div>
+      <div>
+        <label>Nome completo</label>
+        <input type="text" id="novoNome" placeholder="João Silva">
+      </div>
+      <div>
+        <label>Senha inicial</label>
+        <input type="password" id="novaSenha" placeholder="••••••••">
+      </div>
+    </div>
+    <div class="form-row" style="grid-template-columns:200px auto">
+      <div>
+        <label>Perfil de acesso</label>
+        <select id="novoPerfil">
+          <option value="">Selecione...</option>
+          <option value="admin">Admin — acesso total</option>
+          <option value="rh">RH — Lotação e Ponto</option>
+          <option value="cadastro">Cadastro — Notas Cadastro</option>
+          <option value="estoque">Estoque — Conferência</option>
+          <option value="auditor">Auditor — Auditoria</option>
+        </select>
+      </div>
+      <div style="display:flex;align-items:flex-end">
+        <button class="btn-primary" onclick="criarUsuario()">Criar Usuário</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Usuários cadastrados</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Nome</th>
+          <th>Login</th>
+          <th>Perfil</th>
+          <th>Status</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody id="tbodyUsuarios"><tr><td colspan="5" style="text-align:center;color:#475569;padding:24px">Carregando...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const API = '';
+const token = () => localStorage.getItem('jrlira_token');
+(function(){ const p = localStorage.getItem('jrlira_perfil'); if (!token() || p !== 'admin') location.href = '/'; })();
+document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
+
+const PERFIL_LABEL = { admin: 'Admin', rh: 'RH', cadastro: 'Cadastro', estoque: 'Estoque', auditor: 'Auditor' };
+
+async function fetchApi(url, method = 'GET', body = null) {
+  const opts = { method, headers: { Authorization: `Bearer ${token()}` } };
+  if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+  const r = await fetch(API + url, opts);
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.erro || 'Erro');
+  return data;
+}
+
+function showMsg(txt, tipo = 'ok') {
+  const el = document.getElementById('msg');
+  el.className = `msg msg-${tipo}`;
+  el.textContent = txt;
+  el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', 4000);
+}
+
+async function carregarUsuarios() {
+  try {
+    const usuarios = await fetchApi('/api/auth/usuarios');
+    const tbody = document.getElementById('tbodyUsuarios');
+    tbody.innerHTML = usuarios.map(u => `
+      <tr id="row-${u.id}">
+        <td>${u.nome}</td>
+        <td style="font-family:monospace;font-size:12px">${u.usuario}</td>
+        <td><span class="badge b-${u.perfil}">${PERFIL_LABEL[u.perfil] || u.perfil}</span></td>
+        <td><span class="badge" style="background:${u.ativo ? '#14532d' : '#1e293b'};color:${u.ativo ? '#4ade80' : '#64748b'}">${u.ativo ? 'Ativo' : 'Inativo'}</span></td>
+        <td>
+          <div class="inline-edit">
+            <select id="perfil-${u.id}" onchange="alterarPerfil(${u.id})">
+              <option value="admin" ${u.perfil==='admin'?'selected':''}>Admin</option>
+              <option value="rh" ${u.perfil==='rh'?'selected':''}>RH</option>
+              <option value="cadastro" ${u.perfil==='cadastro'?'selected':''}>Cadastro</option>
+              <option value="estoque" ${u.perfil==='estoque'?'selected':''}>Estoque</option>
+              <option value="auditor" ${u.perfil==='auditor'?'selected':''}>Auditor</option>
+            </select>
+            <input type="password" id="senha-${u.id}" placeholder="Nova senha" autocomplete="off">
+            <button class="btn-sm btn-edit" onclick="salvarEdicao(${u.id})">Salvar</button>
+            <button class="btn-sm btn-toggle" onclick="toggleAtivo(${u.id}, ${u.ativo})">${u.ativo ? 'Desativar' : 'Ativar'}</button>
+          </div>
+        </td>
+      </tr>
+    `).join('');
+  } catch (e) { showMsg(e.message, 'err'); }
+}
+
+async function criarUsuario() {
+  const usuario = document.getElementById('novoUsuario').value.trim();
+  const nome = document.getElementById('novoNome').value.trim();
+  const senha = document.getElementById('novaSenha').value;
+  const perfil = document.getElementById('novoPerfil').value;
+  if (!usuario || !nome || !senha || !perfil) { showMsg('Preencha todos os campos', 'err'); return; }
+  try {
+    await fetchApi('/api/auth/usuarios', 'POST', { usuario, nome, senha, perfil });
+    showMsg(`Usuário ${nome} criado com sucesso`, 'ok');
+    document.getElementById('novoUsuario').value = '';
+    document.getElementById('novoNome').value = '';
+    document.getElementById('novaSenha').value = '';
+    document.getElementById('novoPerfil').value = '';
+    carregarUsuarios();
+  } catch (e) { showMsg(e.message, 'err'); }
+}
+
+async function alterarPerfil(id) {
+  const perfil = document.getElementById(`perfil-${id}`).value;
+  try {
+    await fetchApi(`/api/auth/usuarios/${id}`, 'PATCH', { perfil });
+    showMsg('Perfil atualizado', 'ok');
+    carregarUsuarios();
+  } catch (e) { showMsg(e.message, 'err'); }
+}
+
+async function salvarEdicao(id) {
+  const perfil = document.getElementById(`perfil-${id}`).value;
+  const senha = document.getElementById(`senha-${id}`).value;
+  const body = { perfil };
+  if (senha) body.senha = senha;
+  try {
+    await fetchApi(`/api/auth/usuarios/${id}`, 'PATCH', body);
+    showMsg('Usuário atualizado', 'ok');
+    carregarUsuarios();
+  } catch (e) { showMsg(e.message, 'err'); }
+}
+
+async function toggleAtivo(id, ativo) {
+  try {
+    await fetchApi(`/api/auth/usuarios/${id}`, 'PATCH', { ativo: !ativo });
+    showMsg(ativo ? 'Usuário desativado' : 'Usuário ativado', 'ok');
+    carregarUsuarios();
+  } catch (e) { showMsg(e.message, 'err'); }
+}
+
+carregarUsuarios();
+</script>
+</body>
+</html>
