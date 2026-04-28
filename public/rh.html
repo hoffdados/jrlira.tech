@@ -85,9 +85,9 @@ tr:hover td { background: #1a2638; }
     </select>
     <select id="filtroLoja" onchange="filtrar()">
       <option value="">Todas lojas</option>
-      <option value="1">ECONOMICO</option><option value="2">BR</option>
-      <option value="3">JOAO PESSOA</option><option value="4">FLORESTA</option>
-      <option value="5">SAO JOSE</option><option value="6">SANTAREM</option>
+      <option value="1">SUPERASA ECONOMICO</option><option value="2">SUPERASA BR</option>
+      <option value="3">SUPERASA JOAO PESSOA</option><option value="4">SUPERASA FLORESTA</option>
+      <option value="5">SUPERASA SAO JOSE</option><option value="6">SUPERASA SANTAREM</option>
     </select>
   </div>
 
@@ -177,9 +177,9 @@ tr:hover td { background: #1a2638; }
     <div class="form-group"><label>Loja</label>
       <select id="fLoja">
         <option value="">—</option>
-        <option value="1">ECONOMICO</option><option value="2">BR</option>
-        <option value="3">JOAO PESSOA</option><option value="4">FLORESTA</option>
-        <option value="5">SAO JOSE</option><option value="6">SANTAREM</option>
+        <option value="1">SUPERASA ECONOMICO</option><option value="2">SUPERASA BR</option>
+        <option value="3">SUPERASA JOAO PESSOA</option><option value="4">SUPERASA FLORESTA</option>
+        <option value="5">SUPERASA SAO JOSE</option><option value="6">SUPERASA SANTAREM</option>
       </select>
     </div>
     <div class="form-group"><label>Salário</label><input type="number" id="fSalario" step="0.01"></div>
@@ -242,7 +242,7 @@ const API = '';
 const token = () => localStorage.getItem('jrlira_token');
 const H = { 'Authorization': `Bearer ${token()}` };
 
-const LOJAS = {1:'ECONOMICO',2:'BR',3:'JOAO PESSOA',4:'FLORESTA',5:'SAO JOSE',6:'SANTAREM'};
+const LOJAS = {1:'SUPERASA ECONOMICO',2:'SUPERASA BR',3:'SUPERASA JOAO PESSOA',4:'SUPERASA FLORESTA',5:'SUPERASA SAO JOSE',6:'SUPERASA SANTAREM'};
 
 const CARGOS = {
   'LIDER DO ACOUGUE':{'grupo':'ACOUGUE','nivel':1,'salario':4854},
@@ -345,7 +345,7 @@ function renderTabela(lista) {
       <td style="font-weight:600;">${f.nome}</td>
       <td style="color:#94a3b8;">${f.cargo || '—'}</td>
       <td style="color:#94a3b8;">${f.grupo_cargo || '—'}</td>
-      <td style="color:#94a3b8;">${f.loja_id ? (LOJAS[f.loja_id] || 'Loja '+f.loja_id) : '—'}</td>
+      <td style="color:#94a3b8;">${f.loja_id ? (LOJAS[+f.loja_id] || 'Loja '+f.loja_id) : '—'}</td>
       <td>${badgeStatus(f.status)}</td>
       <td>
         <button class="btn btn-sm btn-edit" onclick="editar(${f.id})">Editar</button>
