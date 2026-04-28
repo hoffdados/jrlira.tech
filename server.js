@@ -17,6 +17,16 @@ app.use('/api/funcionarios', require('./src/routes/funcionarios'));
 app.use('/api/ponto', require('./src/routes/ponto'));
 app.use('/api/importacao', require('./src/routes/importacao'));
 
+// ── RESET TEMPORÁRIO ──────────────────────────────────────────────
+app.get('/api/admin/reset-db', async (req, res) => {
+  if (req.query.chave !== 'reset-jrlira-2026') return res.status(403).json({ erro: 'Chave inválida' });
+  const client = await pool.connect();
+  try {
+    await client.query('TRUNCATE TABLE funcionario_eventos, ponto_registros, ponto_importacoes, funcionarios RESTART IDENTITY CASCADE');
+    res.json({ ok: true, msg: 'Todas as tabelas apagadas.' });
+  } finally { client.release(); }
+});
+
 // ── PÁGINAS ───────────────────────────────────────────────────────
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public/index.html')));
 app.get('/rh', (req, res) => res.sendFile(path.join(__dirname, 'public/rh.html')));
