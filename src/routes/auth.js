@@ -49,7 +49,7 @@ router.post('/usuarios', async (req, res) => {
     if (u.perfil !== 'admin') return res.status(403).json({ erro: 'Acesso negado' });
 
     const { usuario, nome, email, senha, perfil, lojas_ids } = req.body;
-    const perfisValidos = ['admin', 'rh', 'cadastro', 'estoque', 'auditor'];
+    const perfisValidos = ['admin', 'rh', 'cadastro', 'estoque', 'auditor', 'comprador'];
     if (!usuario || !nome || !senha || !perfisValidos.includes(perfil))
       return res.status(400).json({ erro: 'Dados inválidos' });
 
@@ -85,7 +85,7 @@ router.patch('/usuarios/:id', async (req, res) => {
     if (u.perfil !== 'admin') return res.status(403).json({ erro: 'Acesso negado' });
 
     const { perfil, ativo, senha, email, lojas_ids } = req.body;
-    const perfisValidos = ['admin', 'rh', 'cadastro', 'estoque', 'auditor'];
+    const perfisValidos = ['admin', 'rh', 'cadastro', 'estoque', 'auditor', 'comprador'];
 
     if (perfil !== undefined) {
       if (!perfisValidos.includes(perfil)) return res.status(400).json({ erro: 'Perfil inválido' });
@@ -123,6 +123,40 @@ router.delete('/usuarios/:id', async (req, res) => {
     if (u.id == req.params.id) return res.status(400).json({ erro: 'Não é possível excluir o próprio usuário' });
     await pool.query('DELETE FROM rh_usuarios WHERE id = $1', [req.params.id]);
     res.json({ ok: true });
+  } catch (err) {
+    res.status(err.name === 'JsonWebTokenError' ? 401 : 500).json({ erro: err.message });
+  }
+});
+
+// GET /api/auth/db-status (admin)
+router.get('/db-status', async (req, res) => {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ erro: 'Não autenticado' });
+  try {
+    const u = jwt.verify(token, JWT_SECRET);
+    if (u.perfil !== 'admin') return res.status(403).json({ erro: 'Acesso negado' });
+
+    const [tamanho, tabelas] = await Promise.all([
+      pool.query(`SELECT pg_size_pretty(pg_database_size(current_database())) AS tamanho_total,
+                         pg_database_size(current_database()) AS bytes_total`),
+      pool.query(`SELECT relname AS tabela,
+                         pg_size_pretty(pg_total_relation_size(relid)) AS tamanho,
+                         pg_total_relation_size(relid) AS bytes,
+                         reltuples::bigint AS registros
+                  FROM pg_catalog.pg_statio_user_tables
+                  ORDER BY pg_total_relation_size(relid) DESC
+                  LIMIT 10`)
+    ]);
+
+    res.json({
+      tamanho_total: tamanho[0].tamanho_total,
+      bytes_total: Number(tamanho[0].bytes_total),
+      tabelas: tabelas.map(t => ({
+        tabela: t.tabela,
+        tamanho: t.tamanho,
+        registros: Number(t.registros)
+      }))
+    });
   } catch (err) {
     res.status(err.name === 'JsonWebTokenError' ? 401 : 500).json({ erro: err.message });
   }
