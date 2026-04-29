@@ -109,7 +109,14 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 1
   <div class="main">
     <div id="msg" style="display:none"></div>
 
-    <div id="uploadArea" class="upload-area" onclick="document.getElementById('fileInput2').click()">
+    <div id="seletorLojaImport" style="background:#1e293b;border-radius:12px;padding:24px;margin-bottom:16px">
+      <div style="font-size:13px;color:#94a3b8;margin-bottom:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em">Loja de destino</div>
+      <select id="lojaImportSelect" onchange="onLojaImportChange()" style="background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;padding:9px 14px;font-size:14px;width:100%;max-width:360px">
+        <option value="">Carregando...</option>
+      </select>
+    </div>
+
+    <div id="uploadArea" class="upload-area" onclick="iniciarUpload()" style="pointer-events:none;opacity:.4">
       <input type="file" id="fileInput2" accept=".xml" style="display:none" onchange="importarXML(this.files[0])">
       <div class="icon">📄</div>
       <p>Clique ou <strong>selecione um XML</strong> de NF-e para importar</p>
@@ -129,18 +136,10 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 1
           <div class="nh-field"><label>Loja destino</label><span id="nhLoja">—</span></div>
         </div>
         <div class="nh-actions">
-          <div id="wrapLiberar" style="display:none;display:none;align-items:center;gap:8px">
-            <select id="seletorLoja" style="background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;padding:8px 12px;font-size:13px">
-              <option value="">Selecione a loja...</option>
-              <option value="1">SUPERASA ECONOMICO</option>
-              <option value="2">SUPERASA BR</option>
-              <option value="3">SUPERASA JOAO PESSOA</option>
-              <option value="4">SUPERASA FLORESTA</option>
-              <option value="5">SUPERASA SAO JOSE</option>
-              <option value="6">SUPERASA SANTAREM</option>
-            </select>
+          <div id="wrapLiberar" style="display:none;align-items:center;gap:8px">
             <button id="btnLiberar" class="btn-success" onclick="liberarNota()">✓ Liberar para Estoque</button>
           </div>
+          <button id="btnExcluir" class="btn-outline" onclick="excluirNota()" style="display:none;border-color:#ef4444;color:#ef4444">✕ Excluir Nota</button>
           <button id="btnRelatorio" class="btn-outline" onclick="imprimirRelatorio()" style="display:none">🖨 Imprimir Relatório</button>
           <span id="statusMsg" style="font-size:13px;color:#64748b"></span>
         </div>
@@ -156,10 +155,10 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 1
             <th>#</th>
             <th>Descrição</th>
             <th>EAN Nota</th>
-            <th>Qtd</th>
-            <th>Preço Unit. Nota</th>
-            <th>Custo Fábrica</th>
-            <th>Status Preço</th>
+            <th style="text-align:center">Qtd</th>
+            <th style="text-align:center">Preço Nota</th>
+            <th style="text-align:center">Custo Nota</th>
+            <th style="text-align:center">Status Preço</th>
             <th>Ação</th>
           </tr>
         </thead>
@@ -176,6 +175,53 @@ const token = () => localStorage.getItem('jrlira_token');
 document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
 
 let notaAtualId = null;
+
+// Seletor de loja: popula opções pela lista de lojas do usuário
+(function inicializarSeletorLoja() {
+  const LOJAS_ALL = [
+    {id:1, nome:'SUPERASA ECONOMICO'},
+    {id:2, nome:'SUPERASA BR'},
+    {id:3, nome:'SUPERASA JOAO PAULO'},
+    {id:4, nome:'SUPERASA FLORESTA'},
+    {id:5, nome:'SUPERASA SAO JOSE'},
+    {id:6, nome:'SUPERASA SANTAREM'},
+  ];
+  const lojas = JSON.parse(localStorage.getItem('jrlira_lojas') || 'null');
+  const opcoes = lojas?.length ? LOJAS_ALL.filter(l => lojas.includes(l.id)) : LOJAS_ALL;
+  const sel = document.getElementById('lojaImportSelect');
+  sel.innerHTML = '<option value="">Selecione a loja...</option>' +
+    opcoes.map(l => `<option value="${l.id}">${l.nome}</option>`).join('');
+  if (lojas?.length === 1) {
+    sel.value = String(lojas[0]);
+    sel.disabled = true;
+    habilitarUpload();
+  }
+})();
+
+function onLojaImportChange() {
+  const v = document.getElementById('lojaImportSelect').value;
+  if (v) habilitarUpload(); else desabilitarUpload();
+}
+
+function habilitarUpload() {
+  const ua = document.getElementById('uploadArea');
+  ua.style.pointerEvents = 'auto';
+  ua.style.opacity = '1';
+}
+
+function desabilitarUpload() {
+  const ua = document.getElementById('uploadArea');
+  ua.style.pointerEvents = 'none';
+  ua.style.opacity = '.4';
+}
+
+function iniciarUpload() {
+  document.getElementById('fileInput2').click();
+}
+
+function lojaImportSelecionada() {
+  return document.getElementById('lojaImportSelect').value;
+}
 
 async function fetchApi(url, method = 'GET', body = null) {
   const opts = { method, headers: { Authorization: `Bearer ${token()}` } };
@@ -223,9 +269,12 @@ function labelStatus(s) {
 
 async function importarXML(file) {
   if (!file) return;
+  const loja_id = lojaImportSelecionada();
+  if (!loja_id) { showMsg('Selecione a loja de destino antes de importar', 'err'); return; }
   showMsg('Importando XML...', 'ok');
   const fd = new FormData();
   fd.append('xml', file);
+  fd.append('loja_id', loja_id);
   try {
     const r = await fetch(`${API}/api/notas/importar`, {
       method: 'POST',
@@ -250,6 +299,7 @@ async function abrirNota(id) {
   const card = document.getElementById(`card-${id}`);
   if (card) card.classList.add('ativo');
   document.getElementById('uploadArea').style.display = 'none';
+  document.getElementById('seletorLojaImport').style.display = 'none';
   document.getElementById('notaDetalhe').style.display = 'block';
 
   try {
@@ -269,6 +319,7 @@ async function abrirNota(id) {
     document.getElementById('legendaNovos').style.display = temNovos ? 'block' : 'none';
     const wrapLib = document.getElementById('wrapLiberar');
     wrapLib.style.display = nota.status === 'importada' ? 'flex' : 'none';
+    document.getElementById('btnExcluir').style.display = nota.status === 'importada' ? 'inline-block' : 'none';
     document.getElementById('btnRelatorio').style.display = nota.status === 'fechada' ? 'inline-block' : 'none';
     document.getElementById('statusMsg').textContent = nota.status === 'em_conferencia' ? 'Aguardando conferência do estoque' :
       nota.status === 'em_auditoria' ? 'Em auditoria' : nota.status === 'fechada' ? `Fechada em ${fmtData(nota.fechado_em)}` : '';
@@ -292,10 +343,10 @@ function renderItens(itens, status) {
       <td>${item.numero_item}</td>
       <td>${item.descricao_nota}${isNovo ? ' <span style="color:#a78bfa;font-size:11px">★NOVO</span>' : ''}</td>
       <td style="font-family:monospace;font-size:12px">${item.ean_nota || '—'}</td>
-      <td>${parseFloat(item.quantidade).toFixed(0)}</td>
-      <td>${fmtMoeda(item.preco_unitario_nota)}</td>
-      <td>${custo}</td>
-      <td>${statusBadge}</td>
+      <td style="text-align:center">${parseFloat(item.quantidade).toFixed(0)}</td>
+      <td style="text-align:center">${fmtMoeda(item.preco_unitario_nota)}</td>
+      <td style="text-align:center">${custo}</td>
+      <td style="text-align:center">${statusBadge}</td>
       <td>${acao}</td>
     </tr>`;
   }).join('');
@@ -317,15 +368,25 @@ async function remapearEAN(itemId) {
 }
 
 async function liberarNota() {
-  const loja_id = document.getElementById('seletorLoja').value;
-  if (!loja_id) { showMsg('Selecione a loja de destino antes de liberar', 'err'); return; }
-  const lojaLabel = document.getElementById('seletorLoja').options[document.getElementById('seletorLoja').selectedIndex].text;
-  if (!confirm(`Liberar para o estoque da loja ${lojaLabel}?`)) return;
+  if (!confirm('Liberar esta nota para conferência do estoque?')) return;
   try {
-    await fetchApi(`/api/notas/${notaAtualId}/liberar`, 'PATCH', { loja_id: parseInt(loja_id) });
-    showMsg(`Nota liberada para ${lojaLabel}`, 'ok');
+    await fetchApi(`/api/notas/${notaAtualId}/liberar`, 'PATCH', {});
+    showMsg('Nota liberada para conferência', 'ok');
     await carregarNotas();
     abrirNota(notaAtualId);
+  } catch (e) { showMsg(e.message, 'err'); }
+}
+
+async function excluirNota() {
+  if (!confirm('Excluir esta nota? Esta ação não pode ser desfeita.')) return;
+  try {
+    await fetchApi(`/api/notas/${notaAtualId}`, 'DELETE');
+    showMsg('Nota excluída com sucesso', 'ok');
+    notaAtualId = null;
+    document.getElementById('notaDetalhe').style.display = 'none';
+    document.getElementById('seletorLojaImport').style.display = 'block';
+    document.getElementById('uploadArea').style.display = 'block';
+    await carregarNotas();
   } catch (e) { showMsg(e.message, 'err'); }
 }
 

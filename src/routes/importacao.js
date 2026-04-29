@@ -119,7 +119,7 @@ router.post('/qlp/preview', autenticar, upload.single('arquivo'), async (req, re
       .map(r => extrairDados(r, idx))
       .filter(f => f.nome && f.matricula);
 
-    res.json({ sheet: sheetName, total: funcionarios.length, amostra: funcionarios.slice(0, 5) });
+    res.json({ sheet: sheetName, total: funcionarios.length, amostra: funcionarios });
   } catch (err) {
     res.status(500).json({ erro: err.message });
   }

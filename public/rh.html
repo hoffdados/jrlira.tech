@@ -90,6 +90,26 @@ tr:hover td { background: #1a2638; }
       <option value="3">SUPERASA JOAO PESSOA</option><option value="4">SUPERASA FLORESTA</option>
       <option value="5">SUPERASA SAO JOSE</option><option value="6">SUPERASA SANTAREM</option>
     </select>
+    <select id="filtroCargo" onchange="filtrar()" style="min-width:180px">
+      <option value="">Todos cargos</option>
+      <option>LIDER DO ACOUGUE</option><option>SUB LIDER DE ACOUGUE</option><option>ACOUGUEIRO</option><option>AJUDANTE ACOUGUEIRO</option>
+      <option>FINANCEIRO</option><option>CADASTRO</option><option>GERENTE DE COMPRAS</option><option>AUDITOR DE QUALIDADE</option>
+      <option>COMPRADOR</option><option>COMPRADOR SENIOR</option><option>COORDENADOR DE PREV E PERDAS</option>
+      <option>ASSISTENTE DE DEP PESSOAL</option><option>ASSISTENTE PREV PERDA</option><option>AUX ADMINISTRATIVO</option>
+      <option>AUX CADASTRO</option><option>AUX DE AVARIA</option><option>AUX DE CADASTRO</option>
+      <option>AUX DE ESCRITORIO</option><option>MECANICO</option><option>AUX DE MECANICO</option>
+      <option>FISCAL DE PREV DE PERDAS</option><option>JOVEM APRENDIZ</option>
+      <option>CONFERENTE</option><option>AUX CONFERENTE</option><option>AUX DE DEPOSITO</option><option>OP DE EMPILHADEIRA</option>
+      <option>LIDER GERAL FLV</option><option>LIDER DE FLV</option><option>REPOSITOR DE FLV</option><option>ATENDENTE DE BALANCA</option>
+      <option>LIDER DE LOJA</option><option>FISCAL DE CAIXA</option><option>OP DE CAIXA</option><option>EMPACOTADOR</option><option>RECEPCIONISTA</option>
+      <option>LIDER GERAL FRIOS</option><option>LIDER DE FRIOS</option><option>REPOSITOR DE FRIOS</option><option>FATIADOR</option>
+      <option>HEAD COMERCIAL</option><option>HEAD OPERACIONAL</option><option>GERENTE</option><option>SUBGERENTE</option>
+      <option>SUBGERENTE ADMINISTRATIVO</option><option>COORDENADOR ADM</option>
+      <option>LIDER DE LANCHONETE</option><option>PADEIRO</option><option>AJUDANTE DE COZINHA</option>
+      <option>ATENDENTE DE LANCHONETE</option><option>AUX DE PADARIA</option>
+      <option>SERVICOS GERAIS</option><option>MOTORISTA</option>
+      <option>LIDER REPOSICAO</option><option>REPOSITOR DE MERCADORIAS</option>
+    </select>
   </div>
 
   <table>
@@ -119,7 +139,9 @@ tr:hover td { background: #1a2638; }
   <div id="fotoArea" style="text-align:center;margin-bottom:16px;">
     <div class="foto-preview" id="fotoPreview">👤</div>
     <input type="file" id="inputFoto" accept="image/*" onchange="previewFoto(this)" style="display:none">
-    <button class="btn btn-sm btn-ghost" onclick="document.getElementById('inputFoto').click()">Alterar foto</button>
+    <div style="margin-top:8px;">
+      <button class="btn btn-sm btn-ghost" onclick="document.getElementById('inputFoto').click()">Alterar foto</button>
+    </div>
   </div>
 
   <div class="form-grid">
@@ -319,11 +341,13 @@ async function carregar() {
   const status = document.getElementById('filtroStatus').value;
   const grupo_cargo = document.getElementById('filtroGrupo').value;
   const loja_id = document.getElementById('filtroLoja').value;
+  const cargo = document.getElementById('filtroCargo').value;
   const params = new URLSearchParams();
   if (q) params.set('q', q);
   if (status) params.set('status', status);
   if (grupo_cargo) params.set('grupo_cargo', grupo_cargo);
   if (loja_id) params.set('loja_id', loja_id);
+  if (cargo) params.set('cargo', cargo);
   const r = await fetch(`${API}/api/funcionarios?${params}`, { headers: H });
   todos = await r.json();
   renderTabela(todos);
@@ -349,8 +373,9 @@ function renderTabela(lista) {
       <td style="color:#94a3b8;">${f.grupo_cargo || '—'}</td>
       <td style="color:#94a3b8;">${f.loja_id ? (LOJAS[+f.loja_id] || 'Loja '+f.loja_id) : '—'}</td>
       <td>${badgeStatus(f.status)}</td>
-      <td>
+      <td style="white-space:nowrap">
         <button class="btn btn-sm btn-edit" onclick="editar(${f.id})">Editar</button>
+        ${f.email ? `<button class="btn btn-sm" style="background:#1e3a5f;color:#38bdf8;margin-left:4px" onclick="enviarLinkFotoTabela(${f.id}, this)">Foto</button>` : ''}
       </td>
     </tr>
   `).join('');
@@ -373,6 +398,24 @@ async function editar(id) {
   renderEventos(f.eventos || [], id);
   document.getElementById('eventoSection').style.display = 'block';
   document.getElementById('overlayForm').style.display = 'block';
+}
+
+async function enviarLinkFotoTabela(id, btn) {
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '...';
+  try {
+    const r = await fetch(`${API}/api/foto-upload/gerar/${id}`, { method: 'POST', headers: H });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.erro);
+    btn.textContent = 'Enviado!';
+    btn.style.color = '#4ade80';
+    setTimeout(() => { btn.textContent = orig; btn.style.color = '#38bdf8'; btn.disabled = false; }, 3000);
+  } catch (e) {
+    alert(e.message);
+    btn.textContent = orig;
+    btn.disabled = false;
+  }
 }
 
 function preencherForm(f) {

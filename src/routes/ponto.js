@@ -154,10 +154,11 @@ router.post('/importar', autenticar, upload.single('arquivo'), async (req, res) 
     const ano = periodo_inicio.split('-')[0];
 
     // Cria importação
+    const loja_id_imp = req.usuario.lojas?.length === 1 ? req.usuario.lojas[0] : null;
     const impRows = await pool.query(`
-      INSERT INTO ponto_importacoes (nome_arquivo, prefixo_loja, periodo_inicio, periodo_fim, total_funcionarios, importado_por)
-      VALUES ($1, $2, $3, $4, $5, $6) RETURNING id
-    `, [req.file.originalname, prefixo, periodo_inicio, periodo_fim, funcionarios.length, req.usuario.nome]);
+      INSERT INTO ponto_importacoes (nome_arquivo, prefixo_loja, periodo_inicio, periodo_fim, total_funcionarios, importado_por, loja_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id
+    `, [req.file.originalname, prefixo, periodo_inicio, periodo_fim, funcionarios.length, req.usuario.nome, loja_id_imp]);
     const importacao_id = impRows[0].id;
 
     let total_registros = 0;
@@ -203,7 +204,15 @@ router.post('/importar', autenticar, upload.single('arquivo'), async (req, res) 
 // ── LISTAR IMPORTAÇÕES ────────────────────────────────────────────
 router.get('/importacoes', autenticar, async (req, res) => {
   try {
-    const rows = await pool.query('SELECT * FROM ponto_importacoes ORDER BY importado_em DESC LIMIT 50');
+    const { perfil, lojas } = req.usuario;
+    let q = 'SELECT * FROM ponto_importacoes';
+    let params = [];
+    if (perfil === 'rh' && lojas?.length) {
+      params.push(lojas.map(Number).filter(Boolean));
+      q += ` WHERE loja_id = ANY($1)`;
+    }
+    q += ' ORDER BY importado_em DESC LIMIT 50';
+    const rows = await pool.query(q, params);
     res.json(rows);
   } catch (err) { res.status(500).json({ erro: err.message }); }
 });

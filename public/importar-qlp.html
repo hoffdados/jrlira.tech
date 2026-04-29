@@ -85,7 +85,13 @@ header h1 { font-size: 17px; color: #38bdf8; flex: 1; }
         <div><div class="label">Total de funcionários</div><div class="val" id="previewTotal">—</div></div>
       </div>
       <div class="amostra">
-        <div style="font-size:12px;color:#94a3b8;margin-bottom:6px;margin-top:12px;">Primeiros 5 registros:</div>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:12px;margin-bottom:6px;">
+          <span style="font-size:12px;color:#94a3b8;">Filtrar por cargo:</span>
+          <select id="filtroCargo" onchange="renderPreview()" style="background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;padding:5px 10px;font-size:12px;flex:1;max-width:280px">
+            <option value="">Todos</option>
+          </select>
+          <span id="countFiltro" style="font-size:12px;color:#64748b"></span>
+        </div>
         <table>
           <thead><tr><th>Matrícula</th><th>Nome</th><th>Cargo</th><th>Grupo</th><th>Loja</th><th>Status</th><th>Admissão</th></tr></thead>
           <tbody id="previewBody"></tbody>
@@ -106,6 +112,7 @@ const API = '';
 const token = () => localStorage.getItem('jrlira_token');
 const H = { 'Authorization': `Bearer ${token()}` };
 let arquivoSelecionado = null;
+let todosPreview = [];
 
 function setStep(n) {
   for (let i = 1; i <= 3; i++) {
@@ -142,17 +149,13 @@ async function previewing() {
 
   document.getElementById('previewSheet').textContent = data.sheet;
   document.getElementById('previewTotal').textContent = data.total;
-  document.getElementById('previewBody').innerHTML = data.amostra.map(f => `
-    <tr>
-      <td style="font-family:monospace;font-size:11px;">${f.matricula || '—'}</td>
-      <td>${f.nome || '—'}</td>
-      <td style="color:#94a3b8;">${f.cargo || '—'}</td>
-      <td style="color:#94a3b8;">${f.grupo_cargo || '—'}</td>
-      <td style="color:#94a3b8;">${f.loja_id ? 'Loja '+f.loja_id : '—'}</td>
-      <td style="color:#94a3b8;">${f.status || '—'}</td>
-      <td style="color:#94a3b8;">${f.data_admissao || '—'}</td>
-    </tr>
-  `).join('');
+  todosPreview = data.amostra;
+
+  const cargos = [...new Set(todosPreview.map(f => f.cargo).filter(Boolean))].sort();
+  const sel = document.getElementById('filtroCargo');
+  sel.innerHTML = '<option value="">Todos</option>' + cargos.map(c => `<option>${c}</option>`).join('');
+
+  renderPreview();
   document.getElementById('preview').style.display = 'block';
   setStep(3);
 }
@@ -193,6 +196,23 @@ async function importar() {
     </div>
   `;
   setStep(3);
+}
+
+function renderPreview() {
+  const cargo = document.getElementById('filtroCargo').value;
+  const lista = cargo ? todosPreview.filter(f => f.cargo === cargo) : todosPreview;
+  document.getElementById('countFiltro').textContent = `${lista.length} registro${lista.length !== 1 ? 's' : ''}`;
+  document.getElementById('previewBody').innerHTML = lista.map(f => `
+    <tr>
+      <td style="font-family:monospace;font-size:11px;">${f.matricula || '—'}</td>
+      <td>${f.nome || '—'}</td>
+      <td style="color:#94a3b8;">${f.cargo || '—'}</td>
+      <td style="color:#94a3b8;">${f.grupo_cargo || '—'}</td>
+      <td style="color:#94a3b8;">${f.loja_id ? 'Loja '+f.loja_id : '—'}</td>
+      <td style="color:#94a3b8;">${f.status || '—'}</td>
+      <td style="color:#94a3b8;">${f.data_admissao || '—'}</td>
+    </tr>
+  `).join('');
 }
 
 setStep(1);

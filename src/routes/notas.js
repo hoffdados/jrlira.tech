@@ -41,44 +41,21 @@ async function parseNFe(buf) {
   const detRaw = inf.det;
   const dets = !detRaw ? [] : (Array.isArray(detRaw) ? detRaw : [detRaw]);
 
-  // Extrai campo de qualquer subgrupo ICMS (ICMS10, ICMS30, ICMS60, etc.)
-  function doICMS(icms, campo) {
-    if (!icms) return 0;
-    for (const val of Object.values(icms)) {
-      if (val && typeof val === 'object' && val[campo] != null) return n(val[campo]);
-    }
-    return 0;
-  }
-
   const itens = dets.map((det, idx) => {
     const prod = det.prod || {};
-    const imp  = det.imposto || {};
 
-    const qCom   = n(prod.qCom) || n(prod.qTrib) || 1;
-    const vProd  = n(prod.vProd);
-    const vDesc  = n(prod.vDesc);
-    const vFrete = n(prod.vFrete);
-    const vSeg   = n(prod.vSeg);
-    const vOutro = n(prod.vOutro);
-
-    // IPI
-    const vIPI = n(imp.IPI?.IPITrib?.vIPI) + n(imp.IPI?.IPINT?.vIPI);
-
-    // ICMS ST e FCP ST (presentes em qualquer subgrupo ICMS)
-    const vST    = doICMS(imp.ICMS, 'vST');
-    const vFCPST = doICMS(imp.ICMS, 'vFCPST');
-
-    // Custo total do item = valor bruto - desconto + todos os impostos/adicionais
-    const preco_total = parseFloat((vProd - vDesc + vIPI + vST + vFCPST + vFrete + vSeg + vOutro).toFixed(4));
-
-    // Custo unitário efetivo (usado para comparar com custofabrica)
-    const preco_unitario = parseFloat((preco_total / qCom).toFixed(4));
+    const qCom           = n(prod.qCom) || n(prod.qTrib) || 1;
+    const preco_total    = parseFloat(n(det.vItem).toFixed(2));
+    const preco_unitario = parseFloat((n(det.vItem) / qCom).toFixed(3));
 
     const eanRaw = prod.cEAN;
     const ean = (!eanRaw || eanRaw === 'SEM GTIN') ? null : String(eanRaw).trim();
+    const eanTribRaw = prod.cEANTrib;
+    const eanTrib = (!eanTribRaw || eanTribRaw === 'SEM GTIN') ? null : String(eanTribRaw).trim();
     return {
       numero_item: parseInt(det.$?.nItem || idx + 1) || idx + 1,
       ean_nota: ean,
+      ean_trib: eanTrib !== ean ? eanTrib : null,
       descricao_nota: String(prod.xProd || '').trim(),
       quantidade: qCom,
       preco_unitario_nota: preco_unitario,
@@ -94,6 +71,10 @@ router.post('/importar', autenticar, upload.single('xml'), async (req, res) => {
   const client = await pool.connect();
   try {
     if (!req.file) return res.status(400).json({ erro: 'Arquivo XML obrigatório' });
+
+    const loja_id = parseInt(req.body.loja_id || req.usuario.loja_id) || null;
+    if (!loja_id) return res.status(400).json({ erro: 'Selecione a loja de destino antes de importar' });
+
     const { header, itens } = await parseNFe(req.file.buffer);
 
     if (header.chave_nfe) {
@@ -103,33 +84,35 @@ router.post('/importar', autenticar, upload.single('xml'), async (req, res) => {
 
     await client.query('BEGIN');
     const { rows: [nova] } = await client.query(`
-      INSERT INTO notas_entrada (chave_nfe, numero_nota, serie, fornecedor_nome, fornecedor_cnpj, data_emissao, valor_total, importado_por)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id
+      INSERT INTO notas_entrada (chave_nfe, numero_nota, serie, fornecedor_nome, fornecedor_cnpj, data_emissao, valor_total, importado_por, loja_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id
     `, [header.chave_nfe, header.numero_nota, header.serie, header.fornecedor_nome,
-        header.fornecedor_cnpj, header.data_emissao, header.valor_total, req.usuario.nome]);
+        header.fornecedor_cnpj, header.data_emissao, header.valor_total, req.usuario.nome, loja_id]);
 
     const nota_id = nova.id;
 
     for (const item of itens) {
-      let custo_fabrica = null, status_preco = 'sem_cadastro', produto_novo = true;
-      if (item.ean_nota) {
+      let custo_fabrica = null, status_preco = 'sem_cadastro', produto_novo = true, ean_matched = null;
+      for (const ean of [item.ean_trib, item.ean_nota].filter(Boolean)) {
         const { rows: prods } = await client.query(
-          'SELECT custofabrica FROM produtos_externo WHERE codigobarra = $1 LIMIT 1',
-          [item.ean_nota]
+          'SELECT custoorigem FROM produtos_externo WHERE codigobarra = $1 AND loja_id = $2 LIMIT 1',
+          [ean, loja_id]
         );
         if (prods.length) {
-          custo_fabrica = parseFloat(prods[0].custofabrica) || 0;
+          custo_fabrica = parseFloat(prods[0].custoorigem) || 0;
           produto_novo = false;
           const diff = Math.abs(item.preco_unitario_nota - custo_fabrica);
           status_preco = diff <= 0.01 ? 'igual' : 'divergente';
+          ean_matched = ean;
+          break;
         }
       }
       await client.query(`
         INSERT INTO itens_nota
-          (nota_id, numero_item, ean_nota, ean_validado, descricao_nota,
+          (nota_id, numero_item, ean_nota, ean_trib, ean_validado, descricao_nota,
            quantidade, preco_unitario_nota, preco_total_nota, custo_fabrica, status_preco, produto_novo)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-      `, [nota_id, item.numero_item, item.ean_nota, item.ean_nota,
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      `, [nota_id, item.numero_item, item.ean_nota, item.ean_trib, ean_matched || item.ean_nota,
           item.descricao_nota, item.quantidade, item.preco_unitario_nota, item.preco_total_nota,
           custo_fabrica, status_preco, produto_novo]);
     }
@@ -148,11 +131,13 @@ router.post('/importar', autenticar, upload.single('xml'), async (req, res) => {
 // GET /api/notas
 router.get('/', autenticar, async (req, res) => {
   try {
-    const { perfil, loja_id } = req.usuario;
-    // estoque e auditor só veem notas da própria loja
-    const filtroLoja = (perfil === 'estoque' || perfil === 'auditor') && loja_id
-      ? `AND n.loja_id = ${parseInt(loja_id)}`
-      : '';
+    const { perfil, lojas } = req.usuario;
+    const needs_filter = perfil !== 'admin' && perfil !== 'rh';
+    let filtroLoja = '';
+    if (needs_filter && lojas?.length) {
+      const ids = lojas.map(Number).filter(n => !isNaN(n));
+      if (ids.length) filtroLoja = `AND n.loja_id = ANY(ARRAY[${ids.join(',')}]::int[])`;
+    }
     const notas = await query(`
       SELECT n.*,
         COUNT(i.id)::int AS total_itens,
@@ -201,9 +186,9 @@ router.patch('/:id/itens/:itemId/remap-ean', autenticar, async (req, res) => {
     if (!ean_novo) return res.status(400).json({ erro: 'EAN obrigatório' });
     const [item] = await query('SELECT * FROM itens_nota WHERE id = $1 AND nota_id = $2', [req.params.itemId, req.params.id]);
     if (!item) return res.status(404).json({ erro: 'Item não encontrado' });
-    const prods = await query('SELECT custofabrica FROM produtos_externo WHERE codigobarra = $1 LIMIT 1', [ean_novo]);
+    const prods = await query('SELECT custoorigem FROM produtos_externo WHERE codigobarra = $1 LIMIT 1', [ean_novo]);
     if (!prods.length) return res.status(404).json({ erro: 'EAN não encontrado no cadastro' });
-    const custo_fabrica = parseFloat(prods[0].custofabrica) || 0;
+    const custo_fabrica = parseFloat(prods[0].custoorigem) || 0;
     const diff = Math.abs(parseFloat(item.preco_unitario_nota) - custo_fabrica);
     const status_preco = diff <= 0.01 ? 'igual' : 'divergente';
     await query(`
@@ -216,15 +201,27 @@ router.patch('/:id/itens/:itemId/remap-ean', autenticar, async (req, res) => {
   }
 });
 
+// DELETE /api/notas/:id
+router.delete('/:id', autenticar, async (req, res) => {
+  try {
+    const [nota] = await query('SELECT status FROM notas_entrada WHERE id = $1', [req.params.id]);
+    if (!nota) return res.status(404).json({ erro: 'Nota não encontrada' });
+    if (nota.status !== 'importada') return res.status(400).json({ erro: 'Apenas notas com status "Importada" podem ser excluídas' });
+    await query('DELETE FROM notas_entrada WHERE id = $1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ erro: err.message });
+  }
+});
+
 // PATCH /api/notas/:id/liberar
 router.patch('/:id/liberar', autenticar, async (req, res) => {
   try {
-    const { loja_id } = req.body;
-    if (!loja_id) return res.status(400).json({ erro: 'Selecione a loja de destino' });
-    const [nota] = await query('SELECT status FROM notas_entrada WHERE id = $1', [req.params.id]);
+    const [nota] = await query('SELECT status, loja_id FROM notas_entrada WHERE id = $1', [req.params.id]);
     if (!nota) return res.status(404).json({ erro: 'Nota não encontrada' });
     if (nota.status !== 'importada') return res.status(400).json({ erro: 'Nota já liberada' });
-    await query('UPDATE notas_entrada SET status=$1, loja_id=$2 WHERE id=$3', ['em_conferencia', loja_id, req.params.id]);
+    if (!nota.loja_id) return res.status(400).json({ erro: 'Nota sem loja definida' });
+    await query('UPDATE notas_entrada SET status=$1 WHERE id=$2', ['em_conferencia', req.params.id]);
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ erro: err.message });

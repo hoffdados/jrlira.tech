@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Envio de Foto — JR Lira</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px}
+.card{background:#1e293b;border-radius:16px;padding:28px 24px;width:100%;max-width:420px;text-align:center}
+.logo{font-size:15px;font-weight:700;color:#38bdf8;margin-bottom:4px}
+.subtitle{font-size:12px;color:#64748b;margin-bottom:24px}
+h2{font-size:17px;color:#e2e8f0;margin-bottom:6px}
+.greeting{font-size:14px;color:#94a3b8;margin-bottom:24px}
+#viewCamera{display:none;flex-direction:column;align-items:center;gap:14px}
+#viewPreview{display:none;flex-direction:column;align-items:center;gap:14px}
+#viewResult{display:none;flex-direction:column;align-items:center;gap:14px}
+#viewError{display:none;flex-direction:column;align-items:center;gap:14px}
+#viewLoading{flex-direction:column;align-items:center;gap:14px}
+.view{display:flex}
+video{width:100%;max-width:300px;border-radius:50%;aspect-ratio:1;object-fit:cover;background:#0f172a;border:3px solid #334155}
+canvas{display:none}
+.foto-preview{width:240px;height:240px;border-radius:50%;object-fit:cover;border:3px solid #38bdf8}
+button{cursor:pointer;border:none;border-radius:8px;font-size:14px;font-weight:700;padding:12px 24px;width:100%}
+.btn-primary{background:#0ea5e9;color:#fff}
+.btn-primary:hover{background:#0284c7}
+.btn-ghost{background:#334155;color:#94a3b8}
+.btn-ghost:hover{background:#475569;color:#e2e8f0}
+.spinner{width:40px;height:40px;border:4px solid #334155;border-top-color:#38bdf8;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+.msg-ok{color:#4ade80;font-size:15px;font-weight:700}
+.msg-err{color:#f87171;font-size:14px}
+.icon-big{font-size:56px;margin-bottom:4px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">JR Lira Tech</div>
+  <div class="subtitle">Sistema de Gestão</div>
+
+  <!-- Loading inicial -->
+  <div id="viewLoading" class="view">
+    <div class="spinner"></div>
+    <div style="font-size:13px;color:#64748b">Verificando link...</div>
+  </div>
+
+  <!-- Erro de token -->
+  <div id="viewError">
+    <div class="icon-big">⚠️</div>
+    <div class="msg-err" id="msgErro">Link inválido ou expirado.</div>
+  </div>
+
+  <!-- Câmera -->
+  <div id="viewCamera">
+    <h2>Tire sua selfie</h2>
+    <p class="greeting" id="greetingCam"></p>
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="canvas"></canvas>
+    <button class="btn-primary" onclick="capturar()">Capturar foto</button>
+  </div>
+
+  <!-- Preview da selfie capturada -->
+  <div id="viewPreview">
+    <h2>Ficou bom?</h2>
+    <img id="imgPreview" class="foto-preview" alt="Selfie">
+    <button class="btn-primary" onclick="enviar()">Enviar esta foto</button>
+    <button class="btn-ghost" onclick="tirarOutra()" style="margin-top:4px">Tirar outra</button>
+  </div>
+
+  <!-- Enviando -->
+  <div id="viewEnviando" style="display:none;flex-direction:column;align-items:center;gap:14px">
+    <div class="spinner"></div>
+    <div style="font-size:13px;color:#64748b">Enviando foto...</div>
+  </div>
+
+  <!-- Sucesso -->
+  <div id="viewResult">
+    <div class="icon-big">✅</div>
+    <div class="msg-ok">Foto enviada com sucesso!</div>
+    <div style="font-size:13px;color:#64748b;margin-top:4px">Obrigado, <span id="nomeSucesso"></span>. O RH receberá sua foto.</div>
+  </div>
+</div>
+
+<script>
+const API = '';
+const params = new URLSearchParams(location.search);
+const TOKEN = params.get('token');
+let stream = null;
+let nomeFunc = '';
+let blob = null;
+
+function show(id) {
+  ['viewLoading','viewError','viewCamera','viewPreview','viewEnviando','viewResult'].forEach(v => {
+    const el = document.getElementById(v);
+    if (el) el.style.display = v === id ? 'flex' : 'none';
+  });
+}
+
+async function init() {
+  if (!TOKEN) { show('viewError'); document.getElementById('msgErro').textContent = 'Link inválido.'; return; }
+  try {
+    const r = await fetch(`${API}/api/foto-upload/${TOKEN}`);
+    const data = await r.json();
+    if (!r.ok) { show('viewError'); document.getElementById('msgErro').textContent = data.erro; return; }
+    nomeFunc = data.nome;
+    document.getElementById('greetingCam').textContent = `Olá, ${nomeFunc}!`;
+    document.getElementById('nomeSucesso').textContent = nomeFunc;
+    await abrirCamera();
+    show('viewCamera');
+  } catch (e) {
+    show('viewError');
+    document.getElementById('msgErro').textContent = 'Erro de conexão.';
+  }
+}
+
+async function abrirCamera() {
+  stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640, height: 640 }, audio: false });
+  document.getElementById('video').srcObject = stream;
+}
+
+function capturar() {
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  const size = Math.min(video.videoWidth, video.videoHeight);
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const ox = (video.videoWidth - size) / 2;
+  const oy = (video.videoHeight - size) / 2;
+  ctx.save();
+  ctx.scale(-1, 1);
+  ctx.drawImage(video, ox, oy, size, size, -size, 0, size, size);
+  ctx.restore();
+  canvas.toBlob(b => {
+    blob = b;
+    document.getElementById('imgPreview').src = URL.createObjectURL(b);
+    show('viewPreview');
+    if (stream) stream.getTracks().forEach(t => t.stop());
+  }, 'image/jpeg', 0.9);
+}
+
+function tirarOutra() {
+  blob = null;
+  abrirCamera().then(() => show('viewCamera'));
+}
+
+async function enviar() {
+  if (!blob) return;
+  show('viewEnviando');
+  const fd = new FormData();
+  fd.append('foto', blob, 'selfie.jpg');
+  try {
+    const r = await fetch(`${API}/api/foto-upload/${TOKEN}`, { method: 'POST', body: fd });
+    const data = await r.json();
+    if (!r.ok) { show('viewError'); document.getElementById('msgErro').textContent = data.erro; return; }
+    show('viewResult');
+  } catch (e) {
+    show('viewError');
+    document.getElementById('msgErro').textContent = 'Erro ao enviar. Tente novamente.';
+  }
+}
+
+init();
+</script>
+</body>
+</html>

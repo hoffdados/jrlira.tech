@@ -25,6 +25,13 @@ input,select{width:100%;background:#0f172a;border:1px solid #334155;border-radiu
 input:focus,select:focus{outline:none;border-color:#38bdf8}
 select option{background:#1e293b}
 button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:9px 18px;font-weight:600}
+.ac-wrap{position:relative}
+.ac-list{position:absolute;top:100%;left:0;right:0;background:#1e293b;border:1px solid #334155;border-radius:6px;z-index:50;max-height:200px;overflow-y:auto;display:none}
+.ac-item{padding:9px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #334155}
+.ac-item:last-child{border-bottom:none}
+.ac-item:hover{background:#0f172a}
+.ac-item .ac-nome{color:#e2e8f0}
+.ac-item .ac-email{font-size:11px;color:#64748b;margin-top:2px}
 .btn-primary{background:#0ea5e9;color:#fff}
 .btn-primary:hover{background:#0284c7}
 .btn-sm{padding:4px 10px;font-size:12px}
@@ -32,6 +39,8 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:9px 1
 .btn-edit:hover{background:#1e40af}
 .btn-toggle{background:#334155;color:#94a3b8}
 .btn-toggle:hover{background:#475569;color:#e2e8f0}
+.btn-del{background:#7f1d1d;color:#fca5a5}
+.btn-del:hover{background:#991b1b;color:#fff}
 .msg{padding:10px 14px;border-radius:8px;margin-bottom:16px;font-size:13px}
 .msg-ok{background:#14532d;color:#4ade80}
 .msg-err{background:#450a0a;color:#f87171}
@@ -47,9 +56,13 @@ td{padding:10px 12px;vertical-align:middle}
 .b-estoque{background:#431407;color:#f97316}
 .b-auditor{background:#1c1300;color:#fbbf24}
 .b-inativo{background:#1e293b;color:#64748b}
-.inline-edit{display:flex;gap:6px;align-items:center}
-.inline-edit select{width:140px;padding:4px 8px;font-size:12px}
-.inline-edit input{width:130px;padding:4px 8px;font-size:12px}
+.inline-edit{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.inline-edit select{width:120px;padding:4px 8px;font-size:12px}
+.inline-edit input{width:120px;padding:4px 8px;font-size:12px}
+.lojas-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:4px}
+.lojas-grid label{display:flex;align-items:center;gap:6px;font-size:13px;color:#e2e8f0;cursor:pointer;font-weight:normal}
+.lojas-grid input[type=checkbox]{width:auto;accent-color:#38bdf8}
+select[multiple]{height:72px;font-size:11px}
 </style>
 </head>
 <body>
@@ -71,10 +84,17 @@ td{padding:10px 12px;vertical-align:middle}
         <label>Usuário (login)</label>
         <input type="text" id="novoUsuario" placeholder="ex: joao.silva" autocomplete="off">
       </div>
-      <div>
+      <div class="ac-wrap">
         <label>Nome completo</label>
-        <input type="text" id="novoNome" placeholder="João Silva">
+        <input type="text" id="novoNome" placeholder="João Silva" autocomplete="off">
+        <div class="ac-list" id="acList"></div>
       </div>
+      <div>
+        <label>E-mail</label>
+        <input type="email" id="novoEmail" placeholder="joao@email.com">
+      </div>
+    </div>
+    <div class="form-row triple">
       <div>
         <label>Senha inicial</label>
         <input type="password" id="novaSenha" placeholder="••••••••">
@@ -83,7 +103,7 @@ td{padding:10px 12px;vertical-align:middle}
     <div class="form-row triple">
       <div>
         <label>Perfil de acesso</label>
-        <select id="novoPerfil" onchange="toggleLojaSelector('novaLoja', this.value)">
+        <select id="novoPerfil" onchange="toggleLojaSelector(this.value)">
           <option value="">Selecione...</option>
           <option value="admin">Admin — acesso total</option>
           <option value="rh">RH — Lotação e Ponto</option>
@@ -92,12 +112,19 @@ td{padding:10px 12px;vertical-align:middle}
           <option value="auditor">Auditor — Auditoria</option>
         </select>
       </div>
-      <div id="wrapNovaLoja" style="display:none">
-        <label>Loja</label>
-        <select id="novaLoja">${lojaOptions()}</select>
-      </div>
       <div style="display:flex;align-items:flex-end">
         <button class="btn-primary" onclick="criarUsuario()">Criar Usuário</button>
+      </div>
+    </div>
+    <div id="wrapNovasLojas" style="display:none;margin-top:4px">
+      <label>Lojas de acesso</label>
+      <div class="lojas-grid" id="checkNovasLojas">
+        <label><input type="checkbox" value="1"> ECONOMICO</label>
+        <label><input type="checkbox" value="2"> BR</label>
+        <label><input type="checkbox" value="3"> JOAO PAULO</label>
+        <label><input type="checkbox" value="4"> FLORESTA</label>
+        <label><input type="checkbox" value="5"> SAO JOSE</label>
+        <label><input type="checkbox" value="6"> SANTAREM</label>
       </div>
     </div>
   </div>
@@ -109,6 +136,7 @@ td{padding:10px 12px;vertical-align:middle}
         <tr>
           <th>Nome</th>
           <th>Login</th>
+          <th>E-mail</th>
           <th>Perfil</th>
           <th>Status</th>
           <th>Ações</th>
@@ -126,18 +154,19 @@ const token = () => localStorage.getItem('jrlira_token');
 document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
 
 const PERFIL_LABEL = { admin: 'Admin', rh: 'RH', cadastro: 'Cadastro', estoque: 'Estoque', auditor: 'Auditor' };
-const LOJAS = {1:'ECONOMICO',2:'BR',3:'JOAO PESSOA',4:'FLORESTA',5:'SAO JOSE',6:'SANTAREM'};
-const LOJAS_FULL = {1:'SUPERASA ECONOMICO',2:'SUPERASA BR',3:'SUPERASA JOAO PESSOA',4:'SUPERASA FLORESTA',5:'SUPERASA SAO JOSE',6:'SUPERASA SANTAREM'};
+const LOJAS = {1:'ECONOMICO',2:'BR',3:'JOAO PAULO',4:'FLORESTA',5:'SAO JOSE',6:'SANTAREM'};
+const LOJAS_FULL = {1:'SUPERASA ECONOMICO',2:'SUPERASA BR',3:'SUPERASA JOAO PAULO',4:'SUPERASA FLORESTA',5:'SUPERASA SAO JOSE',6:'SUPERASA SANTAREM'};
+const PERFIS_COM_LOJA = ['rh', 'cadastro', 'estoque', 'auditor'];
+const PERFIS_LOJA_OBRIGATORIO = ['cadastro', 'estoque', 'auditor'];
 
-function lojaOptions(sel) {
-  return `<option value="">— Todas —</option>` +
-    Object.entries(LOJAS_FULL).map(([id, nome]) => `<option value="${id}" ${sel==id?'selected':''}>${nome}</option>`).join('');
+function lojaMultiSelect(id, selecionadas) {
+  return Object.entries(LOJAS_FULL).map(([lid, nome]) =>
+    `<option value="${lid}" ${(selecionadas||[]).includes(Number(lid))?'selected':''}>${nome}</option>`
+  ).join('');
 }
 
-function toggleLojaSelector(selectId, perfil) {
-  const wrapId = selectId === 'novaLoja' ? 'wrapNovaLoja' : null;
-  const needs = perfil === 'estoque' || perfil === 'auditor';
-  if (wrapId) document.getElementById(wrapId).style.display = needs ? 'block' : 'none';
+function toggleLojaSelector(perfil) {
+  document.getElementById('wrapNovasLojas').style.display = PERFIS_COM_LOJA.includes(perfil) ? 'block' : 'none';
 }
 
 async function fetchApi(url, method = 'GET', body = null) {
@@ -162,13 +191,19 @@ async function carregarUsuarios() {
     const usuarios = await fetchApi('/api/auth/usuarios');
     const tbody = document.getElementById('tbodyUsuarios');
     tbody.innerHTML = usuarios.map(u => {
-      const precisaLoja = u.perfil === 'estoque' || u.perfil === 'auditor';
+      const lojasSel = u.lojas_ids?.length ? u.lojas_ids.map(Number)
+        : u.loja_id ? [Number(u.loja_id)] : [];
+      const lojasLabel = lojasSel.length
+        ? lojasSel.map(id => LOJAS[id] || id).join(', ')
+        : '';
+      const precisaLoja = PERFIS_COM_LOJA.includes(u.perfil);
       return `<tr id="row-${u.id}">
         <td>${u.nome}</td>
         <td style="font-family:monospace;font-size:12px">${u.usuario}</td>
+        <td style="font-size:12px;color:#94a3b8">${u.email || '—'}</td>
         <td>
           <span class="badge b-${u.perfil}">${PERFIL_LABEL[u.perfil] || u.perfil}</span>
-          ${u.loja_id ? `<span style="font-size:11px;color:#94a3b8;margin-left:4px">${LOJAS[u.loja_id] || ''}</span>` : ''}
+          ${lojasLabel ? `<span style="font-size:11px;color:#94a3b8;margin-left:4px">${lojasLabel}</span>` : ''}
         </td>
         <td><span class="badge" style="background:${u.ativo ? '#14532d' : '#1e293b'};color:${u.ativo ? '#4ade80' : '#64748b'}">${u.ativo ? 'Ativo' : 'Inativo'}</span></td>
         <td>
@@ -180,10 +215,12 @@ async function carregarUsuarios() {
               <option value="estoque" ${u.perfil==='estoque'?'selected':''}>Estoque</option>
               <option value="auditor" ${u.perfil==='auditor'?'selected':''}>Auditor</option>
             </select>
-            <select id="loja-${u.id}" style="display:${precisaLoja?'block':'none'};width:120px;padding:4px 8px;font-size:12px">${lojaOptions(u.loja_id)}</select>
+            <select id="lojas-${u.id}" multiple style="display:${precisaLoja?'block':'none'}">${lojaMultiSelect(u.id, lojasSel)}</select>
+            <input type="email" id="email-${u.id}" value="${u.email || ''}" placeholder="E-mail" style="width:160px">
             <input type="password" id="senha-${u.id}" placeholder="Nova senha" autocomplete="off">
             <button class="btn-sm btn-edit" onclick="salvarEdicao(${u.id})">Salvar</button>
             <button class="btn-sm btn-toggle" onclick="toggleAtivo(${u.id}, ${u.ativo})">${u.ativo ? 'Desativar' : 'Ativar'}</button>
+            <button class="btn-sm btn-del" onclick="excluirUsuario(${u.id}, '${u.nome.replace(/'/g, "\\'")}')">Excluir</button>
           </div>
         </td>
       </tr>`;
@@ -192,34 +229,31 @@ async function carregarUsuarios() {
 }
 
 function onPerfilChange(id, perfil) {
-  const el = document.getElementById(`loja-${id}`);
-  if (el) el.style.display = (perfil === 'estoque' || perfil === 'auditor') ? 'block' : 'none';
+  const el = document.getElementById(`lojas-${id}`);
+  if (el) el.style.display = PERFIS_COM_LOJA.includes(perfil) ? 'block' : 'none';
 }
 
 async function criarUsuario() {
   const usuario = document.getElementById('novoUsuario').value.trim();
   const nome = document.getElementById('novoNome').value.trim();
+  const email = document.getElementById('novoEmail').value.trim();
   const senha = document.getElementById('novaSenha').value;
   const perfil = document.getElementById('novoPerfil').value;
-  const loja_id = document.getElementById('novaLoja').value || null;
   if (!usuario || !nome || !senha || !perfil) { showMsg('Preencha todos os campos', 'err'); return; }
-  if ((perfil === 'estoque' || perfil === 'auditor') && !loja_id) { showMsg('Selecione a loja para este perfil', 'err'); return; }
+  const lojas_ids = PERFIS_COM_LOJA.includes(perfil)
+    ? [...document.querySelectorAll('#checkNovasLojas input:checked')].map(el => parseInt(el.value))
+    : [];
+  if (PERFIS_LOJA_OBRIGATORIO.includes(perfil) && !lojas_ids.length) { showMsg('Selecione ao menos uma loja para este perfil', 'err'); return; }
   try {
-    await fetchApi('/api/auth/usuarios', 'POST', { usuario, nome, senha, perfil, loja_id: loja_id ? parseInt(loja_id) : null });
-    showMsg(`Usuário ${nome} criado com sucesso`, 'ok');
+    await fetchApi('/api/auth/usuarios', 'POST', { usuario, nome, email: email || null, senha, perfil, lojas_ids });
+    showMsg(`Usuário ${nome} criado${email ? ' — credenciais enviadas por e-mail' : ''}`, 'ok');
     document.getElementById('novoUsuario').value = '';
     document.getElementById('novoNome').value = '';
+    document.getElementById('novoEmail').value = '';
     document.getElementById('novaSenha').value = '';
     document.getElementById('novoPerfil').value = '';
-    carregarUsuarios();
-  } catch (e) { showMsg(e.message, 'err'); }
-}
-
-async function alterarPerfil(id) {
-  const perfil = document.getElementById(`perfil-${id}`).value;
-  try {
-    await fetchApi(`/api/auth/usuarios/${id}`, 'PATCH', { perfil });
-    showMsg('Perfil atualizado', 'ok');
+    document.querySelectorAll('#checkNovasLojas input').forEach(el => el.checked = false);
+    document.getElementById('wrapNovasLojas').style.display = 'none';
     carregarUsuarios();
   } catch (e) { showMsg(e.message, 'err'); }
 }
@@ -227,12 +261,23 @@ async function alterarPerfil(id) {
 async function salvarEdicao(id) {
   const perfil = document.getElementById(`perfil-${id}`).value;
   const senha = document.getElementById(`senha-${id}`).value;
-  const loja_id = document.getElementById(`loja-${id}`)?.value || null;
-  const body = { perfil, loja_id: loja_id ? parseInt(loja_id) : null };
+  const emailEl = document.getElementById(`email-${id}`);
+  const sel = document.getElementById(`lojas-${id}`);
+  const lojas_ids = sel ? [...sel.selectedOptions].map(o => parseInt(o.value)) : [];
+  const body = { perfil, lojas_ids, email: emailEl?.value.trim() || null };
   if (senha) body.senha = senha;
   try {
     await fetchApi(`/api/auth/usuarios/${id}`, 'PATCH', body);
     showMsg('Usuário atualizado', 'ok');
+    carregarUsuarios();
+  } catch (e) { showMsg(e.message, 'err'); }
+}
+
+async function excluirUsuario(id, nome) {
+  if (!confirm(`Excluir o usuário "${nome}" permanentemente?`)) return;
+  try {
+    await fetchApi(`/api/auth/usuarios/${id}`, 'DELETE');
+    showMsg(`Usuário ${nome} excluído`, 'ok');
     carregarUsuarios();
   } catch (e) { showMsg(e.message, 'err'); }
 }
@@ -243,6 +288,44 @@ async function toggleAtivo(id, ativo) {
     showMsg(ativo ? 'Usuário desativado' : 'Usuário ativado', 'ok');
     carregarUsuarios();
   } catch (e) { showMsg(e.message, 'err'); }
+}
+
+let acTimer = null;
+const acInput = document.getElementById('novoNome');
+const acList  = document.getElementById('acList');
+
+acInput.addEventListener('input', () => {
+  const q = acInput.value.trim();
+  if (q.length < 3) { acList.style.display = 'none'; return; }
+  clearTimeout(acTimer);
+  acTimer = setTimeout(() => acFetch(q), 300);
+});
+
+acInput.addEventListener('blur', () => setTimeout(() => { acList.style.display = 'none'; }, 150));
+
+async function acFetch(q) {
+  try {
+    const r = await fetch(`${API}/api/funcionarios?q=${encodeURIComponent(q)}`, {
+      headers: { Authorization: `Bearer ${token()}` }
+    });
+    const data = await r.json();
+    if (!r.ok || !Array.isArray(data) || !data.length) { acList.style.display = 'none'; return; }
+    acList.innerHTML = data.slice(0, 10).map(f => `
+      <div class="ac-item" onmousedown="acSelecionar(${JSON.stringify(f.nome)}, ${JSON.stringify(f.email || '')})">
+        <div class="ac-nome">${f.nome}</div>
+        ${f.email ? `<div class="ac-email">${f.email}</div>` : ''}
+      </div>
+    `).join('');
+    acList.style.display = 'block';
+  } catch(e) {
+    acList.style.display = 'none';
+  }
+}
+
+function acSelecionar(nome, email) {
+  acInput.value = nome;
+  if (email) document.getElementById('novoEmail').value = email;
+  acList.style.display = 'none';
 }
 
 carregarUsuarios();

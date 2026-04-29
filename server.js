@@ -17,6 +17,7 @@ app.use('/api/funcionarios', require('./src/routes/funcionarios'));
 app.use('/api/ponto', require('./src/routes/ponto'));
 app.use('/api/importacao', require('./src/routes/importacao'));
 app.use('/api/notas', require('./src/routes/notas'));
+app.use('/api/foto-upload', require('./src/routes/fotoUpload'));
 
 // ── PÁGINAS ───────────────────────────────────────────────────────
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public/index.html')));
@@ -27,6 +28,7 @@ app.get('/notas-cadastro', (req, res) => res.sendFile(path.join(__dirname, 'publ
 app.get('/notas-estoque', (req, res) => res.sendFile(path.join(__dirname, 'public/notas-estoque.html')));
 app.get('/notas-auditoria', (req, res) => res.sendFile(path.join(__dirname, 'public/notas-auditoria.html')));
 app.get('/usuarios', (req, res) => res.sendFile(path.join(__dirname, 'public/usuarios.html')));
+app.get('/foto-upload', (req, res) => res.sendFile(path.join(__dirname, 'public/foto-upload.html')));
 
 // ── INIT DB ───────────────────────────────────────────────────────
 async function initDB() {
@@ -198,6 +200,22 @@ async function initDB() {
     `).catch(() => {});
     await client.query(`ALTER TABLE rh_usuarios ADD COLUMN IF NOT EXISTS loja_id INTEGER`).catch(() => {});
     await client.query(`ALTER TABLE notas_entrada ADD COLUMN IF NOT EXISTS loja_id INTEGER`).catch(() => {});
+    await client.query(`ALTER TABLE itens_nota ADD COLUMN IF NOT EXISTS ean_trib VARCHAR(20)`).catch(() => {});
+    await client.query(`ALTER TABLE rh_usuarios ADD COLUMN IF NOT EXISTS lojas_ids INTEGER[]`).catch(() => {});
+    await client.query(`ALTER TABLE rh_usuarios ADD COLUMN IF NOT EXISTS email VARCHAR(200)`).catch(() => {});
+    await client.query(`ALTER TABLE ponto_importacoes ADD COLUMN IF NOT EXISTS loja_id INTEGER`).catch(() => {});
+    await client.query(`ALTER TABLE funcionarios ADD COLUMN IF NOT EXISTS foto_data BYTEA`).catch(() => {});
+    await client.query(`ALTER TABLE funcionarios ADD COLUMN IF NOT EXISTS foto_mime VARCHAR(20)`).catch(() => {});
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS foto_tokens (
+        id SERIAL PRIMARY KEY,
+        token VARCHAR(64) UNIQUE NOT NULL,
+        funcionario_id INTEGER REFERENCES funcionarios(id) ON DELETE CASCADE,
+        usado BOOLEAN DEFAULT FALSE,
+        criado_em TIMESTAMPTZ DEFAULT NOW(),
+        expira_em TIMESTAMPTZ DEFAULT (NOW() + INTERVAL '72 hours')
+      )
+    `).catch(() => {});
 
     // Admin padrão
     const { rows } = await client.query("SELECT id FROM rh_usuarios WHERE usuario = 'admin'");

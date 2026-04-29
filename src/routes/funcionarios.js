@@ -1,30 +1,39 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
 const pool = require('../db');
 const { autenticar, apenasAdmin } = require('../auth');
 
-const FOTOS_DIR = path.join(__dirname, '../../uploads/fotos');
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => { fs.mkdirSync(FOTOS_DIR, { recursive: true }); cb(null, FOTOS_DIR); },
-  filename: (req, file, cb) => { cb(null, `func-${Date.now()}${path.extname(file.originalname)}`); }
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }
 });
-const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
+
+const FOTO_URL = (id) => `/api/funcionarios/${id}/foto`;
 
 // Listar
 router.get('/', autenticar, async (req, res) => {
   try {
-    const { status, loja_id, grupo_cargo, q } = req.query;
+    const { status, loja_id, grupo_cargo, cargo, q } = req.query;
     let where = ['1=1'];
     let params = [];
+    const { perfil, lojas } = req.usuario;
+    if (perfil === 'rh' && lojas?.length) {
+      params.push(lojas.map(Number).filter(Boolean));
+      where.push(`loja_id = ANY($${params.length})`);
+    }
     if (status) { params.push(status); where.push(`status = $${params.length}`); }
     if (loja_id) { params.push(loja_id); where.push(`loja_id = $${params.length}`); }
     if (grupo_cargo) { params.push(grupo_cargo); where.push(`grupo_cargo = $${params.length}`); }
+    if (cargo) { params.push(cargo); where.push(`cargo = $${params.length}`); }
     if (q) { params.push(`%${q}%`); where.push(`(nome ILIKE $${params.length} OR matricula ILIKE $${params.length})`); }
     const rows = await pool.query(
-      `SELECT id, matricula, nome, cargo, grupo_cargo, loja_id, status, data_admissao, foto_path FROM funcionarios WHERE ${where.join(' AND ')} ORDER BY nome`,
+      `SELECT id, matricula, nome, email, cargo, grupo_cargo, loja_id, status, data_admissao,
+        CASE WHEN foto_data IS NOT NULL THEN '/api/funcionarios/' || id::text || '/foto'
+             WHEN foto_path IS NOT NULL THEN foto_path
+             ELSE NULL
+        END as foto_path
+       FROM funcionarios WHERE ${where.join(' AND ')} ORDER BY nome`,
       params
     );
     res.json(rows);
@@ -40,10 +49,33 @@ router.get('/matricula/:matricula', autenticar, async (req, res) => {
   } catch (err) { res.status(500).json({ erro: err.message }); }
 });
 
+// Foto do funcionário (público — consumido por <img src>)
+router.get('/:id/foto', async (req, res) => {
+  try {
+    const rows = await pool.query('SELECT foto_data, foto_mime FROM funcionarios WHERE id = $1', [req.params.id]);
+    if (!rows.length || !rows[0].foto_data) return res.status(404).end();
+    res.setHeader('Content-Type', rows[0].foto_mime || 'image/jpeg');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.send(rows[0].foto_data);
+  } catch (err) { res.status(500).end(); }
+});
+
 // Detalhe
 router.get('/:id', autenticar, async (req, res) => {
   try {
-    const rows = await pool.query('SELECT * FROM funcionarios WHERE id = $1', [req.params.id]);
+    const rows = await pool.query(
+      `SELECT id, matricula, nome, cpf, pis, data_nascimento, sexo, escolaridade, raca, estado_civil,
+        cargo, grupo_cargo, nivel, loja_id, salario, status, data_admissao, data_demissao,
+        causa_afastamento, motivo_afastamento,
+        cep, logradouro, numero, complemento, bairro, cidade, uf, telefone, email,
+        criado_em, atualizado_em,
+        CASE WHEN foto_data IS NOT NULL THEN '/api/funcionarios/' || id::text || '/foto'
+             WHEN foto_path IS NOT NULL THEN foto_path
+             ELSE NULL
+        END as foto_path
+       FROM funcionarios WHERE id = $1`,
+      [req.params.id]
+    );
     if (!rows.length) return res.status(404).json({ erro: 'Não encontrado' });
     const f = rows[0];
     const eventos = await pool.query('SELECT * FROM funcionario_eventos WHERE funcionario_id = $1 ORDER BY data_inicio DESC', [f.id]);
@@ -59,16 +91,16 @@ router.post('/', autenticar, upload.single('foto'), async (req, res) => {
       cargo, grupo_cargo, nivel, loja_id, salario, status, data_admissao,
       cep, logradouro, numero, complemento, bairro, cidade, uf, telefone, email
     } = req.body;
-    const foto_path = req.file ? `/uploads/fotos/${req.file.filename}` : null;
     const rows = await pool.query(`
       INSERT INTO funcionarios (matricula, nome, cpf, pis, data_nascimento, sexo, escolaridade, raca, estado_civil,
         cargo, grupo_cargo, nivel, loja_id, salario, status, data_admissao,
-        cep, logradouro, numero, complemento, bairro, cidade, uf, telefone, email, foto_path)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
+        cep, logradouro, numero, complemento, bairro, cidade, uf, telefone, email, foto_data, foto_mime)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
       RETURNING id
     `, [matricula, nome, cpf, pis, data_nascimento||null, sexo, escolaridade, raca, estado_civil,
         cargo, grupo_cargo, nivel, loja_id||null, salario||null, status||'ATIVO', data_admissao||null,
-        cep, logradouro, numero, complemento, bairro, cidade, uf, telefone, email, foto_path]);
+        cep, logradouro, numero, complemento, bairro, cidade, uf, telefone, email,
+        req.file ? req.file.buffer : null, req.file ? req.file.mimetype : null]);
     res.json({ ok: true, id: rows[0].id });
   } catch (err) { res.status(500).json({ erro: err.message }); }
 });
@@ -83,10 +115,7 @@ router.put('/:id', autenticar, upload.single('foto'), async (req, res) => {
       cep, logradouro, numero, complemento, bairro, cidade, uf, telefone, email
     } = req.body;
 
-    let foto_path = undefined;
-    if (req.file) foto_path = `/uploads/fotos/${req.file.filename}`;
-
-    const fotoClause = foto_path ? ', foto_path = $29' : '';
+    const fotoClause = req.file ? ', foto_data = $29, foto_mime = $30' : '';
     const params = [
       matricula, nome, cpf, pis, data_nascimento||null, sexo, escolaridade, raca, estado_civil,
       cargo, grupo_cargo, nivel, loja_id||null, salario||null, status, data_admissao||null,
@@ -94,9 +123,9 @@ router.put('/:id', autenticar, upload.single('foto'), async (req, res) => {
       cep, logradouro, numero, complemento, bairro, cidade, uf, telefone, email,
       req.params.id
     ];
-    if (foto_path) params.splice(params.length - 1, 0, foto_path);
+    if (req.file) params.splice(params.length - 1, 0, req.file.buffer, req.file.mimetype);
 
-    const idPos = foto_path ? 30 : 29;
+    const idPos = req.file ? 31 : 29;
     await pool.query(`
       UPDATE funcionarios SET
         matricula=$1, nome=$2, cpf=$3, pis=$4, data_nascimento=$5, sexo=$6,
