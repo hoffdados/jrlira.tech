@@ -136,7 +136,7 @@
     <copies>1</copies>
     <partitioning><method>none</method><schema_name/></partitioning>
     <connection>EcoCentauro_Local</connection>
-    <sql>SELECT NOME, FANTASIA, CPFCNPJ FROM TPAGFORNECEDOR</sql>
+    <sql>SELECT NOME AS razao_social, FANTASIA AS fantasia, CPFCNPJ AS cnpj FROM TPAGFORNECEDOR</sql>
     <limit>0</limit>
     <lookup/>
     <execute_each_row>N</execute_each_row>
@@ -197,10 +197,9 @@
     <commit>100</commit>
     <update_bypassed>N</update_bypassed>
     <lookup>
-      <!-- chaves de lookup: composta razao_social + loja_id -->
       <key>
         <name>razao_social</name>
-        <field>NOME</field>
+        <field>razao_social</field>
         <condition>=</condition>
         <name2/>
         <field2/>
@@ -212,19 +211,18 @@
         <name2/>
         <field2/>
       </key>
-      <!-- valores: <name>=campo do stream, <rename>=coluna do banco -->
       <value>
-        <name>NOME</name>
+        <name>razao_social</name>
         <rename>razao_social</rename>
         <update>N</update>
       </value>
       <value>
-        <name>FANTASIA</name>
+        <name>fantasia</name>
         <rename>fantasia</rename>
         <update>Y</update>
       </value>
       <value>
-        <name>CPFCNPJ</name>
+        <name>cnpj</name>
         <rename>cnpj</rename>
         <update>Y</update>
       </value>
