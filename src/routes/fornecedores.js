@@ -42,7 +42,7 @@ router.get('/', autenticar, async (req, res) => {
     const rows = await pool.query(
       `SELECT id, razao_social, fantasia, cnpj, ativo FROM (
          SELECT DISTINCT ON (cnpj) id, razao_social, fantasia, cnpj, ativo
-         FROM fornecedores ${where} ORDER BY cnpj, razao_social
+         FROM fornecedores ${where} ORDER BY cnpj, razao_social, id
        ) sub ORDER BY razao_social`,
       params
     );
@@ -117,7 +117,7 @@ router.get('/vendedor-foto/:id', async (req, res) => {
 // Gerar token de cadastro para vendedor
 router.post('/:id/gerar-token', autenticar, compradorOuAdmin, async (req, res) => {
   try {
-    const rows = await pool.query('SELECT id FROM fornecedores WHERE id=$1 AND ativo=true', [req.params.id]);
+    const rows = await pool.query('SELECT id FROM fornecedores WHERE id=$1', [req.params.id]);
     if (!rows.length) return res.status(404).json({ erro: 'Fornecedor não encontrado' });
     const token = crypto.randomBytes(32).toString('hex');
     await pool.query(
