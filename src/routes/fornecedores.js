@@ -40,7 +40,10 @@ router.get('/', autenticar, async (req, res) => {
     const params = q ? [`%${q}%`] : [];
     const where = q ? `WHERE razao_social ILIKE $1 OR fantasia ILIKE $1 OR cnpj ILIKE $1` : '';
     const rows = await pool.query(
-      `SELECT id, razao_social, fantasia, cnpj, ativo FROM fornecedores ${where} ORDER BY razao_social`,
+      `SELECT id, razao_social, fantasia, cnpj, ativo FROM (
+         SELECT DISTINCT ON (cnpj) id, razao_social, fantasia, cnpj, ativo
+         FROM fornecedores ${where} ORDER BY cnpj, razao_social
+       ) sub ORDER BY razao_social`,
       params
     );
     res.json(rows);
