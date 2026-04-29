@@ -91,6 +91,20 @@ router.get('/:id/foto', async (req, res) => {
 
 // ── VENDEDORES ────────────────────────────────────────────────────
 
+router.get('/vendedores/pendentes', autenticar, compradorOuAdmin, async (req, res) => {
+  try {
+    const rows = await pool.query(
+      `SELECT v.id, v.nome, v.email, v.telefone, v.status, v.criado_em,
+              f.id as fornecedor_id, f.fantasia, f.razao_social,
+              CASE WHEN v.foto_data IS NOT NULL THEN '/api/fornecedores/vendedor-foto/' || v.id::text ELSE NULL END as foto_url
+       FROM vendedores v JOIN fornecedores f ON f.id = v.fornecedor_id
+       WHERE v.status = 'pendente'
+       ORDER BY v.criado_em ASC`
+    );
+    res.json(rows);
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
 router.get('/:id/vendedores', autenticar, compradorOuAdmin, async (req, res) => {
   try {
     const rows = await pool.query(

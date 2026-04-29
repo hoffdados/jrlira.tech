@@ -89,23 +89,33 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 1
 
   <!-- PAINEL DIREITO: detalhe -->
   <div class="panel-right">
-    <div id="painelVazio" style="color:#475569;padding:40px;text-align:center">← Selecione um fornecedor</div>
+
+    <!-- Solicitações pendentes (sempre visível) -->
+    <div style="margin-bottom:20px">
+      <div class="section-title" style="display:flex;align-items:center;gap:8px">
+        Solicitações pendentes
+        <span id="countPendentes" style="background:#1e3a5f;color:#60a5fa;padding:1px 8px;border-radius:10px;font-size:11px">0</span>
+        <button class="btn-ghost btn-sm" style="margin-left:auto" onclick="copiarLinkCadastro()">📋 Link cadastro</button>
+      </div>
+      <div id="listaPendentes"><div style="color:#475569;text-align:center;padding:16px;font-size:13px">Nenhuma solicitação pendente.</div></div>
+    </div>
+
+    <!-- Detalhe do fornecedor selecionado -->
+    <div id="painelVazio" style="color:#475569;padding:16px 0;text-align:center;font-size:13px">← Selecione um fornecedor para ver os aprovados</div>
     <div id="painelForn" style="display:none">
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
-        <img id="fotoForn" src="" style="width:56px;height:56px;border-radius:50%;object-fit:cover;background:#334155;display:none">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+        <img id="fotoForn" src="" style="width:48px;height:48px;border-radius:50%;object-fit:cover;background:#334155;display:none">
         <div>
-          <div id="forn-razao" style="font-size:17px;font-weight:700"></div>
-          <div id="forn-fantasia" style="font-size:13px;color:#94a3b8"></div>
-          <div id="forn-cnpj" style="font-size:12px;color:#64748b;font-family:monospace"></div>
+          <div id="forn-razao" style="font-size:16px;font-weight:700"></div>
+          <div id="forn-fantasia" style="font-size:12px;color:#94a3b8"></div>
+          <div id="forn-cnpj" style="font-size:11px;color:#64748b;font-family:monospace"></div>
         </div>
-        <div style="margin-left:auto;display:flex;gap:8px">
+        <div style="margin-left:auto">
           <button class="btn-ghost btn-sm" onclick="editarForn()">Editar</button>
-          <button class="btn-ghost btn-sm" onclick="copiarLinkCadastro()">📋 Link cadastro</button>
         </div>
       </div>
-
-      <div class="section-title">Vendedores <span id="countVendedores" style="background:#334155;color:#94a3b8;padding:1px 8px;border-radius:10px;font-size:11px">0</span></div>
-      <div id="listaVendedores"><div style="color:#475569;text-align:center;padding:16px">Nenhum vendedor.</div></div>
+      <div class="section-title">Aprovados <span id="countVendedores" style="background:#334155;color:#94a3b8;padding:1px 8px;border-radius:10px;font-size:11px">0</span></div>
+      <div id="listaVendedores"><div style="color:#475569;text-align:center;padding:16px">Nenhum vendedor aprovado.</div></div>
     </div>
   </div>
 </div>
@@ -203,7 +213,6 @@ async function selecionarForn(id) {
   document.getElementById('forn-razao').textContent = fornSelecionado.razao_social;
   document.getElementById('forn-fantasia').textContent = fornSelecionado.fantasia || '';
   document.getElementById('forn-cnpj').textContent = fornSelecionado.cnpj || '';
-  document.getElementById('linkGerado').style.display = 'none';
   const foto = document.getElementById('fotoForn');
   foto.src = `/api/fornecedores/${id}/foto`;
   foto.style.display = 'block';
@@ -211,14 +220,41 @@ async function selecionarForn(id) {
   carregarVendedores(id);
 }
 
+async function carregarPendentes() {
+  const el = document.getElementById('listaPendentes');
+  try {
+    const r = await fetch(`${API}/api/fornecedores/vendedores/pendentes`, { headers: h() });
+    const lista = await r.json();
+    document.getElementById('countPendentes').textContent = lista.length;
+    if (!lista.length) { el.innerHTML = '<div style="color:#475569;text-align:center;padding:16px;font-size:13px">Nenhuma solicitação pendente.</div>'; return; }
+    el.innerHTML = lista.map(v => `
+      <div class="vend-row" style="border-left:3px solid #3b82f6">
+        <div class="vend-topo">
+          ${v.foto_url ? `<img src="${v.foto_url}" class="vend-foto" onerror="this.style.display='none'">` : '<div class="vend-foto" style="display:flex;align-items:center;justify-content:center;font-size:18px">👤</div>'}
+          <div>
+            <div class="vend-nome">${v.nome}</div>
+            <div class="vend-info" style="color:#60a5fa;font-size:11px">${v.fantasia || v.razao_social}</div>
+            <div class="vend-info">${v.email || '—'} ${v.telefone ? '| ' + v.telefone : ''}</div>
+          </div>
+          <div style="margin-left:auto;font-size:11px;color:#64748b">${new Date(v.criado_em).toLocaleDateString('pt-BR')}</div>
+        </div>
+        <div class="vend-acoes">
+          <button class="btn-ok btn-sm" onclick="aprovarVendedor(${v.id})">✓ Aprovar</button>
+          <button class="btn-danger btn-sm" onclick="rejeitarVendedor(${v.id})">✕ Rejeitar</button>
+        </div>
+      </div>`).join('');
+  } catch { el.innerHTML = '<div style="color:#f87171;padding:12px;font-size:13px">Erro ao carregar.</div>'; }
+}
+
 async function carregarVendedores(fornId) {
   const el = document.getElementById('listaVendedores');
   el.innerHTML = '<div style="color:#475569;padding:12px">Carregando...</div>';
   try {
     const r = await fetch(`${API}/api/fornecedores/${fornId}/vendedores`, { headers: h() });
-    const vendedores = await r.json();
+    const todos = await r.json();
+    const vendedores = todos.filter(v => v.status !== 'pendente');
     document.getElementById('countVendedores').textContent = vendedores.length;
-    if (!vendedores.length) { el.innerHTML = '<div style="color:#475569;text-align:center;padding:16px">Nenhum vendedor cadastrado.</div>'; return; }
+    if (!vendedores.length) { el.innerHTML = '<div style="color:#475569;text-align:center;padding:16px">Nenhum vendedor aprovado.</div>'; return; }
     el.innerHTML = vendedores.map(v => {
       const agora = new Date();
       const expira = v.acesso_expira_em ? new Date(v.acesso_expira_em) : null;
@@ -255,13 +291,14 @@ async function aprovarVendedor(id) {
   const d = await r.json();
   if (!r.ok) return showMsg(d.erro, 'err');
   showMsg('Vendedor aprovado — e-mail com credenciais enviado.', 'ok');
-  carregarVendedores(fornSelecionado.id);
+  carregarPendentes();
+  if (fornSelecionado) carregarVendedores(fornSelecionado.id);
 }
 
 async function rejeitarVendedor(id) {
   if (!confirm('Rejeitar este vendedor?')) return;
   const r = await fetch(`${API}/api/fornecedores/vendedores/${id}/rejeitar`, { method:'POST', headers:h() });
-  if (r.ok) { showMsg('Vendedor rejeitado.', 'ok'); carregarVendedores(fornSelecionado.id); }
+  if (r.ok) { showMsg('Vendedor rejeitado.', 'ok'); carregarPendentes(); if (fornSelecionado) carregarVendedores(fornSelecionado.id); }
 }
 
 async function revalidarVendedor(id) {
@@ -349,6 +386,7 @@ function fecharModal(id) { document.getElementById(id).classList.remove('open');
 document.querySelectorAll('.modal-bg').forEach(el => el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); }));
 
 carregarFornecedores();
+carregarPendentes();
 </script>
 </body>
 </html>
