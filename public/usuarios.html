@@ -55,6 +55,7 @@ td{padding:10px 12px;vertical-align:middle}
 .b-cadastro{background:#2e1065;color:#a78bfa}
 .b-estoque{background:#431407;color:#f97316}
 .b-auditor{background:#1c1300;color:#fbbf24}
+.b-comprador{background:#042f2e;color:#2dd4bf}
 .b-inativo{background:#1e293b;color:#64748b}
 .inline-edit{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .inline-edit select{width:120px;padding:4px 8px;font-size:12px}
@@ -110,6 +111,7 @@ select[multiple]{height:72px;font-size:11px}
           <option value="cadastro">Cadastro — Notas Cadastro</option>
           <option value="estoque">Estoque — Conferência</option>
           <option value="auditor">Auditor — Auditoria</option>
+          <option value="comprador">Comprador — Pedidos/Fornecedores</option>
         </select>
       </div>
       <div style="display:flex;align-items:flex-end">
@@ -153,7 +155,7 @@ const token = () => localStorage.getItem('jrlira_token');
 (function(){ const p = localStorage.getItem('jrlira_perfil'); if (!token() || p !== 'admin') location.href = '/'; })();
 document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
 
-const PERFIL_LABEL = { admin: 'Admin', rh: 'RH', cadastro: 'Cadastro', estoque: 'Estoque', auditor: 'Auditor' };
+const PERFIL_LABEL = { admin: 'Admin', rh: 'RH', cadastro: 'Cadastro', estoque: 'Estoque', auditor: 'Auditor', comprador: 'Comprador' };
 const LOJAS = {1:'ECONOMICO',2:'BR',3:'JOAO PAULO',4:'FLORESTA',5:'SAO JOSE',6:'SANTAREM'};
 const LOJAS_FULL = {1:'SUPERASA ECONOMICO',2:'SUPERASA BR',3:'SUPERASA JOAO PAULO',4:'SUPERASA FLORESTA',5:'SUPERASA SAO JOSE',6:'SUPERASA SANTAREM'};
 const PERFIS_COM_LOJA = ['rh', 'cadastro', 'estoque', 'auditor'];
@@ -214,6 +216,7 @@ async function carregarUsuarios() {
               <option value="cadastro" ${u.perfil==='cadastro'?'selected':''}>Cadastro</option>
               <option value="estoque" ${u.perfil==='estoque'?'selected':''}>Estoque</option>
               <option value="auditor" ${u.perfil==='auditor'?'selected':''}>Auditor</option>
+              <option value="comprador" ${u.perfil==='comprador'?'selected':''}>Comprador</option>
             </select>
             <select id="lojas-${u.id}" multiple style="display:${precisaLoja?'block':'none'}">${lojaMultiSelect(u.id, lojasSel)}</select>
             <input type="email" id="email-${u.id}" value="${u.email || ''}" placeholder="E-mail" style="width:160px">

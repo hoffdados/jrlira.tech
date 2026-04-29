@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pedidos — JR Lira</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+nav{background:#1e293b;padding:14px 24px;display:flex;align-items:center;gap:16px;border-bottom:1px solid #334155}
+.brand{font-size:16px;font-weight:700;color:#38bdf8}
+.nav-user{margin-left:auto;font-size:13px;color:#64748b}
+.btn-nav{background:#0ea5e9;color:#fff;border:none;padding:7px 14px;border-radius:6px;font-size:13px;cursor:pointer}
+.layout{display:grid;grid-template-columns:360px 1fr;min-height:calc(100vh - 57px)}
+.panel-left{border-right:1px solid #334155;overflow-y:auto}
+.panel-right{padding:20px;overflow-y:auto}
+input,select{background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;padding:8px 12px;font-size:13px;width:100%}
+input:focus,select:focus{outline:none;border-color:#38bdf8}
+button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 14px;font-weight:600}
+.btn-primary{background:#0ea5e9;color:#fff}
+.btn-primary:hover{background:#0284c7}
+.btn-sm{padding:4px 10px;font-size:12px}
+.btn-ok{background:#14532d;color:#4ade80}
+.btn-ok:hover{background:#166534}
+.btn-ghost{background:#334155;color:#94a3b8}
+.btn-danger{background:#7f1d1d;color:#fca5a5}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700}
+.s-rascunho{background:#1e293b;color:#64748b}
+.s-aguardando{background:#1e3a5f;color:#60a5fa}
+.s-validado{background:#14532d;color:#4ade80}
+.s-vinculado{background:#2e1065;color:#a78bfa}
+.filter-bar{padding:12px 16px;border-bottom:1px solid #334155;display:flex;gap:8px}
+.pedido-row{padding:12px 16px;border-bottom:1px solid #334155;cursor:pointer}
+.pedido-row:hover,.pedido-row.selected{background:#1e3a5f}
+.p-num{font-size:12px;font-family:monospace;color:#38bdf8;font-weight:700}
+.p-forn{font-size:13px;font-weight:600;margin:2px 0}
+.p-info{font-size:11px;color:#64748b}
+.section-title{font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px}
+.card{background:#1e293b;border-radius:10px;padding:16px;margin-bottom:16px}
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.info-item label{font-size:11px;color:#64748b;display:block}
+.info-item span{font-size:13px;color:#e2e8f0}
+.msg{padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:13px}
+.msg-ok{background:#14532d;color:#4ade80}
+.msg-err{background:#450a0a;color:#f87171}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead th{background:#0f172a;padding:8px 10px;text-align:left;color:#64748b;font-weight:600;border-bottom:1px solid #334155}
+tbody td{padding:8px 10px;border-bottom:1px solid #334155;vertical-align:middle}
+.badge-novo{background:#431407;color:#f97316;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:700}
+.input-val{width:90px;padding:4px 8px;font-size:12px}
+.aviso{background:#1c1300;border-left:3px solid #f59e0b;padding:10px 14px;font-size:12px;color:#fbbf24;border-radius:4px;margin-bottom:12px}
+.tab-bar{display:flex;gap:0;margin-bottom:16px;background:#0f172a;border-radius:8px;padding:4px}
+.tab{flex:1;text-align:center;padding:8px;border-radius:6px;font-size:13px;cursor:pointer;color:#64748b;border:none;background:none}
+.tab.active{background:#1e293b;color:#e2e8f0;font-weight:700}
+.nota-row{padding:10px;border:1px solid #334155;border-radius:6px;margin-bottom:6px;cursor:pointer}
+.nota-row:hover{background:#0f172a}
+.nota-row.selected{border-color:#0ea5e9}
+.total-val{font-size:18px;font-weight:700;color:#4ade80}
+</style>
+</head>
+<body>
+<nav>
+  <span class="brand">JR Lira Tech</span>
+  <span style="color:#475569">/</span>
+  <span style="font-size:14px;color:#94a3b8">Pedidos de Compra</span>
+  <span class="nav-user" id="nomeUsuario"></span>
+  <button class="btn-nav" onclick="location.href='/'">← Início</button>
+</nav>
+
+<div class="layout">
+  <!-- LISTA DE PEDIDOS -->
+  <div class="panel-left">
+    <div class="filter-bar">
+      <select id="filtroStatus" onchange="carregarPedidos()" style="flex:1">
+        <option value="">Todos (exceto rascunho)</option>
+        <option value="aguardando_validacao">Aguardando validação</option>
+        <option value="validado">Validados</option>
+        <option value="vinculado">Vinculados a NF</option>
+      </select>
+    </div>
+    <div id="listaPedidos"><div style="color:#475569;text-align:center;padding:24px">Carregando...</div></div>
+  </div>
+
+  <!-- DETALHE DO PEDIDO -->
+  <div class="panel-right">
+    <div id="painelVazio" style="color:#475569;padding:40px;text-align:center">← Selecione um pedido</div>
+    <div id="painelPedido" style="display:none">
+
+      <div id="msgPedido" class="msg" style="display:none"></div>
+
+      <div class="tab-bar">
+        <button class="tab active" id="tabValidacao" onclick="mudarTab('validacao')">Validação</button>
+        <button class="tab" id="tabVinculo" onclick="mudarTab('vinculo')">Vincular XML</button>
+      </div>
+
+      <!-- TAB: VALIDAÇÃO -->
+      <div id="abaValidacao">
+        <div class="card">
+          <div class="info-grid">
+            <div class="info-item"><label>Pedido Nº</label><span id="d-num" style="font-family:monospace;color:#38bdf8"></span></div>
+            <div class="info-item"><label>Status</label><span id="d-status"></span></div>
+            <div class="info-item"><label>Fornecedor</label><span id="d-forn"></span></div>
+            <div class="info-item"><label>Vendedor</label><span id="d-vend"></span></div>
+            <div class="info-item"><label>Loja</label><span id="d-loja"></span></div>
+            <div class="info-item"><label>Enviado em</label><span id="d-enviado"></span></div>
+          </div>
+          <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px">
+            <div>
+              <label style="font-size:12px;color:#64748b;margin-bottom:4px;display:block">Condição de pagamento</label>
+              <select id="d-condicao" style="width:140px">
+                <option value="15">15 dias</option>
+                <option value="30">30 dias</option>
+                <option value="45">45 dias</option>
+                <option value="60">60 dias</option>
+              </select>
+            </div>
+            <div style="flex:1">
+              <label style="font-size:12px;color:#64748b;margin-bottom:4px;display:block">Observações</label>
+              <input type="text" id="d-obs" placeholder="(opcional)">
+            </div>
+          </div>
+          <div class="aviso">⚠️ Boleto sempre em cota única — é proibido parcelar. Altere qtdes/preços se necessário antes de validar.</div>
+        </div>
+
+        <div class="card">
+          <div class="section-title">Itens do Pedido</div>
+          <table>
+            <thead>
+              <tr>
+                <th>Código</th><th>Descrição</th>
+                <th>Qtde pedida</th><th>Qtde validada</th>
+                <th>Preço pedido</th><th>Preço validado</th>
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody id="tbodyItens"></tbody>
+          </table>
+          <div style="text-align:right;margin-top:12px">
+            <div style="font-size:12px;color:#64748b">Total do Pedido</div>
+            <div class="total-val" id="d-total">R$ 0,00</div>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:10px" id="botoesValidacao">
+          <a id="btnPdf" href="#" target="_blank" class="btn-ghost" style="text-decoration:none;padding:8px 14px;border-radius:6px;font-size:13px;font-weight:600">⬇ Baixar PDF</a>
+          <button class="btn-ok" id="btnValidar" onclick="validarPedido()" style="flex:1">✓ Validar e enviar PDF ao fornecedor</button>
+        </div>
+      </div>
+
+      <!-- TAB: VINCULAR XML -->
+      <div id="abaVinculo" style="display:none">
+        <div class="card">
+          <div class="section-title">Notas disponíveis para vinculação</div>
+          <p style="font-size:13px;color:#64748b;margin-bottom:12px">Selecione a nota fiscal correspondente a este pedido. Após vincular, a nota ficará em <strong>Validação Comercial</strong> até você liberar para importação.</p>
+          <div id="listaNFVinculo"><div style="color:#475569;text-align:center;padding:16px">Carregando notas...</div></div>
+        </div>
+        <div id="notaVinculada" style="display:none" class="card">
+          <div class="section-title">Nota vinculada</div>
+          <div id="infoNotaVinculada"></div>
+          <div style="margin-top:12px;display:flex;gap:10px">
+            <button class="btn-ok" onclick="liberarParaImportacao()">✓ Liberar para importação</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '';
+const token = () => localStorage.getItem('jrlira_token');
+(function(){ const p = localStorage.getItem('jrlira_perfil'); if (!token() || !['admin','comprador'].includes(p)) location.href='/'; })();
+document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
+
+function h() { return { Authorization: `Bearer ${token()}` }; }
+function hj() { return { ...h(), 'Content-Type': 'application/json' }; }
+
+const STATUS = { rascunho:'Rascunho', aguardando_validacao:'Aguardando validação', validado:'Validado', vinculado:'Vinculado à NF' };
+let pedidoAtual = null;
+let itensAtuais = [];
+
+function showMsg(txt, tipo='ok') {
+  const el = document.getElementById('msgPedido');
+  el.className = `msg msg-${tipo}`;
+  el.textContent = txt;
+  el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', 5000);
+}
+
+// ── LISTA ─────────────────────────────────────────────────────────
+async function carregarPedidos() {
+  const status = document.getElementById('filtroStatus').value;
+  const el = document.getElementById('listaPedidos');
+  el.innerHTML = '<div style="color:#475569;text-align:center;padding:24px">Carregando...</div>';
+  try {
+    const url = status ? `/api/pedidos?status=${status}` : '/api/pedidos';
+    const r = await fetch(`${API}${url}`, { headers: h() });
+    const pedidos = await r.json();
+    if (!pedidos.length) { el.innerHTML = '<div style="color:#475569;text-align:center;padding:24px">Nenhum pedido.</div>'; return; }
+    el.innerHTML = pedidos.map(p => `
+      <div class="pedido-row${pedidoAtual?.id===p.id?' selected':''}" onclick="selecionarPedido(${p.id})">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
+          <span class="p-num">${p.numero_pedido || '#'+p.id}</span>
+          <span class="badge s-${p.status}">${STATUS[p.status]||p.status}</span>
+        </div>
+        <div class="p-forn">${p.fornecedor_fantasia || p.fornecedor_nome || '—'}</div>
+        <div class="p-info">${p.loja_nome||'—'} &nbsp;|&nbsp; ${p.vendedor_nome||'—'} &nbsp;|&nbsp; R$ ${parseFloat(p.valor_total||0).toFixed(2).replace('.',',')}</div>
+        <div class="p-info">${p.enviado_em ? 'Enviado: ' + new Date(p.enviado_em).toLocaleDateString('pt-BR') : ''}</div>
+      </div>
+    `).join('');
+  } catch { el.innerHTML = '<div style="color:#f87171;text-align:center;padding:24px">Erro ao carregar.</div>'; }
+}
+
+async function selecionarPedido(id) {
+  try {
+    const r = await fetch(`${API}/api/pedidos/${id}`, { headers: h() });
+    pedidoAtual = await r.json();
+    itensAtuais = pedidoAtual.itens || [];
+    renderDetalhe();
+    document.getElementById('painelVazio').style.display = 'none';
+    document.getElementById('painelPedido').style.display = 'block';
+    mudarTab('validacao');
+  } catch { showMsg('Erro ao carregar pedido.', 'err'); }
+}
+
+function renderDetalhe() {
+  if (!pedidoAtual) return;
+  const p = pedidoAtual;
+  document.getElementById('d-num').textContent = p.numero_pedido || '#' + p.id;
+  document.getElementById('d-status').innerHTML = `<span class="badge s-${p.status}">${STATUS[p.status]||p.status}</span>`;
+  document.getElementById('d-forn').textContent = p.fantasia || p.razao_social || '—';
+  document.getElementById('d-vend').textContent = `${p.vendedor_nome||'—'} — ${p.vendedor_email||''}`;
+  document.getElementById('d-loja').textContent = p.loja_nome || '—';
+  document.getElementById('d-enviado').textContent = p.enviado_em ? new Date(p.enviado_em).toLocaleDateString('pt-BR') : '—';
+  document.getElementById('d-condicao').value = p.condicao_pagamento || 30;
+  document.getElementById('d-obs').value = p.observacoes || '';
+  document.getElementById('btnPdf').href = `/api/pedidos/${p.id}/pdf`;
+
+  // Itens
+  let totalGeral = 0;
+  document.getElementById('tbodyItens').innerHTML = itensAtuais.map(item => {
+    const qtdPed = parseFloat(item.quantidade);
+    const qtdVal = parseFloat(item.qtd_validada ?? item.quantidade);
+    const precoPed = parseFloat(item.preco_unitario);
+    const precoVal = parseFloat(item.preco_validado ?? item.preco_unitario);
+    const tot = qtdVal * precoVal;
+    totalGeral += tot;
+    return `<tr>
+      <td style="font-family:monospace;font-size:12px">${item.codigo_barras||'—'}</td>
+      <td>${item.produto_novo?'<span class="badge-novo">NOVO</span> ':''}<span style="font-size:12px">${item.descricao}</span></td>
+      <td style="text-align:right;color:#94a3b8">${qtdPed.toFixed(2)}</td>
+      <td><input class="input-val" type="number" step="0.001" value="${qtdVal.toFixed(3)}" data-item="${item.id}" data-field="qtd" oninput="atualizarLinha(this)"></td>
+      <td style="text-align:right;color:#94a3b8">R$ ${precoPed.toFixed(2).replace('.',',')}</td>
+      <td><input class="input-val" type="number" step="0.01" value="${precoVal.toFixed(4)}" data-item="${item.id}" data-field="preco" oninput="atualizarLinha(this)"></td>
+      <td style="text-align:right;color:#4ade80;font-weight:700" id="tot-${item.id}">R$ ${tot.toFixed(2).replace('.',',')}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('d-total').textContent = `R$ ${totalGeral.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.')}`;
+
+  const jaValidado = p.status === 'validado' || p.status === 'vinculado';
+  document.getElementById('btnValidar').textContent = jaValidado ? '✓ Re-validar e reenviar PDF' : '✓ Validar e enviar PDF ao fornecedor';
+}
+
+function atualizarLinha(input) {
+  const itemId = parseInt(input.dataset.item);
+  const field = input.dataset.field;
+  const item = itensAtuais.find(i => i.id === itemId);
+  if (!item) return;
+  if (field === 'qtd') item.qtd_validada = parseFloat(input.value) || item.quantidade;
+  if (field === 'preco') item.preco_validado = parseFloat(input.value) || item.preco_unitario;
+  const q = parseFloat(item.qtd_validada ?? item.quantidade);
+  const p = parseFloat(item.preco_validado ?? item.preco_unitario);
+  document.getElementById(`tot-${itemId}`).textContent = `R$ ${(q*p).toFixed(2).replace('.',',')}`;
+  // Recalc total
+  const total = itensAtuais.reduce((s, i) => {
+    const qq = parseFloat(i.qtd_validada ?? i.quantidade);
+    const pp = parseFloat(i.preco_validado ?? i.preco_unitario);
+    return s + qq * pp;
+  }, 0);
+  document.getElementById('d-total').textContent = `R$ ${total.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.')}`;
+}
+
+async function validarPedido() {
+  if (!pedidoAtual) return;
+  if (!confirm('Validar pedido e enviar PDF ao fornecedor por e-mail?')) return;
+  const itensPayload = itensAtuais.map(i => ({
+    id: i.id,
+    qtd_validada: parseFloat(i.qtd_validada ?? i.quantidade),
+    preco_validado: parseFloat(i.preco_validado ?? i.preco_unitario)
+  }));
+  try {
+    const r = await fetch(`${API}/api/pedidos/${pedidoAtual.id}/validar`, {
+      method: 'PUT',
+      headers: hj(),
+      body: JSON.stringify({
+        itens: itensPayload,
+        condicao_pagamento: parseInt(document.getElementById('d-condicao').value),
+        observacoes: document.getElementById('d-obs').value.trim()
+      })
+    });
+    const d = await r.json();
+    if (!r.ok) return showMsg(d.erro, 'err');
+    showMsg('Pedido validado e PDF enviado ao fornecedor!', 'ok');
+    await selecionarPedido(pedidoAtual.id);
+    carregarPedidos();
+  } catch { showMsg('Erro ao validar.', 'err'); }
+}
+
+// ── VINCULAR XML ──────────────────────────────────────────────────
+async function mudarTab(tab) {
+  document.getElementById('abaValidacao').style.display = tab === 'validacao' ? 'block' : 'none';
+  document.getElementById('abaVinculo').style.display = tab === 'vinculo' ? 'block' : 'none';
+  document.getElementById('tabValidacao').classList.toggle('active', tab === 'validacao');
+  document.getElementById('tabVinculo').classList.toggle('active', tab === 'vinculo');
+  if (tab === 'vinculo') carregarNotasVinculo();
+}
+
+let notaSelecionadaId = null;
+
+async function carregarNotasVinculo() {
+  const el = document.getElementById('listaNFVinculo');
+  // Verifica se já tem nota vinculada
+  if (pedidoAtual?.nota_id) {
+    document.getElementById('listaNFVinculo').style.display = 'none';
+    document.getElementById('notaVinculada').style.display = 'block';
+    document.getElementById('infoNotaVinculada').innerHTML =
+      `<div style="font-size:13px">Nota <strong>${pedidoAtual.numero_nota || '#'+pedidoAtual.nota_id}</strong> vinculada.</div>`;
+    return;
+  }
+  el.innerHTML = '<div style="color:#475569;text-align:center;padding:16px">Carregando...</div>';
+  try {
+    // Busca notas importadas sem pedido vinculado, do mesmo fornecedor
+    const r = await fetch(`${API}/api/notas?status=importada&fornecedor_cnpj=${encodeURIComponent(pedidoAtual?.fornecedor_cnpj||'')}`, { headers: h() });
+    const notas = await r.json();
+    if (!notas.length) { el.innerHTML = '<div style="color:#475569;text-align:center;padding:16px">Nenhuma nota importada disponível para vinculação.<br><small>Importe o XML primeiro em Notas → Cadastro.</small></div>'; return; }
+    notaSelecionadaId = null;
+    el.innerHTML = notas.slice(0,20).map(n => `
+      <div class="nota-row" id="nrow-${n.id}" onclick="selecionarNota(${n.id})">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:12px;font-family:monospace;color:#38bdf8">NF ${n.numero_nota}</span>
+          <span style="font-size:12px;color:#94a3b8">${n.data_emissao ? new Date(n.data_emissao+'T00:00:00').toLocaleDateString('pt-BR') : '—'}</span>
+        </div>
+        <div style="font-size:12px;color:#e2e8f0;margin-top:2px">${n.fornecedor_nome}</div>
+        <div style="font-size:12px;color:#4ade80;margin-top:2px">R$ ${parseFloat(n.valor_total||0).toFixed(2).replace('.',',')}</div>
+      </div>
+    `).join('');
+    el.innerHTML += `<div style="margin-top:10px"><button class="btn-primary" onclick="vincularNota()" id="btnVincular" disabled style="opacity:.5">Vincular nota selecionada</button></div>`;
+  } catch { el.innerHTML = '<div style="color:#f87171;text-align:center;padding:16px">Erro ao carregar notas.</div>'; }
+}
+
+function selecionarNota(id) {
+  notaSelecionadaId = id;
+  document.querySelectorAll('.nota-row').forEach(el => el.classList.remove('selected'));
+  document.getElementById(`nrow-${id}`)?.classList.add('selected');
+  const btn = document.getElementById('btnVincular');
+  if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+}
+
+async function vincularNota() {
+  if (!notaSelecionadaId || !pedidoAtual) return;
+  if (!confirm('Vincular esta nota ao pedido? A nota entrará em Validação Comercial.')) return;
+  try {
+    const r = await fetch(`${API}/api/pedidos/${pedidoAtual.id}/vincular/${notaSelecionadaId}`, { method:'POST', headers:h() });
+    const d = await r.json();
+    if (!r.ok) return showMsg(d.erro, 'err');
+    showMsg('Nota vinculada ao pedido. Status: Em Validação Comercial.', 'ok');
+    await selecionarPedido(pedidoAtual.id);
+    carregarNotasVinculo();
+  } catch { showMsg('Erro ao vincular.', 'err'); }
+}
+
+async function liberarParaImportacao() {
+  if (!confirm('Liberar nota para o fluxo de importação?')) return;
+  try {
+    const r = await fetch(`${API}/api/pedidos/${pedidoAtual.id}/liberar`, { method:'POST', headers:h() });
+    const d = await r.json();
+    if (!r.ok) return showMsg(d.erro, 'err');
+    showMsg('Nota liberada para importação!', 'ok');
+    await selecionarPedido(pedidoAtual.id);
+    carregarPedidos();
+  } catch { showMsg('Erro ao liberar.', 'err'); }
+}
+
+carregarPedidos();
+</script>
+</body>
+</html>

@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fornecedores — JR Lira</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+nav{background:#1e293b;padding:14px 24px;display:flex;align-items:center;gap:16px;border-bottom:1px solid #334155}
+.brand{font-size:16px;font-weight:700;color:#38bdf8}
+.nav-user{margin-left:auto;font-size:13px;color:#64748b}
+.btn-nav{background:#0ea5e9;color:#fff;border:none;padding:7px 14px;border-radius:6px;font-size:13px;cursor:pointer}
+.layout{display:grid;grid-template-columns:340px 1fr;min-height:calc(100vh - 57px)}
+.panel-left{border-right:1px solid #334155;padding:16px;overflow-y:auto}
+.panel-right{padding:20px;overflow-y:auto}
+.search-row{display:flex;gap:8px;margin-bottom:12px}
+input[type=text],input[type=email],input[type=tel],select{background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;padding:8px 12px;font-size:13px;width:100%}
+input:focus,select:focus{outline:none;border-color:#38bdf8}
+button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 14px;font-weight:600}
+.btn-primary{background:#0ea5e9;color:#fff}
+.btn-primary:hover{background:#0284c7}
+.btn-sm{padding:4px 10px;font-size:12px}
+.btn-ok{background:#14532d;color:#4ade80}
+.btn-ok:hover{background:#166534}
+.btn-danger{background:#7f1d1d;color:#fca5a5}
+.btn-danger:hover{background:#991b1b}
+.btn-ghost{background:#334155;color:#94a3b8}
+.btn-ghost:hover{background:#475569}
+.btn-warn{background:#431407;color:#f97316}
+.btn-warn:hover{background:#7c2d12}
+.forn-item{padding:10px 12px;border-bottom:1px solid #334155;cursor:pointer;border-radius:6px;margin-bottom:2px}
+.forn-item:hover,.forn-item.selected{background:#1e3a5f}
+.forn-nome{font-size:13px;font-weight:700;color:#e2e8f0}
+.forn-cnpj{font-size:11px;color:#64748b;margin-top:2px}
+.section-title{font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;margin-top:16px;display:flex;align-items:center;gap:8px}
+.card{background:#1e293b;border-radius:10px;padding:16px;margin-bottom:16px}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700}
+.b-pendente{background:#1e3a5f;color:#60a5fa}
+.b-aprovado{background:#14532d;color:#4ade80}
+.b-expirado{background:#450a0a;color:#f87171}
+.b-inativo{background:#1e293b;color:#64748b}
+.b-rejeitado{background:#1e293b;color:#94a3b8}
+.vend-row{padding:12px 0;border-bottom:1px solid #334155}
+.vend-row:last-child{border-bottom:none}
+.vend-topo{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.vend-foto{width:40px;height:40px;border-radius:50%;object-fit:cover;background:#334155;flex-shrink:0}
+.vend-nome{font-size:13px;font-weight:700}
+.vend-info{font-size:11px;color:#64748b;margin-top:2px}
+.vend-acoes{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.msg{padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:13px}
+.msg-ok{background:#14532d;color:#4ade80}
+.msg-err{background:#450a0a;color:#f87171}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.form-row.triple{grid-template-columns:1fr 1fr 1fr}
+.link-box{background:#0f172a;border:1px solid #334155;border-radius:6px;padding:10px;font-size:12px;word-break:break-all;color:#38bdf8;margin-top:8px;display:none}
+.expira{font-size:11px;color:#94a3b8;margin-top:2px}
+.expirado-txt{color:#f87171}
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;align-items:center;justify-content:center}
+.modal-bg.open{display:flex}
+.modal{background:#1e293b;border-radius:12px;padding:24px;width:100%;max-width:460px;max-height:80vh;overflow-y:auto}
+.modal-title{font-size:15px;font-weight:700;margin-bottom:16px}
+.config-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.config-row label{font-size:12px;color:#64748b;width:180px;flex-shrink:0}
+@media(max-width:700px){.layout{grid-template-columns:1fr}.panel-right{display:none}}
+</style>
+</head>
+<body>
+<nav>
+  <span class="brand">JR Lira Tech</span>
+  <span style="color:#475569">/</span>
+  <span style="font-size:14px;color:#94a3b8">Fornecedores</span>
+  <span class="nav-user" id="nomeUsuario"></span>
+  <button class="btn-nav btn-ghost" style="margin-left:0" onclick="abrirModalConfig()">⚙ Config</button>
+  <button class="btn-nav" onclick="location.href='/'">← Início</button>
+</nav>
+
+<div id="msgGlobal" class="msg" style="display:none;margin:12px 16px 0"></div>
+
+<div class="layout">
+  <!-- PAINEL ESQUERDO: lista de fornecedores -->
+  <div class="panel-left">
+    <div class="search-row">
+      <input type="text" id="buscaForn" placeholder="Buscar fornecedor..." oninput="filtrarFornecedores()">
+      <button class="btn-primary btn-sm" onclick="abrirModalForn()">+</button>
+    </div>
+    <div id="listaFornecedores"><div style="color:#475569;text-align:center;padding:20px">Carregando...</div></div>
+  </div>
+
+  <!-- PAINEL DIREITO: detalhe -->
+  <div class="panel-right">
+    <div id="painelVazio" style="color:#475569;padding:40px;text-align:center">← Selecione um fornecedor</div>
+    <div id="painelForn" style="display:none">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+        <img id="fotoForn" src="" style="width:56px;height:56px;border-radius:50%;object-fit:cover;background:#334155;display:none">
+        <div>
+          <div id="forn-razao" style="font-size:17px;font-weight:700"></div>
+          <div id="forn-fantasia" style="font-size:13px;color:#94a3b8"></div>
+          <div id="forn-cnpj" style="font-size:12px;color:#64748b;font-family:monospace"></div>
+        </div>
+        <div style="margin-left:auto;display:flex;gap:8px">
+          <button class="btn-ghost btn-sm" onclick="editarForn()">Editar</button>
+          <button class="btn-primary btn-sm" onclick="gerarLink()">Gerar link de cadastro</button>
+        </div>
+      </div>
+
+      <div id="linkGerado" class="link-box"></div>
+
+      <div class="section-title">Vendedores <span id="countVendedores" style="background:#334155;color:#94a3b8;padding:1px 8px;border-radius:10px;font-size:11px">0</span></div>
+      <div id="listaVendedores"><div style="color:#475569;text-align:center;padding:16px">Nenhum vendedor.</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Fornecedor -->
+<div class="modal-bg" id="modalForn">
+  <div class="modal">
+    <div class="modal-title" id="modalFornTitle">Novo Fornecedor</div>
+    <div id="msgModalForn" class="msg" style="display:none"></div>
+    <div class="form-row">
+      <div><label style="font-size:12px;color:#64748b;margin-bottom:4px;display:block">Razão Social *</label><input type="text" id="mFornRazao"></div>
+      <div><label style="font-size:12px;color:#64748b;margin-bottom:4px;display:block">Fantasia</label><input type="text" id="mFornFantasia"></div>
+    </div>
+    <div style="margin-bottom:10px"><label style="font-size:12px;color:#64748b;margin-bottom:4px;display:block">CNPJ</label><input type="text" id="mFornCnpj" placeholder="00.000.000/0000-00"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+      <button class="btn-ghost" onclick="fecharModal('modalForn')">Cancelar</button>
+      <button class="btn-primary" onclick="salvarForn()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Config -->
+<div class="modal-bg" id="modalConfig">
+  <div class="modal">
+    <div class="modal-title">Configurações</div>
+    <div class="section-title" style="margin-top:0">Lojas — CNPJ</div>
+    <div id="configLojas"></div>
+    <div class="section-title">Validade de acesso do vendedor</div>
+    <div class="config-row">
+      <label>Dias de validade</label>
+      <input type="number" id="cfgValidadeDias" style="width:80px" min="1" max="365">
+      <button class="btn-primary btn-sm" onclick="salvarConfig()">Salvar</button>
+    </div>
+    <div style="text-align:right;margin-top:16px">
+      <button class="btn-ghost" onclick="fecharModal('modalConfig')">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '';
+const token = () => localStorage.getItem('jrlira_token');
+(function(){ const p = localStorage.getItem('jrlira_perfil'); if (!token() || !['admin','comprador'].includes(p)) location.href='/'; })();
+document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
+
+function h() { return { Authorization: `Bearer ${token()}` }; }
+function hj() { return { ...h(), 'Content-Type': 'application/json' }; }
+
+let fornecedores = [];
+let fornSelecionado = null;
+
+function showMsg(txt, tipo='ok') {
+  const el = document.getElementById('msgGlobal');
+  el.className = `msg msg-${tipo}`;
+  el.textContent = txt;
+  el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', 4000);
+}
+
+// ── FORNECEDORES ──────────────────────────────────────────────────
+
+async function carregarFornecedores() {
+  try {
+    const r = await fetch(`${API}/api/fornecedores`, { headers: h() });
+    fornecedores = await r.json();
+    renderFornecedores(fornecedores);
+  } catch { showMsg('Erro ao carregar fornecedores', 'err'); }
+}
+
+function filtrarFornecedores() {
+  const q = document.getElementById('buscaForn').value.toLowerCase();
+  renderFornecedores(q ? fornecedores.filter(f =>
+    f.razao_social.toLowerCase().includes(q) || (f.fantasia||'').toLowerCase().includes(q) || (f.cnpj||'').includes(q)
+  ) : fornecedores);
+}
+
+function renderFornecedores(lista) {
+  const el = document.getElementById('listaFornecedores');
+  if (!lista.length) { el.innerHTML = '<div style="color:#475569;text-align:center;padding:20px">Nenhum fornecedor.</div>'; return; }
+  el.innerHTML = lista.map(f => `
+    <div class="forn-item${fornSelecionado?.id===f.id?' selected':''}" onclick="selecionarForn(${f.id})">
+      <div class="forn-nome">${f.fantasia || f.razao_social}</div>
+      <div class="forn-cnpj">${f.razao_social !== (f.fantasia||f.razao_social) ? f.razao_social + ' &nbsp;|&nbsp; ' : ''}${f.cnpj || 'CNPJ não cadastrado'}</div>
+    </div>
+  `).join('');
+}
+
+async function selecionarForn(id) {
+  fornSelecionado = fornecedores.find(f => f.id === id);
+  if (!fornSelecionado) return;
+  document.querySelectorAll('.forn-item').forEach(el => el.classList.remove('selected'));
+  document.querySelectorAll('.forn-item').forEach(el => { if (el.onclick?.toString().includes(`(${id})`)) el.classList.add('selected'); });
+  document.getElementById('painelVazio').style.display = 'none';
+  document.getElementById('painelForn').style.display = 'block';
+  document.getElementById('forn-razao').textContent = fornSelecionado.razao_social;
+  document.getElementById('forn-fantasia').textContent = fornSelecionado.fantasia || '';
+  document.getElementById('forn-cnpj').textContent = fornSelecionado.cnpj || '';
+  document.getElementById('linkGerado').style.display = 'none';
+  const foto = document.getElementById('fotoForn');
+  foto.src = `/api/fornecedores/${id}/foto`;
+  foto.style.display = 'block';
+  foto.onerror = () => foto.style.display = 'none';
+  carregarVendedores(id);
+}
+
+async function carregarVendedores(fornId) {
+  const el = document.getElementById('listaVendedores');
+  el.innerHTML = '<div style="color:#475569;padding:12px">Carregando...</div>';
+  try {
+    const r = await fetch(`${API}/api/fornecedores/${fornId}/vendedores`, { headers: h() });
+    const vendedores = await r.json();
+    document.getElementById('countVendedores').textContent = vendedores.length;
+    if (!vendedores.length) { el.innerHTML = '<div style="color:#475569;text-align:center;padding:16px">Nenhum vendedor cadastrado.</div>'; return; }
+    el.innerHTML = vendedores.map(v => {
+      const agora = new Date();
+      const expira = v.acesso_expira_em ? new Date(v.acesso_expira_em) : null;
+      const expirado = expira && expira < agora;
+      const statusLabel = { pendente:'Pendente', aprovado: expirado?'Expirado':'Ativo', rejeitado:'Rejeitado', inativo:'Inativo', aguardando_cadastro:'Aguard. cadastro' };
+      const statusClass = { pendente:'b-pendente', aprovado: expirado?'b-expirado':'b-aprovado', rejeitado:'b-rejeitado', inativo:'b-inativo', aguardando_cadastro:'b-pendente' };
+      const badgeStatus = v.status === 'aprovado' && expirado ? 'expirado' : v.status;
+      return `
+        <div class="vend-row">
+          <div class="vend-topo">
+            ${v.foto_url ? `<img src="${v.foto_url}" class="vend-foto" onerror="this.style.display='none'">` : '<div class="vend-foto" style="display:flex;align-items:center;justify-content:center;font-size:18px">👤</div>'}
+            <div>
+              <div class="vend-nome">${v.nome}</div>
+              <div class="vend-info">${v.email || '—'} ${v.telefone ? '| ' + v.telefone : ''}</div>
+              ${v.nome_gerente ? `<div class="vend-info">Gerente: ${v.nome_gerente} ${v.telefone_gerente || ''}</div>` : ''}
+            </div>
+            <div style="margin-left:auto"><span class="badge ${statusClass[v.status] || 'b-inativo'}">${statusLabel[badgeStatus] || v.status}</span></div>
+          </div>
+          ${expira ? `<div class="expira ${expirado?'expirado-txt':''}">Acesso ${expirado?'expirou':'expira'} em ${expira.toLocaleDateString('pt-BR')}</div>` : ''}
+          <div class="vend-acoes">
+            ${v.status === 'pendente' ? `<button class="btn-ok btn-sm" onclick="aprovarVendedor(${v.id})">✓ Aprovar</button><button class="btn-danger btn-sm" onclick="rejeitarVendedor(${v.id})">✕ Rejeitar</button>` : ''}
+            ${(v.status === 'aprovado' || badgeStatus === 'expirado') ? `<button class="btn-warn btn-sm" onclick="revalidarVendedor(${v.id})">🔄 Revalidar acesso</button>` : ''}
+            ${v.status === 'aprovado' ? `<button class="btn-danger btn-sm" onclick="toggleVendador(${v.id}, false)">Desativar</button>` : ''}
+            ${v.status === 'inativo' ? `<button class="btn-ok btn-sm" onclick="toggleVendador(${v.id}, true)">Ativar</button>` : ''}
+          </div>
+        </div>`;
+    }).join('');
+  } catch { el.innerHTML = '<div style="color:#f87171;padding:12px">Erro ao carregar.</div>'; }
+}
+
+async function aprovarVendedor(id) {
+  if (!confirm('Aprovar este vendedor? Uma senha será gerada e enviada por e-mail.')) return;
+  const r = await fetch(`${API}/api/fornecedores/vendedores/${id}/aprovar`, { method:'POST', headers:h() });
+  const d = await r.json();
+  if (!r.ok) return showMsg(d.erro, 'err');
+  showMsg('Vendedor aprovado — e-mail com credenciais enviado.', 'ok');
+  carregarVendedores(fornSelecionado.id);
+}
+
+async function rejeitarVendedor(id) {
+  if (!confirm('Rejeitar este vendedor?')) return;
+  const r = await fetch(`${API}/api/fornecedores/vendedores/${id}/rejeitar`, { method:'POST', headers:h() });
+  if (r.ok) { showMsg('Vendedor rejeitado.', 'ok'); carregarVendedores(fornSelecionado.id); }
+}
+
+async function revalidarVendedor(id) {
+  if (!confirm('Confirma que o vendedor ainda trabalha na empresa? Uma nova senha será gerada.')) return;
+  const r = await fetch(`${API}/api/fornecedores/vendedores/${id}/revalidar`, { method:'POST', headers:h() });
+  const d = await r.json();
+  if (!r.ok) return showMsg(d.erro, 'err');
+  showMsg('Acesso revalidado — nova senha enviada por e-mail.', 'ok');
+  carregarVendedores(fornSelecionado.id);
+}
+
+async function toggleVendador(id, ativo) {
+  const r = await fetch(`${API}/api/fornecedores/vendedores/${id}/ativo`, { method:'PATCH', headers:hj(), body:JSON.stringify({ ativo }) });
+  if (r.ok) { showMsg(ativo ? 'Vendedor ativado.' : 'Vendedor desativado.', 'ok'); carregarVendedores(fornSelecionado.id); }
+}
+
+async function gerarLink() {
+  if (!fornSelecionado) return;
+  const r = await fetch(`${API}/api/fornecedores/${fornSelecionado.id}/gerar-token`, { method:'POST', headers:h() });
+  const d = await r.json();
+  if (!r.ok) return showMsg(d.erro, 'err');
+  const box = document.getElementById('linkGerado');
+  box.textContent = d.link;
+  box.style.display = 'block';
+  await navigator.clipboard.writeText(d.link).catch(() => {});
+  showMsg('Link gerado e copiado para a área de transferência!', 'ok');
+  carregarVendedores(fornSelecionado.id);
+}
+
+// ── MODAL FORNECEDOR ──────────────────────────────────────────────
+let editandoFornId = null;
+
+function abrirModalForn(forn = null) {
+  editandoFornId = forn?.id || null;
+  document.getElementById('modalFornTitle').textContent = forn ? 'Editar Fornecedor' : 'Novo Fornecedor';
+  document.getElementById('mFornRazao').value = forn?.razao_social || '';
+  document.getElementById('mFornFantasia').value = forn?.fantasia || '';
+  document.getElementById('mFornCnpj').value = forn?.cnpj || '';
+  document.getElementById('msgModalForn').style.display = 'none';
+  document.getElementById('modalForn').classList.add('open');
+}
+
+function editarForn() { if (fornSelecionado) abrirModalForn(fornSelecionado); }
+
+async function salvarForn() {
+  const razao_social = document.getElementById('mFornRazao').value.trim();
+  if (!razao_social) { document.getElementById('msgModalForn').textContent='Razão social obrigatória'; document.getElementById('msgModalForn').style.display='block'; return; }
+  const body = { razao_social, fantasia: document.getElementById('mFornFantasia').value.trim(), cnpj: document.getElementById('mFornCnpj').value.trim() };
+  const url = editandoFornId ? `${API}/api/fornecedores/${editandoFornId}` : `${API}/api/fornecedores`;
+  const method = editandoFornId ? 'PUT' : 'POST';
+  const r = await fetch(url, { method, headers:hj(), body:JSON.stringify(body) });
+  const d = await r.json();
+  if (!r.ok) { document.getElementById('msgModalForn').textContent=d.erro; document.getElementById('msgModalForn').style.display='block'; return; }
+  fecharModal('modalForn');
+  showMsg('Fornecedor salvo.', 'ok');
+  await carregarFornecedores();
+  if (editandoFornId) selecionarForn(editandoFornId);
+}
+
+// ── MODAL CONFIG ──────────────────────────────────────────────────
+async function abrirModalConfig() {
+  document.getElementById('modalConfig').classList.add('open');
+  const [lojas] = await Promise.all([
+    fetch(`${API}/api/fornecedores/lojas`, { headers:h() }).then(r => r.json())
+  ]);
+  document.getElementById('configLojas').innerHTML = lojas.map(l => `
+    <div class="config-row">
+      <label>${l.nome}</label>
+      <input type="text" id="cnpjLoja${l.id}" value="${l.cnpj||''}" placeholder="00.000.000/0000-00" style="flex:1">
+      <button class="btn-primary btn-sm" onclick="salvarCnpjLoja(${l.id})">Salvar</button>
+    </div>
+  `).join('');
+  try {
+    const rc = await fetch(`${API}/api/pedidos`, { headers:h() }); // reutiliza token
+    document.getElementById('cfgValidadeDias').value = 90; // default
+  } catch {}
+}
+
+async function salvarCnpjLoja(id) {
+  const cnpj = document.getElementById(`cnpjLoja${id}`).value.trim();
+  const r = await fetch(`${API}/api/fornecedores/lojas/${id}`, { method:'PUT', headers:hj(), body:JSON.stringify({ cnpj }) });
+  if (r.ok) showMsg('CNPJ salvo.', 'ok');
+}
+
+async function salvarConfig() {
+  const dias = document.getElementById('cfgValidadeDias').value;
+  await fetch(`${API}/api/pedidos/config`, { method:'PUT', headers:hj(), body:JSON.stringify({ validade_acesso_vendedor_dias: dias }) });
+  showMsg('Configuração salva.', 'ok');
+}
+
+function fecharModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-bg').forEach(el => el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); }));
+
+carregarFornecedores();
+</script>
+</body>
+</html>

@@ -1,11 +1,18 @@
-async function enviarEmail(destinatario, assunto, html) {
+async function enviarEmail(destinatario, assunto, html, anexos = []) {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) { console.warn('[mailer] RESEND_API_KEY ausente — email não enviado'); return; }
   const from = process.env.MAIL_FROM || 'notificacoes@jrlira.tech';
+  const body = { from: `JR Lira Tech <${from}>`, to: destinatario, subject: assunto, html };
+  if (anexos.length) {
+    body.attachments = anexos.map(a => ({
+      filename: a.filename,
+      content: Buffer.isBuffer(a.content) ? a.content.toString('base64') : a.content,
+    }));
+  }
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: `JR Lira Tech <${from}>`, to: destinatario, subject: assunto, html }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
     const err = await res.text();

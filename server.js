@@ -18,6 +18,9 @@ app.use('/api/ponto', require('./src/routes/ponto'));
 app.use('/api/importacao', require('./src/routes/importacao'));
 app.use('/api/notas', require('./src/routes/notas'));
 app.use('/api/foto-upload', require('./src/routes/fotoUpload'));
+app.use('/api/fornecedores', require('./src/routes/fornecedores'));
+app.use('/api/vendedores', require('./src/routes/vendedores'));
+app.use('/api/pedidos', require('./src/routes/pedidos'));
 
 // ── PÁGINAS ───────────────────────────────────────────────────────
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public/index.html')));
@@ -29,6 +32,10 @@ app.get('/notas-estoque', (req, res) => res.sendFile(path.join(__dirname, 'publi
 app.get('/notas-auditoria', (req, res) => res.sendFile(path.join(__dirname, 'public/notas-auditoria.html')));
 app.get('/usuarios', (req, res) => res.sendFile(path.join(__dirname, 'public/usuarios.html')));
 app.get('/foto-upload', (req, res) => res.sendFile(path.join(__dirname, 'public/foto-upload.html')));
+app.get('/fornecedores', (req, res) => res.sendFile(path.join(__dirname, 'public/fornecedores.html')));
+app.get('/pedidos-comprador', (req, res) => res.sendFile(path.join(__dirname, 'public/pedidos-comprador.html')));
+app.get('/vendedor-cadastro', (req, res) => res.sendFile(path.join(__dirname, 'public/vendedor-cadastro.html')));
+app.get('/vendedor', (req, res) => res.sendFile(path.join(__dirname, 'public/vendedor.html')));
 
 // ── INIT DB ───────────────────────────────────────────────────────
 async function initDB() {
@@ -206,6 +213,85 @@ async function initDB() {
     await client.query(`ALTER TABLE ponto_importacoes ADD COLUMN IF NOT EXISTS loja_id INTEGER`).catch(() => {});
     await client.query(`ALTER TABLE funcionarios ADD COLUMN IF NOT EXISTS foto_data BYTEA`).catch(() => {});
     await client.query(`ALTER TABLE funcionarios ADD COLUMN IF NOT EXISTS foto_mime VARCHAR(20)`).catch(() => {});
+
+    // ── PEDIDOS / FORNECEDORES ────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS configuracoes (
+        chave VARCHAR(100) PRIMARY KEY,
+        valor TEXT
+      );
+      CREATE TABLE IF NOT EXISTS lojas (
+        id SERIAL PRIMARY KEY,
+        nome VARCHAR(100) NOT NULL,
+        cnpj VARCHAR(18),
+        ativo BOOLEAN DEFAULT TRUE
+      );
+      CREATE TABLE IF NOT EXISTS fornecedores (
+        id SERIAL PRIMARY KEY,
+        razao_social VARCHAR(300) NOT NULL,
+        fantasia VARCHAR(200),
+        cnpj VARCHAR(18),
+        ativo BOOLEAN DEFAULT TRUE,
+        foto_data BYTEA,
+        foto_mime VARCHAR(20),
+        criado_em TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS vendedores (
+        id SERIAL PRIMARY KEY,
+        fornecedor_id INTEGER REFERENCES fornecedores(id) ON DELETE CASCADE,
+        nome VARCHAR(200) NOT NULL,
+        cpf VARCHAR(14),
+        email VARCHAR(150) UNIQUE,
+        telefone VARCHAR(20),
+        nome_gerente VARCHAR(200),
+        telefone_gerente VARCHAR(20),
+        foto_data BYTEA,
+        foto_mime VARCHAR(20),
+        status VARCHAR(20) DEFAULT 'pendente',
+        senha_hash VARCHAR(200),
+        token_cadastro VARCHAR(64) UNIQUE,
+        acesso_expira_em TIMESTAMPTZ,
+        criado_em TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS pedidos (
+        id SERIAL PRIMARY KEY,
+        numero_pedido VARCHAR(30) UNIQUE,
+        fornecedor_id INTEGER REFERENCES fornecedores(id),
+        vendedor_id INTEGER REFERENCES vendedores(id),
+        loja_id INTEGER REFERENCES lojas(id),
+        status VARCHAR(30) DEFAULT 'rascunho',
+        condicao_pagamento INTEGER,
+        valor_total DECIMAL(12,2) DEFAULT 0,
+        observacoes TEXT,
+        nota_id INTEGER REFERENCES notas_entrada(id),
+        criado_em TIMESTAMPTZ DEFAULT NOW(),
+        enviado_em TIMESTAMPTZ,
+        validado_em TIMESTAMPTZ,
+        validado_por VARCHAR(150)
+      );
+      CREATE TABLE IF NOT EXISTS itens_pedido (
+        id SERIAL PRIMARY KEY,
+        pedido_id INTEGER REFERENCES pedidos(id) ON DELETE CASCADE,
+        codigo_barras VARCHAR(20),
+        descricao VARCHAR(300) NOT NULL,
+        quantidade DECIMAL(12,4) NOT NULL,
+        preco_unitario DECIMAL(12,4) NOT NULL,
+        valor_total DECIMAL(12,2) NOT NULL,
+        produto_novo BOOLEAN DEFAULT FALSE,
+        qtd_validada DECIMAL(12,4),
+        preco_validado DECIMAL(12,4)
+      );
+    `).catch(() => {});
+
+    await client.query(`ALTER TABLE notas_entrada ADD COLUMN IF NOT EXISTS pedido_id INTEGER REFERENCES pedidos(id)`).catch(() => {});
+    await client.query(`INSERT INTO configuracoes (chave, valor) VALUES ('validade_acesso_vendedor_dias','90') ON CONFLICT DO NOTHING`).catch(() => {});
+
+    // Lojas iniciais (se tabela vazia)
+    const { rows: lojaRows } = await client.query('SELECT COUNT(*) FROM lojas');
+    if (parseInt(lojaRows[0].count) === 0) {
+      await client.query(`INSERT INTO lojas (id, nome) VALUES (1,'ECONOMICO'),(2,'BR'),(3,'JOAO PAULO'),(4,'FLORESTA'),(5,'SAO JOSE'),(6,'SANTAREM') ON CONFLICT DO NOTHING`);
+    }
+
     await client.query(`
       CREATE TABLE IF NOT EXISTS foto_tokens (
         id SERIAL PRIMARY KEY,

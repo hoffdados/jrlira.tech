@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Portal do Vendedor — JR Lira</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+nav{background:#1e293b;padding:12px 16px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #334155}
+.brand{font-size:15px;font-weight:700;color:#38bdf8}
+.nav-user{margin-left:auto;font-size:12px;color:#64748b}
+.btn-nav{background:none;border:1px solid #334155;color:#94a3b8;padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer}
+.container{max-width:600px;margin:0 auto;padding:20px 16px}
+.card{background:#1e293b;border-radius:12px;padding:20px;margin-bottom:16px}
+.card-title{font-size:13px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:14px}
+label{display:block;font-size:12px;color:#64748b;margin-bottom:4px}
+input,select{width:100%;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;padding:9px 12px;font-size:13px}
+input:focus,select:focus{outline:none;border-color:#38bdf8}
+select option{background:#1e293b}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.row3{display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px}
+button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:9px 16px;font-weight:600}
+.btn-primary{background:#0ea5e9;color:#fff;width:100%}
+.btn-primary:hover{background:#0284c7}
+.btn-ghost{background:#334155;color:#94a3b8}
+.btn-ghost:hover{background:#475569}
+.btn-danger{background:#7f1d1d;color:#fca5a5;padding:4px 10px;font-size:12px}
+.btn-sm{padding:5px 12px;font-size:12px}
+.badge-novo{background:#431407;color:#f97316;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700}
+.item-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #334155}
+.item-row:last-child{border-bottom:none}
+.item-info{flex:1;min-width:0}
+.item-desc{font-size:13px;color:#e2e8f0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item-sub{font-size:11px;color:#64748b;margin-top:2px}
+.item-total{font-size:14px;font-weight:700;color:#4ade80;white-space:nowrap}
+.total-box{background:#0f172a;border-radius:8px;padding:14px;text-align:right;margin-top:8px}
+.total-box .label{font-size:12px;color:#64748b}
+.total-box .valor{font-size:22px;font-weight:700;color:#4ade80}
+.msg{padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:13px}
+.msg-ok{background:#14532d;color:#4ade80}
+.msg-err{background:#450a0a;color:#f87171}
+.aviso{background:#1c1300;border-left:3px solid #f59e0b;padding:10px 14px;font-size:12px;color:#fbbf24;border-radius:4px;margin-top:8px}
+/* Login */
+#viewLogin{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}
+.login-card{background:#1e293b;border-radius:16px;padding:32px 24px;width:100%;max-width:360px}
+.spinner{width:32px;height:32px;border:3px solid #334155;border-top-color:#38bdf8;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+/* Pedidos */
+.pedido-row{padding:12px;border-bottom:1px solid #334155;cursor:pointer}
+.pedido-row:hover{background:#0f172a}
+.pedido-num{font-size:12px;font-family:monospace;color:#38bdf8}
+.pedido-status{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700}
+.s-rascunho{background:#1e293b;color:#64748b}
+.s-aguardando{background:#1e3a5f;color:#60a5fa}
+.s-validado{background:#14532d;color:#4ade80}
+.s-vinculado{background:#2e1065;color:#a78bfa}
+.tab-bar{display:flex;gap:0;margin-bottom:16px;background:#0f172a;border-radius:8px;padding:4px}
+.tab{flex:1;text-align:center;padding:8px;border-radius:6px;font-size:13px;cursor:pointer;color:#64748b;border:none;background:none}
+.tab.active{background:#1e293b;color:#e2e8f0;font-weight:700}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="viewLogin">
+  <div class="login-card">
+    <div style="text-align:center;margin-bottom:20px">
+      <div style="font-size:18px;font-weight:700;color:#38bdf8">JR Lira Tech</div>
+      <div style="font-size:12px;color:#64748b">Portal do Vendedor</div>
+    </div>
+    <div id="loginErr" class="msg msg-err" style="display:none"></div>
+    <label>E-mail</label>
+    <input type="email" id="loginEmail" placeholder="seu@email.com" style="margin-bottom:10px">
+    <label>Senha</label>
+    <input type="password" id="loginSenha" placeholder="••••••••" style="margin-bottom:16px" onkeydown="if(event.key==='Enter')fazerLogin()">
+    <button class="btn-primary" onclick="fazerLogin()">Entrar</button>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="viewApp" style="display:none">
+<nav>
+  <div class="brand">JR Lira</div>
+  <div class="nav-user" id="navUser"></div>
+  <button class="btn-nav" onclick="sair()">Sair</button>
+</nav>
+<div class="container">
+  <div id="msgGlobal" style="display:none"></div>
+
+  <div class="tab-bar">
+    <button class="tab active" id="tabNovoPedido" onclick="abrirTab('novo')">Novo Pedido</button>
+    <button class="tab" id="tabMeusPedidos" onclick="abrirTab('lista')">Meus Pedidos</button>
+  </div>
+
+  <!-- ABA: NOVO PEDIDO -->
+  <div id="abaNovoP">
+    <div class="card">
+      <div class="card-title">Dados do Pedido</div>
+      <label>Loja destino *</label>
+      <select id="lojaId" style="margin-bottom:12px"><option value="">Selecione...</option></select>
+      <label>Condição de pagamento *</label>
+      <select id="condicaoPgto" style="margin-bottom:4px">
+        <option value="">Selecione...</option>
+        <option value="15">15 dias</option>
+        <option value="30">30 dias</option>
+        <option value="45">45 dias</option>
+        <option value="60">60 dias</option>
+      </select>
+      <div class="aviso">⚠️ Boleto sempre em cota única — é proibido parcelar.</div>
+      <label style="margin-top:12px">Observações</label>
+      <input type="text" id="observacoes" placeholder="(opcional)">
+    </div>
+
+    <div class="card">
+      <div class="card-title">Adicionar Produto</div>
+      <label>Código de barras</label>
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <input type="text" id="barcode" placeholder="Escaneie ou digite" style="margin:0">
+        <button class="btn-ghost btn-sm" onclick="buscarProduto()">Buscar</button>
+      </div>
+      <div id="produtoInfo" style="display:none;background:#0f172a;border-radius:8px;padding:10px;margin-bottom:10px;font-size:13px"></div>
+      <label>Descrição *</label>
+      <input type="text" id="itemDesc" placeholder="Descrição do produto" style="margin-bottom:10px">
+      <div class="row2" style="margin-bottom:10px">
+        <div>
+          <label>Quantidade *</label>
+          <input type="number" id="itemQtde" min="0.001" step="0.001" placeholder="0" oninput="calcItem()">
+        </div>
+        <div>
+          <label>Preço unitário *</label>
+          <input type="number" id="itemPreco" min="0.01" step="0.01" placeholder="0,00" oninput="calcItem()">
+        </div>
+      </div>
+      <div id="itemTotalPreview" style="text-align:right;font-size:13px;color:#4ade80;margin-bottom:10px"></div>
+      <button class="btn-primary" onclick="adicionarItem()" style="width:auto;padding:8px 20px">+ Adicionar item</button>
+    </div>
+
+    <div class="card" id="cardItens" style="display:none">
+      <div class="card-title">Itens do Pedido</div>
+      <div id="listaItens"></div>
+      <div class="total-box">
+        <div class="label">Total do Pedido</div>
+        <div class="valor" id="totalPedido">R$ 0,00</div>
+      </div>
+      <button class="btn-primary" style="margin-top:16px" onclick="enviarPedido()">Enviar para validação</button>
+    </div>
+  </div>
+
+  <!-- ABA: MEUS PEDIDOS -->
+  <div id="abaListaP" style="display:none">
+    <div class="card">
+      <div class="card-title">Meus Pedidos</div>
+      <div id="listaPedidos"><div style="color:#475569;text-align:center;padding:20px">Carregando...</div></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<script>
+const API = '';
+let TOKEN_VEND = localStorage.getItem('vend_token');
+let pedidoAtual = null;
+let itensLocais = [];
+let produtoNovoFlag = false;
+
+// ── AUTH ──────────────────────────────────────────────────────────
+async function fazerLogin() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const senha = document.getElementById('loginSenha').value;
+  if (!email || !senha) return;
+  try {
+    const r = await fetch(`${API}/api/vendedores/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, senha })
+    });
+    const data = await r.json();
+    if (!r.ok) { document.getElementById('loginErr').textContent = data.erro; document.getElementById('loginErr').style.display='block'; return; }
+    localStorage.setItem('vend_token', data.token);
+    localStorage.setItem('vend_nome', data.nome);
+    localStorage.setItem('vend_fornecedor', data.fornecedor);
+    TOKEN_VEND = data.token;
+    iniciarApp(data.nome, data.fornecedor);
+  } catch { document.getElementById('loginErr').textContent = 'Erro de conexão.'; document.getElementById('loginErr').style.display='block'; }
+}
+
+function sair() {
+  localStorage.removeItem('vend_token');
+  localStorage.removeItem('vend_nome');
+  localStorage.removeItem('vend_fornecedor');
+  location.reload();
+}
+
+function authHeaders() { return { Authorization: `Bearer ${TOKEN_VEND}` }; }
+
+function iniciarApp(nome, fornecedor) {
+  document.getElementById('viewLogin').style.display = 'none';
+  document.getElementById('viewApp').style.display = 'block';
+  document.getElementById('navUser').textContent = `${nome} — ${fornecedor}`;
+  carregarLojas();
+}
+
+// ── TABS ──────────────────────────────────────────────────────────
+function abrirTab(tab) {
+  document.getElementById('abaNovoP').style.display = tab === 'novo' ? 'block' : 'none';
+  document.getElementById('abaListaP').style.display = tab === 'lista' ? 'block' : 'none';
+  document.getElementById('tabNovoPedido').classList.toggle('active', tab === 'novo');
+  document.getElementById('tabMeusPedidos').classList.toggle('active', tab === 'lista');
+  if (tab === 'lista') carregarMeusPedidos();
+}
+
+// ── LOJAS ─────────────────────────────────────────────────────────
+async function carregarLojas() {
+  try {
+    const r = await fetch(`${API}/api/vendedores/lojas`, { headers: authHeaders() });
+    const lojas = await r.json();
+    const sel = document.getElementById('lojaId');
+    sel.innerHTML = '<option value="">Selecione...</option>' +
+      lojas.map(l => `<option value="${l.id}">${l.nome}</option>`).join('');
+  } catch {}
+}
+
+// ── PRODUTO ───────────────────────────────────────────────────────
+async function buscarProduto() {
+  const bc = document.getElementById('barcode').value.trim();
+  if (!bc) return;
+  produtoNovoFlag = false;
+  document.getElementById('produtoInfo').style.display = 'none';
+  try {
+    const r = await fetch(`${API}/api/vendedores/produto/${encodeURIComponent(bc)}`, { headers: authHeaders() });
+    const data = await r.json();
+    if (r.ok && data.encontrado) {
+      document.getElementById('itemDesc').value = data.descricao || '';
+      if (data.preco) document.getElementById('itemPreco').value = parseFloat(data.preco).toFixed(2);
+      document.getElementById('produtoInfo').innerHTML = `<span style="color:#4ade80">✓ Produto encontrado: <strong>${data.descricao}</strong></span>`;
+      document.getElementById('produtoInfo').style.display = 'block';
+    } else {
+      produtoNovoFlag = true;
+      document.getElementById('itemDesc').value = '';
+      document.getElementById('produtoInfo').innerHTML = `<span style="color:#f97316">⚠ Produto não encontrado. Informe a descrição manualmente. <span class="badge-novo">NOVO</span></span>`;
+      document.getElementById('produtoInfo').style.display = 'block';
+    }
+    calcItem();
+  } catch {}
+}
+
+function calcItem() {
+  const q = parseFloat(document.getElementById('itemQtde').value) || 0;
+  const p = parseFloat(document.getElementById('itemPreco').value) || 0;
+  const total = q * p;
+  document.getElementById('itemTotalPreview').textContent = total > 0 ? `Total: R$ ${total.toFixed(2).replace('.',',')}` : '';
+}
+
+// ── ITENS ─────────────────────────────────────────────────────────
+async function adicionarItem() {
+  const loja_id = document.getElementById('lojaId').value;
+  const condicao = document.getElementById('condicaoPgto').value;
+  const desc = document.getElementById('itemDesc').value.trim();
+  const qtde = parseFloat(document.getElementById('itemQtde').value);
+  const preco = parseFloat(document.getElementById('itemPreco').value);
+
+  if (!loja_id) return showMsg('Selecione a loja antes de adicionar itens.', 'err');
+  if (!condicao) return showMsg('Selecione a condição de pagamento.', 'err');
+  if (!desc || !qtde || !preco) return showMsg('Descrição, quantidade e preço são obrigatórios.', 'err');
+
+  if (!pedidoAtual) {
+    const r = await fetch(`${API}/api/vendedores/pedido`, {
+      method: 'POST',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ loja_id, condicao_pagamento: condicao, observacoes: document.getElementById('observacoes').value.trim() })
+    });
+    const d = await r.json();
+    if (!r.ok) return showMsg(d.erro, 'err');
+    pedidoAtual = d.id;
+  }
+
+  const bc = document.getElementById('barcode').value.trim();
+  const r2 = await fetch(`${API}/api/vendedores/pedido/${pedidoAtual}/item`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ codigo_barras: bc || null, descricao: desc, quantidade: qtde, preco_unitario: preco, produto_novo: produtoNovoFlag })
+  });
+  const d2 = await r2.json();
+  if (!r2.ok) return showMsg(d2.erro, 'err');
+
+  itensLocais.push({ id: d2.id, codigo_barras: bc, descricao: desc, quantidade: qtde, preco_unitario: preco, valor_total: qtde * preco, produto_novo: produtoNovoFlag });
+  renderItens();
+
+  // Limpa campos
+  document.getElementById('barcode').value = '';
+  document.getElementById('itemDesc').value = '';
+  document.getElementById('itemQtde').value = '';
+  document.getElementById('itemPreco').value = '';
+  document.getElementById('produtoInfo').style.display = 'none';
+  document.getElementById('itemTotalPreview').textContent = '';
+  produtoNovoFlag = false;
+}
+
+function renderItens() {
+  const total = itensLocais.reduce((s, i) => s + i.valor_total, 0);
+  document.getElementById('cardItens').style.display = itensLocais.length ? 'block' : 'none';
+  document.getElementById('listaItens').innerHTML = itensLocais.map((item, idx) => `
+    <div class="item-row">
+      <div class="item-info">
+        <div class="item-desc">${item.produto_novo ? '<span class="badge-novo">NOVO</span> ' : ''}${item.descricao}</div>
+        <div class="item-sub">${item.codigo_barras || 'S/código'} &nbsp;|&nbsp; ${item.quantidade} × R$ ${item.preco_unitario.toFixed(2).replace('.',',')}</div>
+      </div>
+      <div class="item-total">R$ ${item.valor_total.toFixed(2).replace('.',',')}</div>
+      <button class="btn-danger" onclick="removerItem(${idx}, ${item.id})">✕</button>
+    </div>
+  `).join('');
+  document.getElementById('totalPedido').textContent = `R$ ${total.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.')}`;
+}
+
+async function removerItem(idx, itemId) {
+  await fetch(`${API}/api/vendedores/pedido/${pedidoAtual}/item/${itemId}`, { method: 'DELETE', headers: authHeaders() });
+  itensLocais.splice(idx, 1);
+  renderItens();
+}
+
+async function enviarPedido() {
+  if (!pedidoAtual) return showMsg('Adicione itens ao pedido.', 'err');
+  if (!confirm('Enviar o pedido para validação do comprador?')) return;
+  const r = await fetch(`${API}/api/vendedores/pedido/${pedidoAtual}/enviar`, { method: 'POST', headers: authHeaders() });
+  const data = await r.json();
+  if (!r.ok) return showMsg(data.erro, 'err');
+  showMsg(`Pedido ${data.numero_pedido} enviado com sucesso!`, 'ok');
+  pedidoAtual = null;
+  itensLocais = [];
+  renderItens();
+  document.getElementById('lojaId').value = '';
+  document.getElementById('condicaoPgto').value = '';
+  document.getElementById('observacoes').value = '';
+}
+
+// ── MEUS PEDIDOS ──────────────────────────────────────────────────
+async function carregarMeusPedidos() {
+  const el = document.getElementById('listaPedidos');
+  el.innerHTML = '<div style="color:#475569;text-align:center;padding:20px">Carregando...</div>';
+  try {
+    const r = await fetch(`${API}/api/vendedores/meus-pedidos`, { headers: authHeaders() });
+    const pedidos = await r.json();
+    if (!pedidos.length) { el.innerHTML = '<div style="color:#475569;text-align:center;padding:20px">Nenhum pedido encontrado.</div>'; return; }
+    const STATUS = { rascunho:'Rascunho', aguardando_validacao:'Aguardando validação', validado:'Validado', vinculado:'Vinculado à NF' };
+    el.innerHTML = pedidos.map(p => `
+      <div class="pedido-row">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+          <span class="pedido-num">${p.numero_pedido || '#' + p.id}</span>
+          <span class="pedido-status s-${p.status}">${STATUS[p.status] || p.status}</span>
+        </div>
+        <div style="font-size:12px;color:#94a3b8">${p.loja_nome || '—'} &nbsp;|&nbsp; ${p.condicao_pagamento || '?'} dias &nbsp;|&nbsp; R$ ${parseFloat(p.valor_total||0).toFixed(2).replace('.',',')}</div>
+        <div style="font-size:11px;color:#475569;margin-top:2px">${p.enviado_em ? 'Enviado em ' + new Date(p.enviado_em).toLocaleDateString('pt-BR') : 'Não enviado'}</div>
+      </div>
+    `).join('');
+  } catch { el.innerHTML = '<div style="color:#f87171;text-align:center;padding:20px">Erro ao carregar.</div>'; }
+}
+
+// ── UTIL ──────────────────────────────────────────────────────────
+function showMsg(txt, tipo) {
+  const el = document.getElementById('msgGlobal');
+  el.className = `msg msg-${tipo}`;
+  el.textContent = txt;
+  el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', 4000);
+}
+
+// ── INIT ──────────────────────────────────────────────────────────
+if (TOKEN_VEND) {
+  const nome = localStorage.getItem('vend_nome') || '';
+  const forn = localStorage.getItem('vend_fornecedor') || '';
+  iniciarApp(nome, forn);
+}
+</script>
+</body>
+</html>
