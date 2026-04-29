@@ -173,20 +173,20 @@
         <name2/>
         <field2/>
       </key>
-      <!-- campos a inserir/atualizar -->
+      <!-- campos a inserir/atualizar: <name>=campo do stream, <rename>=coluna do banco -->
       <value>
-        <name>razao_social</name>
-        <rename>NOME</rename>
+        <name>NOME</name>
+        <rename>razao_social</rename>
         <update>N</update>
       </value>
       <value>
-        <name>fantasia</name>
-        <rename>FANTASIA</rename>
+        <name>FANTASIA</name>
+        <rename>fantasia</rename>
         <update>Y</update>
       </value>
       <value>
-        <name>cnpj</name>
-        <rename>CPFCNPJ</rename>
+        <name>CPFCNPJ</name>
+        <rename>cnpj</rename>
         <update>Y</update>
       </value>
     </lookup>
