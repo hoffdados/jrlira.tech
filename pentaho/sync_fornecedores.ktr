@@ -2,21 +2,21 @@
 <transformation>
   <info>
     <name>sync_fornecedores</name>
-    <description>Sincroniza fornecedores do ERP (Firebird) para Railway PostgreSQL (jrlira-tech)</description>
+    <description>Sincroniza fornecedores do ERP (Firebird) para Supabase — recebe LOJA_ID como parâmetro</description>
     <extended_description/>
     <trans_version/>
     <trans_type>Normal</trans_type>
     <directory>/</directory>
     <parameters>
+      <parameter>
+        <name>LOJA_ID</name>
+        <default_value>1</default_value>
+        <description>ID da loja</description>
+      </parameter>
     </parameters>
     <log>
       <trans-log-table>
-        <connection/>
-        <schema/>
-        <table/>
-        <size_limit_lines/>
-        <interval/>
-        <timeout_days/>
+        <connection/><schema/><table/><size_limit_lines/><interval/><timeout_days/>
         <field><id>ID_BATCH</id><enabled>Y</enabled><name>ID_BATCH</name></field>
         <field><id>CHANNEL_ID</id><enabled>Y</enabled><name>CHANNEL_ID</name></field>
         <field><id>TRANSNAME</id><enabled>Y</enabled><name>TRANSNAME</name></field>
@@ -43,13 +43,7 @@
       <step-log-table><connection/><schema/><table/><timeout_days/></step-log-table>
       <metrics-log-table><connection/><schema/><table/><timeout_days/></metrics-log-table>
     </log>
-    <maxdate>
-      <connection/>
-      <table/>
-      <field/>
-      <offset>0.0</offset>
-      <maxdiff>0.0</maxdiff>
-    </maxdate>
+    <maxdate><connection/><table/><field/><offset>0.0</offset><maxdiff>0.0</maxdiff></maxdate>
     <size_rowset>10000</size_rowset>
     <sleep_time_empty>50</sleep_time_empty>
     <sleep_time_full>50</sleep_time_full>
@@ -121,7 +115,12 @@
   <order>
     <hop>
       <from>Leitura Fornecedores</from>
-      <to>Gravar Fornecedores Railway</to>
+      <to>Set loja_id</to>
+      <enabled>Y</enabled>
+    </hop>
+    <hop>
+      <from>Set loja_id</from>
+      <to>Gravar Fornecedores Supabase</to>
       <enabled>Y</enabled>
     </hop>
   </order>
@@ -152,9 +151,42 @@
   </step>
 
   <step>
-    <name>Gravar Fornecedores Railway</name>
+    <name>Set loja_id</name>
+    <type>ScriptValueMod</type>
+    <description>Injeta loja_id a partir do parâmetro LOJA_ID</description>
+    <distribute>Y</distribute>
+    <custom_distribution/>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <compatible>Y</compatible>
+    <optimizationLevel>9</optimizationLevel>
+    <jsScripts>
+      <jsScript>
+        <jsScript_type>0</jsScript_type>
+        <jsScript_name>Script 1</jsScript_name>
+        <jsScript_script>var loja_id = parseInt( getVariable("LOJA_ID", "1"), 10 );</jsScript_script>
+      </jsScript>
+    </jsScripts>
+    <fields>
+      <field>
+        <name>loja_id</name>
+        <rename>loja_id</rename>
+        <type>Integer</type>
+        <length>-1</length>
+        <precision>-1</precision>
+        <replace>N</replace>
+      </field>
+    </fields>
+    <attributes/>
+    <cluster_schema/>
+    <remotesteps><input/><output/></remotesteps>
+    <GUI><xloc>304</xloc><yloc>128</yloc><draw>Y</draw></GUI>
+  </step>
+
+  <step>
+    <name>Gravar Fornecedores Supabase</name>
     <type>InsertUpdate</type>
-    <description>Upsert em fornecedores (chave: razao_social)</description>
+    <description>Upsert em fornecedores (chave: razao_social + loja_id)</description>
     <distribute>Y</distribute>
     <custom_distribution/>
     <copies>1</copies>
@@ -165,7 +197,7 @@
     <commit>100</commit>
     <update_bypassed>N</update_bypassed>
     <lookup>
-      <!-- chave de lookup: razao_social no banco = NOME no fluxo -->
+      <!-- chaves de lookup: composta razao_social + loja_id -->
       <key>
         <name>razao_social</name>
         <field>NOME</field>
@@ -173,7 +205,14 @@
         <name2/>
         <field2/>
       </key>
-      <!-- campos a inserir/atualizar: <name>=campo do stream, <rename>=coluna do banco -->
+      <key>
+        <name>loja_id</name>
+        <field>loja_id</field>
+        <condition>=</condition>
+        <name2/>
+        <field2/>
+      </key>
+      <!-- valores: <name>=campo do stream, <rename>=coluna do banco -->
       <value>
         <name>NOME</name>
         <rename>razao_social</rename>
@@ -189,11 +228,16 @@
         <rename>cnpj</rename>
         <update>Y</update>
       </value>
+      <value>
+        <name>loja_id</name>
+        <rename>loja_id</rename>
+        <update>N</update>
+      </value>
     </lookup>
     <attributes/>
     <cluster_schema/>
     <remotesteps><input/><output/></remotesteps>
-    <GUI><xloc>400</xloc><yloc>128</yloc><draw>Y</draw></GUI>
+    <GUI><xloc>512</xloc><yloc>128</yloc><draw>Y</draw></GUI>
   </step>
 
   <step_error_handling/>
