@@ -331,7 +331,7 @@ async function carregarNotasVinculo() {
   el.innerHTML = '<div style="color:#475569;text-align:center;padding:16px">Carregando...</div>';
   try {
     // Busca notas importadas sem pedido vinculado, do mesmo fornecedor
-    const r = await fetch(`${API}/api/notas?status=importada&fornecedor_cnpj=${encodeURIComponent(pedidoAtual?.fornecedor_cnpj||'')}`, { headers: h() });
+    const r = await fetch(`${API}/api/notas?status=importada&sem_pedido=1&fornecedor_cnpj=${encodeURIComponent(pedidoAtual?.fornecedor_cnpj||'')}`, { headers: h() });
     const notas = await r.json();
     if (!notas.length) { el.innerHTML = '<div style="color:#475569;text-align:center;padding:16px">Nenhuma nota importada disponível para vinculação.<br><small>Importe o XML primeiro em Notas → Cadastro.</small></div>'; return; }
     notaSelecionadaId = null;

@@ -132,12 +132,31 @@ router.post('/importar', autenticar, upload.single('xml'), async (req, res) => {
 router.get('/', autenticar, async (req, res) => {
   try {
     const { perfil, lojas } = req.usuario;
-    const needs_filter = perfil !== 'admin' && perfil !== 'rh';
-    let filtroLoja = '';
+    const needs_filter = perfil !== 'admin' && perfil !== 'rh' && perfil !== 'comprador';
+    const params = [];
+    const conds = [];
+
     if (needs_filter && lojas?.length) {
       const ids = lojas.map(Number).filter(n => !isNaN(n));
-      if (ids.length) filtroLoja = `AND n.loja_id = ANY(ARRAY[${ids.join(',')}]::int[])`;
+      if (ids.length) conds.push(`n.loja_id = ANY(ARRAY[${ids.join(',')}]::int[])`);
     }
+
+    if (req.query.status) {
+      params.push(req.query.status);
+      conds.push(`n.status = $${params.length}`);
+    }
+
+    if (req.query.fornecedor_cnpj) {
+      params.push(req.query.fornecedor_cnpj.replace(/\D/g, ''));
+      conds.push(`REGEXP_REPLACE(n.fornecedor_cnpj, '\\D', '', 'g') = $${params.length}`);
+    }
+
+    if (req.query.sem_pedido === '1') {
+      conds.push(`n.pedido_id IS NULL`);
+    }
+
+    const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
+
     const notas = await query(`
       SELECT n.*,
         COUNT(i.id)::int AS total_itens,
@@ -145,10 +164,10 @@ router.get('/', autenticar, async (req, res) => {
         COUNT(CASE WHEN i.status_preco = 'divergente' THEN 1 END)::int AS total_divergentes
       FROM notas_entrada n
       LEFT JOIN itens_nota i ON i.nota_id = n.id
-      WHERE 1=1 ${filtroLoja}
+      ${where}
       GROUP BY n.id
       ORDER BY n.importado_em DESC
-    `);
+    `, params);
     res.json(notas);
   } catch (err) {
     res.status(500).json({ erro: err.message });
