@@ -53,6 +53,7 @@ td{padding:9px 12px;vertical-align:middle}
 .b-em_conferencia{background:#1a4731;color:#34d399}
 .b-em_auditoria{background:#451a03;color:#fbbf24}
 .b-fechada{background:#1e293b;color:#64748b}
+.b-em_validacao_comercial{background:#312e81;color:#a5b4fc}
 .ean-remap{display:flex;gap:6px;align-items:center}
 .ean-remap input{background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;padding:5px 8px;font-size:12px;width:140px}
 .ean-remap input:focus{outline:none;border-color:#38bdf8}
@@ -264,7 +265,7 @@ async function carregarNotas() {
 }
 
 function labelStatus(s) {
-  return { importada: 'Importada', em_conferencia: 'Em Conferência', em_auditoria: 'Em Auditoria', fechada: 'Fechada' }[s] || s;
+  return { importada: 'Importada', em_conferencia: 'Em Conferência', em_auditoria: 'Em Auditoria', fechada: 'Fechada', em_validacao_comercial: 'Validação Comercial' }[s] || s;
 }
 
 async function importarXML(file) {
@@ -318,11 +319,14 @@ async function abrirNota(id) {
     const temNovos = itens.some(i => i.produto_novo);
     document.getElementById('legendaNovos').style.display = temNovos ? 'block' : 'none';
     const wrapLib = document.getElementById('wrapLiberar');
+    const emValidacao = nota.status === 'em_validacao_comercial';
     wrapLib.style.display = nota.status === 'importada' ? 'flex' : 'none';
     document.getElementById('btnExcluir').style.display = nota.status === 'importada' ? 'inline-block' : 'none';
     document.getElementById('btnRelatorio').style.display = nota.status === 'fechada' ? 'inline-block' : 'none';
     document.getElementById('statusMsg').textContent = nota.status === 'em_conferencia' ? 'Aguardando conferência do estoque' :
-      nota.status === 'em_auditoria' ? 'Em auditoria' : nota.status === 'fechada' ? `Fechada em ${fmtData(nota.fechado_em)}` : '';
+      nota.status === 'em_auditoria' ? 'Em auditoria' :
+      nota.status === 'fechada' ? `Fechada em ${fmtData(nota.fechado_em)}` :
+      emValidacao ? 'Aguardando validação comercial do comprador' : '';
 
     renderItens(itens, nota.status);
   } catch (e) { showMsg(e.message, 'err'); }
