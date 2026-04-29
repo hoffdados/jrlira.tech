@@ -19,6 +19,45 @@ function autVendedor(req, res, next) {
 
 // ── CADASTRO PÚBLICO ──────────────────────────────────────────────
 
+// GET /api/vendedores/buscar-fornecedor?cnpj=XX — público, sem autenticação
+router.get('/buscar-fornecedor', async (req, res) => {
+  try {
+    const cnpj = (req.query.cnpj || '').replace(/\D/g, '');
+    if (cnpj.length < 11) return res.status(400).json({ erro: 'CNPJ inválido' });
+    const rows = await pool.query(
+      `SELECT id, razao_social, fantasia FROM fornecedores
+       WHERE REGEXP_REPLACE(cnpj, '\\D', '', 'g') = $1
+       ORDER BY id LIMIT 1`,
+      [cnpj]
+    );
+    if (!rows.length) return res.status(404).json({ erro: 'Fornecedor não encontrado' });
+    res.json({ id: rows[0].id, fantasia: rows[0].fantasia, razao_social: rows[0].razao_social });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
+// POST /api/vendedores/cadastro — público, sem token
+router.post('/cadastro', upload.single('foto'), async (req, res) => {
+  try {
+    const { fornecedor_id, nome, cpf, email, telefone, nome_gerente, telefone_gerente } = req.body;
+    if (!fornecedor_id || !nome || !email || !telefone)
+      return res.status(400).json({ erro: 'Nome, e-mail e telefone são obrigatórios' });
+    const fRows = await pool.query('SELECT id FROM fornecedores WHERE id=$1', [fornecedor_id]);
+    if (!fRows.length) return res.status(404).json({ erro: 'Fornecedor não encontrado' });
+    const dup = await pool.query(
+      `SELECT id FROM vendedores WHERE email=$1 AND fornecedor_id=$2 AND status NOT IN ('rejeitado','inativo')`,
+      [email, fornecedor_id]
+    );
+    if (dup.length) return res.status(409).json({ erro: 'Cadastro já enviado para este fornecedor. Aguarde aprovação.' });
+    await pool.query(
+      `INSERT INTO vendedores (fornecedor_id, nome, cpf, email, telefone, nome_gerente, telefone_gerente, status, foto_data, foto_mime)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'pendente',$8,$9)`,
+      [fornecedor_id, nome, cpf || null, email, telefone, nome_gerente || null, telefone_gerente || null,
+       req.file ? req.file.buffer : null, req.file ? req.file.mimetype : null]
+    );
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
 // GET /api/vendedores/cadastro/:token — valida token e retorna fornecedor
 router.get('/cadastro/:token', async (req, res) => {
   try {

@@ -20,14 +20,15 @@ input:focus{outline:none;border-color:#38bdf8}
 .btn-foto{background:#334155;color:#94a3b8;border:none;border-radius:6px;padding:7px 14px;font-size:12px;cursor:pointer}
 .btn-primary{width:100%;background:#0ea5e9;color:#fff;border:none;border-radius:8px;padding:12px;font-size:15px;font-weight:700;cursor:pointer;margin-top:4px}
 .btn-primary:hover{background:#0284c7}
-.spinner{width:36px;height:36px;border:4px solid #334155;border-top-color:#38bdf8;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto}
-@keyframes spin{to{transform:rotate(360deg)}}
+.btn-ghost{background:none;border:none;color:#64748b;font-size:12px;cursor:pointer;margin-top:8px;width:100%;text-align:center}
 .msg-ok{color:#4ade80;text-align:center;font-size:15px;font-weight:700}
-.msg-err{color:#f87171;text-align:center;font-size:13px}
+.msg-err{color:#f87171;text-align:center;font-size:13px;margin-top:8px}
 .icon-big{font-size:52px;text-align:center}
-#viewLoading,#viewErro,#viewForm,#viewOk{display:none;flex-direction:column;gap:12px}
-.active{display:flex!important}
 .aviso{background:#431407;border-radius:8px;padding:10px 14px;font-size:12px;color:#f97316;text-align:center}
+#viewCnpj,#viewForm,#viewOk{display:none;flex-direction:column;gap:12px}
+.active{display:flex!important}
+.spinner{display:inline-block;width:16px;height:16px;border:3px solid #334155;border-top-color:#38bdf8;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-left:8px}
+@keyframes spin{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
@@ -35,19 +36,20 @@ input:focus{outline:none;border-color:#38bdf8}
   <div class="logo">JR Lira Tech</div>
   <div class="subtitle">Portal de Fornecedores</div>
 
-  <div id="viewLoading" class="active">
-    <div class="spinner"></div>
-    <div style="text-align:center;font-size:13px;color:#64748b">Verificando link...</div>
-  </div>
-
-  <div id="viewErro">
-    <div class="icon-big">⚠️</div>
-    <div class="msg-err" id="msgErro">Link inválido ou expirado.</div>
-  </div>
-
-  <div id="viewForm">
+  <!-- Etapa 1: CNPJ -->
+  <div id="viewCnpj" class="active">
     <h2>Cadastro de Vendedor</h2>
+    <label>CNPJ do seu fornecedor *</label>
+    <input type="text" id="cnpjInput" placeholder="00.000.000/0000-00" maxlength="18" oninput="mascaraCnpj(this)">
+    <button class="btn-primary" onclick="buscarFornecedor()">Continuar</button>
+    <div id="errCnpj" class="msg-err" style="display:none"></div>
+  </div>
+
+  <!-- Etapa 2: Formulário -->
+  <div id="viewForm">
+    <h2>Seus dados</h2>
     <div class="fornecedor-badge" id="fornecedorNome"></div>
+    <input type="hidden" id="fornecedorId">
 
     <div class="foto-wrap">
       <img id="fotoPreview" class="foto-preview" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='38' r='18' fill='%23475569'/%3E%3Cellipse cx='50' cy='85' rx='30' ry='20' fill='%23475569'/%3E%3C/svg%3E" alt="Foto">
@@ -76,9 +78,11 @@ input:focus{outline:none;border-color:#38bdf8}
     <div class="aviso">⚠️ Após o envio, aguarde a aprovação do comprador. Você receberá um e-mail com seu login e senha de acesso.</div>
 
     <button class="btn-primary" onclick="enviar()">Enviar cadastro</button>
+    <button class="btn-ghost" onclick="show('viewCnpj')">← Voltar</button>
     <div id="errForm" class="msg-err" style="display:none"></div>
   </div>
 
+  <!-- Etapa 3: Sucesso -->
   <div id="viewOk">
     <div class="icon-big">✅</div>
     <div class="msg-ok">Cadastro enviado!</div>
@@ -87,14 +91,21 @@ input:focus{outline:none;border-color:#38bdf8}
 </div>
 
 <script>
-const params = new URLSearchParams(location.search);
-const TOKEN = params.get('token');
 let fotoFile = null;
 
 function show(id) {
-  ['viewLoading','viewErro','viewForm','viewOk'].forEach(v => {
+  ['viewCnpj','viewForm','viewOk'].forEach(v => {
     document.getElementById(v).classList.toggle('active', v === id);
   });
+}
+
+function mascaraCnpj(el) {
+  let v = el.value.replace(/\D/g, '').slice(0, 14);
+  if (v.length > 12) v = v.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{0,2})/, '$1.$2.$3/$4-$5');
+  else if (v.length > 8) v = v.replace(/^(\d{2})(\d{3})(\d{3})(\d{0,4})/, '$1.$2.$3/$4');
+  else if (v.length > 5) v = v.replace(/^(\d{2})(\d{3})(\d{0,3})/, '$1.$2.$3');
+  else if (v.length > 2) v = v.replace(/^(\d{2})(\d{0,3})/, '$1.$2');
+  el.value = v;
 }
 
 function previewFoto(input) {
@@ -103,31 +114,43 @@ function previewFoto(input) {
   document.getElementById('fotoPreview').src = URL.createObjectURL(fotoFile);
 }
 
-async function init() {
-  if (!TOKEN) { show('viewErro'); document.getElementById('msgErro').textContent = 'Link inválido.'; return; }
+async function buscarFornecedor() {
+  const errEl = document.getElementById('errCnpj');
+  errEl.style.display = 'none';
+  const cnpj = document.getElementById('cnpjInput').value.replace(/\D/g, '');
+  if (cnpj.length < 11) { errEl.textContent = 'CNPJ inválido.'; errEl.style.display = 'block'; return; }
+  const btn = document.querySelector('#viewCnpj .btn-primary');
+  btn.innerHTML = 'Buscando<span class="spinner"></span>';
+  btn.disabled = true;
   try {
-    const r = await fetch(`/api/vendedores/cadastro/${TOKEN}`);
+    const r = await fetch(`/api/vendedores/buscar-fornecedor?cnpj=${cnpj}`);
     const data = await r.json();
-    if (!r.ok) { show('viewErro'); document.getElementById('msgErro').textContent = data.erro; return; }
-    document.getElementById('fornecedorNome').textContent = data.fornecedor;
+    if (!r.ok) { errEl.textContent = data.erro || 'Fornecedor não encontrado.'; errEl.style.display = 'block'; return; }
+    document.getElementById('fornecedorNome').textContent = data.fantasia || data.razao_social;
+    document.getElementById('fornecedorId').value = data.id;
     show('viewForm');
   } catch {
-    show('viewErro');
-    document.getElementById('msgErro').textContent = 'Erro de conexão.';
+    errEl.textContent = 'Erro de conexão. Tente novamente.';
+    errEl.style.display = 'block';
+  } finally {
+    btn.innerHTML = 'Continuar';
+    btn.disabled = false;
   }
 }
 
 async function enviar() {
+  const errEl = document.getElementById('errForm');
+  errEl.style.display = 'none';
   const nome = document.getElementById('nome').value.trim();
   const email = document.getElementById('email').value.trim();
   const telefone = document.getElementById('telefone').value.trim();
   if (!nome || !email || !telefone) {
-    document.getElementById('errForm').textContent = 'Nome, e-mail e telefone são obrigatórios.';
-    document.getElementById('errForm').style.display = 'block';
+    errEl.textContent = 'Nome, e-mail e telefone são obrigatórios.';
+    errEl.style.display = 'block';
     return;
   }
-  document.getElementById('errForm').style.display = 'none';
   const fd = new FormData();
+  fd.append('fornecedor_id', document.getElementById('fornecedorId').value);
   fd.append('nome', nome);
   fd.append('cpf', document.getElementById('cpf').value.trim());
   fd.append('email', email);
@@ -135,23 +158,22 @@ async function enviar() {
   fd.append('nome_gerente', document.getElementById('nome_gerente').value.trim());
   fd.append('telefone_gerente', document.getElementById('telefone_gerente').value.trim());
   if (fotoFile) fd.append('foto', fotoFile);
-
+  const btn = document.querySelector('#viewForm .btn-primary');
+  btn.innerHTML = 'Enviando<span class="spinner"></span>';
+  btn.disabled = true;
   try {
-    const r = await fetch(`/api/vendedores/cadastro/${TOKEN}`, { method: 'POST', body: fd });
+    const r = await fetch('/api/vendedores/cadastro', { method: 'POST', body: fd });
     const data = await r.json();
-    if (!r.ok) {
-      document.getElementById('errForm').textContent = data.erro;
-      document.getElementById('errForm').style.display = 'block';
-      return;
-    }
+    if (!r.ok) { errEl.textContent = data.erro; errEl.style.display = 'block'; return; }
     show('viewOk');
   } catch {
-    document.getElementById('errForm').textContent = 'Erro ao enviar. Tente novamente.';
-    document.getElementById('errForm').style.display = 'block';
+    errEl.textContent = 'Erro ao enviar. Tente novamente.';
+    errEl.style.display = 'block';
+  } finally {
+    btn.innerHTML = 'Enviar cadastro';
+    btn.disabled = false;
   }
 }
-
-init();
 </script>
 </body>
 </html>

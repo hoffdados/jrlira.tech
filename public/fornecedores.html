@@ -100,11 +100,9 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 1
         </div>
         <div style="margin-left:auto;display:flex;gap:8px">
           <button class="btn-ghost btn-sm" onclick="editarForn()">Editar</button>
-          <button class="btn-primary btn-sm" onclick="gerarLink()">Gerar link de cadastro</button>
+          <button class="btn-ghost btn-sm" onclick="copiarLinkCadastro()">📋 Link cadastro</button>
         </div>
       </div>
-
-      <div id="linkGerado" class="link-box"></div>
 
       <div class="section-title">Vendedores <span id="countVendedores" style="background:#334155;color:#94a3b8;padding:1px 8px;border-radius:10px;font-size:11px">0</span></div>
       <div id="listaVendedores"><div style="color:#475569;text-align:center;padding:16px">Nenhum vendedor.</div></div>
@@ -280,17 +278,10 @@ async function toggleVendador(id, ativo) {
   if (r.ok) { showMsg(ativo ? 'Vendedor ativado.' : 'Vendedor desativado.', 'ok'); carregarVendedores(fornSelecionado.id); }
 }
 
-async function gerarLink() {
-  if (!fornSelecionado) return;
-  const r = await fetch(`${API}/api/fornecedores/${fornSelecionado.id}/gerar-token`, { method:'POST', headers:h() });
-  const d = await r.json();
-  if (!r.ok) return showMsg(d.erro, 'err');
-  const box = document.getElementById('linkGerado');
-  box.textContent = d.link;
-  box.style.display = 'block';
-  await navigator.clipboard.writeText(d.link).catch(() => {});
-  showMsg('Link gerado e copiado para a área de transferência!', 'ok');
-  carregarVendedores(fornSelecionado.id);
+function copiarLinkCadastro() {
+  const link = `${location.origin}/vendedor-cadastro.html`;
+  navigator.clipboard.writeText(link).catch(() => {});
+  showMsg('Link copiado: ' + link, 'ok');
 }
 
 // ── MODAL FORNECEDOR ──────────────────────────────────────────────
