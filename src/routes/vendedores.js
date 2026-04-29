@@ -116,7 +116,7 @@ router.post('/login', async (req, res) => {
     const rows = await pool.query(
       `SELECT v.*, f.razao_social, f.fantasia FROM vendedores v
        JOIN fornecedores f ON f.id = v.fornecedor_id
-       WHERE v.email=$1`,
+       WHERE LOWER(v.email)=LOWER($1)`,
       [email]
     );
     if (!rows.length) return res.status(401).json({ erro: 'Credenciais inválidas' });
