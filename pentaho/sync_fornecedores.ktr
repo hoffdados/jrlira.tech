@@ -136,7 +136,7 @@
     <copies>1</copies>
     <partitioning><method>none</method><schema_name/></partitioning>
     <connection>EcoCentauro_Local</connection>
-    <sql>SELECT NOME AS razao_social, FANTASIA AS fantasia, CPFCNPJ AS cnpj FROM TPAGFORNECEDOR</sql>
+    <sql>SELECT NOME AS razao_social, FANTASIA AS fantasia, CPFCNPJ AS cnpj FROM TPAGFORNECEDOR WHERE NOME IS NOT NULL AND TRIM(NOME) &lt;&gt; ''</sql>
     <limit>0</limit>
     <lookup/>
     <execute_each_row>N</execute_each_row>
