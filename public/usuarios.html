@@ -310,20 +310,23 @@ async function acFetch(q) {
     });
     const data = await r.json();
     if (!r.ok || !Array.isArray(data) || !data.length) { acList.style.display = 'none'; return; }
-    acList.innerHTML = data.slice(0, 10).map(f => `
-      <div class="ac-item" onmousedown="acSelecionar(${JSON.stringify(f.nome)}, ${JSON.stringify(f.email || '')})">
+    acList.innerHTML = data.slice(0, 10).map(f => {
+      const nome = f.nome.replace(/"/g, '&quot;');
+      const email = (f.email || '').replace(/"/g, '&quot;');
+      return `<div class="ac-item" data-nome="${nome}" data-email="${email}" onmousedown="acSelecionarEl(this)">
         <div class="ac-nome">${f.nome}</div>
         ${f.email ? `<div class="ac-email">${f.email}</div>` : ''}
-      </div>
-    `).join('');
+      </div>`;
+    }).join('');
     acList.style.display = 'block';
   } catch(e) {
     acList.style.display = 'none';
   }
 }
 
-function acSelecionar(nome, email) {
-  acInput.value = nome;
+function acSelecionarEl(el) {
+  acInput.value = el.dataset.nome;
+  const email = el.dataset.email;
   if (email) document.getElementById('novoEmail').value = email;
   acList.style.display = 'none';
 }
