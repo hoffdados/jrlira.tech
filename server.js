@@ -213,6 +213,8 @@ async function initDB() {
     await client.query(`ALTER TABLE ponto_importacoes ADD COLUMN IF NOT EXISTS loja_id INTEGER`).catch(() => {});
     await client.query(`ALTER TABLE funcionarios ADD COLUMN IF NOT EXISTS foto_data BYTEA`).catch(() => {});
     await client.query(`ALTER TABLE funcionarios ADD COLUMN IF NOT EXISTS foto_mime VARCHAR(20)`).catch(() => {});
+    await client.query(`ALTER TABLE lojas ADD COLUMN IF NOT EXISTS cnpj VARCHAR(18)`).catch(() => {});
+    await client.query(`ALTER TABLE lojas ADD COLUMN IF NOT EXISTS ativo BOOLEAN DEFAULT TRUE`).catch(() => {});
 
     // ── PEDIDOS / FORNECEDORES ────────────────────────────────────
     await client.query(`
