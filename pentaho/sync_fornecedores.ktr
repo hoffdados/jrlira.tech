@@ -93,16 +93,15 @@
     </attributes>
   </connection>
 
-  <!-- ATENÇÃO: configure host/porta/banco/usuário/senha abaixo conforme o Railway -->
   <connection>
-    <name>Railway_JRLira</name>
-    <server>PREENCHER_HOST_RAILWAY</server>
+    <name>Supabase</name>
+    <server>aws-1-sa-east-1.pooler.supabase.com</server>
     <type>POSTGRESQL</type>
     <access>Native</access>
-    <database>railway</database>
-    <port>PREENCHER_PORTA</port>
-    <username>PREENCHER_USUARIO</username>
-    <password>PREENCHER_SENHA</password>
+    <database>postgres</database>
+    <port>6543</port>
+    <username>postgres.tdbagkexrtphgprjiwcc</username>
+    <password>Encrypted 2be98afc86ae6918bbe1ebb758cc2fd8c</password>
     <servername/>
     <data_tablespace/>
     <index_tablespace/>
@@ -110,7 +109,7 @@
       <attribute><code>EXTRA_OPTION_POSTGRESQL.prepareThreshold</code><attribute>0</attribute></attribute>
       <attribute><code>FORCE_IDENTIFIERS_TO_LOWERCASE</code><attribute>N</attribute></attribute>
       <attribute><code>FORCE_IDENTIFIERS_TO_UPPERCASE</code><attribute>N</attribute></attribute>
-      <attribute><code>PORT_NUMBER</code><attribute>PREENCHER_PORTA</attribute></attribute>
+      <attribute><code>PORT_NUMBER</code><attribute>6543</attribute></attribute>
       <attribute><code>QUOTE_ALL_FIELDS</code><attribute>N</attribute></attribute>
       <attribute><code>SUPPORTS_BOOLEAN_DATA_TYPE</code><attribute>Y</attribute></attribute>
       <attribute><code>SUPPORTS_TIMESTAMP_DATA_TYPE</code><attribute>Y</attribute></attribute>
@@ -160,7 +159,7 @@
     <custom_distribution/>
     <copies>1</copies>
     <partitioning><method>none</method><schema_name/></partitioning>
-    <connection>Railway_JRLira</connection>
+    <connection>Supabase</connection>
     <schema>public</schema>
     <table>fornecedores</table>
     <commit>100</commit>
