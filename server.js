@@ -21,6 +21,7 @@ app.use('/api/foto-upload', require('./src/routes/fotoUpload'));
 app.use('/api/fornecedores', require('./src/routes/fornecedores'));
 app.use('/api/vendedores', require('./src/routes/vendedores'));
 app.use('/api/pedidos', require('./src/routes/pedidos'));
+app.use('/api/cr', require('./src/routes/contas-receber'));
 
 // ── PÁGINAS ───────────────────────────────────────────────────────
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public/index.html')));
@@ -36,6 +37,10 @@ app.get('/fornecedores', (req, res) => res.sendFile(path.join(__dirname, 'public
 app.get('/pedidos-comprador', (req, res) => res.sendFile(path.join(__dirname, 'public/pedidos-comprador.html')));
 app.get('/vendedor-cadastro', (req, res) => res.sendFile(path.join(__dirname, 'public/vendedor-cadastro.html')));
 app.get('/vendedor', (req, res) => res.sendFile(path.join(__dirname, 'public/vendedor.html')));
+app.get('/notas-comprador', (req, res) => res.sendFile(path.join(__dirname, 'public/notas-comprador.html')));
+app.get('/sugestao-compras', (req, res) => res.sendFile(path.join(__dirname, 'public/sugestao-compras.html')));
+app.get('/contas-receber', (req, res) => res.sendFile(path.join(__dirname, 'public/contas-receber.html')));
+app.get('/preview-icons', (req, res) => res.sendFile(path.join(__dirname, 'public/preview-icons.html')));
 
 // ── INIT DB ───────────────────────────────────────────────────────
 async function initDB() {
@@ -184,8 +189,10 @@ async function initDB() {
         conferencia_id INTEGER REFERENCES conferencias_estoque(id) ON DELETE CASCADE,
         lote VARCHAR(100),
         validade DATE,
-        quantidade DECIMAL(12,4)
+        quantidade DECIMAL(12,4),
+        local_destino VARCHAR(50) DEFAULT 'Estoque'
       );
+      ALTER TABLE conferencia_lotes ADD COLUMN IF NOT EXISTS local_destino VARCHAR(50) DEFAULT 'Estoque';
 
       CREATE TABLE IF NOT EXISTS auditoria_itens (
         id SERIAL PRIMARY KEY,
@@ -286,7 +293,122 @@ async function initDB() {
     `).catch(() => {});
 
     await client.query(`ALTER TABLE notas_entrada ADD COLUMN IF NOT EXISTS pedido_id INTEGER REFERENCES pedidos(id)`).catch(() => {});
+    // totais XML por nota
+    await client.query(`ALTER TABLE notas_entrada ADD COLUMN IF NOT EXISTS tot_vprod   DECIMAL(14,2)`).catch(() => {});
+    await client.query(`ALTER TABLE notas_entrada ADD COLUMN IF NOT EXISTS tot_vbc     DECIMAL(14,2)`).catch(() => {});
+    await client.query(`ALTER TABLE notas_entrada ADD COLUMN IF NOT EXISTS tot_vicms   DECIMAL(14,2)`).catch(() => {});
+    await client.query(`ALTER TABLE notas_entrada ADD COLUMN IF NOT EXISTS tot_vbcst   DECIMAL(14,2)`).catch(() => {});
+    await client.query(`ALTER TABLE notas_entrada ADD COLUMN IF NOT EXISTS tot_vst     DECIMAL(14,2)`).catch(() => {});
+    await client.query(`ALTER TABLE notas_entrada ADD COLUMN IF NOT EXISTS tot_vfcp_st DECIMAL(14,2)`).catch(() => {});
+    await client.query(`ALTER TABLE notas_entrada ADD COLUMN IF NOT EXISTS tot_vipi    DECIMAL(14,2)`).catch(() => {});
+    await client.query(`ALTER TABLE notas_entrada ADD COLUMN IF NOT EXISTS tot_vdesc   DECIMAL(14,2)`).catch(() => {});
+    await client.query(`ALTER TABLE notas_entrada ADD COLUMN IF NOT EXISTS tot_vfrete  DECIMAL(14,2)`).catch(() => {});
+    await client.query(`ALTER TABLE notas_entrada ADD COLUMN IF NOT EXISTS tot_vseg    DECIMAL(14,2)`).catch(() => {});
+    await client.query(`ALTER TABLE notas_entrada ADD COLUMN IF NOT EXISTS tot_voutro  DECIMAL(14,2)`).catch(() => {});
+    // breakdown fiscal por item
+    await client.query(`ALTER TABLE itens_nota ADD COLUMN IF NOT EXISTS ean_fonte    VARCHAR(10)`).catch(() => {});
+    await client.query(`ALTER TABLE itens_nota ADD COLUMN IF NOT EXISTS vprod        DECIMAL(14,4)`).catch(() => {});
+    await client.query(`ALTER TABLE itens_nota ADD COLUMN IF NOT EXISTS vdesc_item   DECIMAL(14,4)`).catch(() => {});
+    await client.query(`ALTER TABLE itens_nota ADD COLUMN IF NOT EXISTS vfrete_item  DECIMAL(14,4)`).catch(() => {});
+    await client.query(`ALTER TABLE itens_nota ADD COLUMN IF NOT EXISTS vseg_item    DECIMAL(14,4)`).catch(() => {});
+    await client.query(`ALTER TABLE itens_nota ADD COLUMN IF NOT EXISTS voutro_item  DECIMAL(14,4)`).catch(() => {});
+    await client.query(`ALTER TABLE itens_nota ADD COLUMN IF NOT EXISTS vicms_bc     DECIMAL(14,4)`).catch(() => {});
+    await client.query(`ALTER TABLE itens_nota ADD COLUMN IF NOT EXISTS vicms        DECIMAL(14,4)`).catch(() => {});
+    await client.query(`ALTER TABLE itens_nota ADD COLUMN IF NOT EXISTS vst_bc       DECIMAL(14,4)`).catch(() => {});
+    await client.query(`ALTER TABLE itens_nota ADD COLUMN IF NOT EXISTS vst          DECIMAL(14,4)`).catch(() => {});
+    await client.query(`ALTER TABLE itens_nota ADD COLUMN IF NOT EXISTS vfcp_st      DECIMAL(14,4)`).catch(() => {});
+    await client.query(`ALTER TABLE itens_nota ADD COLUMN IF NOT EXISTS vipi_bc      DECIMAL(14,4)`).catch(() => {});
+    await client.query(`ALTER TABLE itens_nota ADD COLUMN IF NOT EXISTS vipi         DECIMAL(14,4)`).catch(() => {});
+    // comparativo nota vs pedido
+    await client.query(`ALTER TABLE itens_nota ADD COLUMN IF NOT EXISTS fora_pedido    BOOLEAN DEFAULT FALSE`).catch(() => {});
+    await client.query(`ALTER TABLE itens_nota ADD COLUMN IF NOT EXISTS preco_pedido   DECIMAL(14,4)`).catch(() => {});
+    await client.query(`ALTER TABLE itens_nota ADD COLUMN IF NOT EXISTS qtd_pedido     DECIMAL(12,4)`).catch(() => {});
+    await client.query(`ALTER TABLE itens_nota ADD COLUMN IF NOT EXISTS item_pedido_id INTEGER`).catch(() => {});
+    await client.query(`ALTER TABLE notas_entrada ADD COLUMN IF NOT EXISTS emergencial BOOLEAN DEFAULT FALSE`).catch(() => {});
     await client.query(`INSERT INTO configuracoes (chave, valor) VALUES ('validade_acesso_vendedor_dias','90') ON CONFLICT DO NOTHING`).catch(() => {});
+    // análise de compra
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS vendas_historico (
+        id SERIAL PRIMARY KEY,
+        loja_id INTEGER NOT NULL,
+        codigobarra VARCHAR(30) NOT NULL,
+        data_venda DATE NOT NULL,
+        qtd_vendida NUMERIC(12,3) NOT NULL DEFAULT 0,
+        sincronizado_em TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(loja_id, codigobarra, data_venda)
+      )
+    `).catch(() => {});
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_vendas_hist ON vendas_historico(loja_id, codigobarra, data_venda)`).catch(() => {});
+    await client.query(`ALTER TABLE fornecedores ADD COLUMN IF NOT EXISTS leadtime_dias INTEGER DEFAULT 7`).catch(() => {});
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS compras_historico (
+        id SERIAL PRIMARY KEY,
+        loja_id INTEGER NOT NULL,
+        numeronfe VARCHAR(20) NOT NULL,
+        codigobarra VARCHAR(30) NOT NULL,
+        data_emissao DATE,
+        data_entrada DATE NOT NULL,
+        qtd_comprada NUMERIC(12,3) NOT NULL DEFAULT 0,
+        custo_total NUMERIC(14,4),
+        fornecedor_cnpj VARCHAR(20),
+        sincronizado_em TIMESTAMPTZ DEFAULT NOW()
+      )
+    `).catch(() => {});
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_compras_hist ON compras_historico(loja_id, codigobarra, data_entrada)`).catch(() => {});
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS cr_debitos (
+        id SERIAL PRIMARY KEY,
+        fornecedor_id INTEGER REFERENCES fornecedores(id) ON DELETE SET NULL,
+        fornecedor_cnpj TEXT,
+        fornecedor_nome TEXT,
+        loja_id INTEGER NOT NULL,
+        numero_nota TEXT NOT NULL,
+        chave_nfe TEXT UNIQUE,
+        data_emissao DATE,
+        natureza_operacao TEXT,
+        valor_produtos NUMERIC(14,2) DEFAULT 0,
+        valor_total NUMERIC(14,2) NOT NULL DEFAULT 0,
+        valor_creditos NUMERIC(14,2) NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'aberto',
+        observacoes TEXT,
+        importado_em TIMESTAMPTZ DEFAULT NOW(),
+        importado_por TEXT
+      )
+    `).catch(() => {});
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS cr_debito_itens (
+        id SERIAL PRIMARY KEY,
+        debito_id INTEGER NOT NULL REFERENCES cr_debitos(id) ON DELETE CASCADE,
+        codigo_barras TEXT,
+        descricao TEXT,
+        ncm TEXT,
+        quantidade NUMERIC(14,4),
+        valor_unitario NUMERIC(14,4),
+        valor_total NUMERIC(14,2)
+      )
+    `).catch(() => {});
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS cr_creditos (
+        id SERIAL PRIMARY KEY,
+        debito_id INTEGER REFERENCES cr_debitos(id) ON DELETE SET NULL,
+        fornecedor_id INTEGER REFERENCES fornecedores(id) ON DELETE SET NULL,
+        fornecedor_cnpj TEXT,
+        loja_id INTEGER NOT NULL,
+        tipo TEXT NOT NULL,
+        numero_nota TEXT,
+        chave_nfe TEXT UNIQUE,
+        data_credito DATE,
+        valor NUMERIC(14,2) NOT NULL,
+        nr_nf_boleto TEXT,
+        valor_nf_boleto NUMERIC(14,2),
+        valor_boleto NUMERIC(14,2),
+        valor_desconto NUMERIC(14,2),
+        observacoes TEXT,
+        registrado_em TIMESTAMPTZ DEFAULT NOW(),
+        registrado_por TEXT
+      )
+    `).catch(() => {});
 
     // Lojas iniciais (se tabela vazia)
     const { rows: lojaRows } = await client.query('SELECT COUNT(*) FROM lojas');
