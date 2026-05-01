@@ -7,9 +7,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 npm install          # instalar dependências
 node server.js       # iniciar servidor (porta 3001, padrão)
+railway up --detach  # deploy no Railway (executar após qualquer alteração no código)
 ```
 
 Não há build, transpilação, lint ou test runner configurados. Alterações no código exigem reiniciar o servidor manualmente.
+
+**Deploy:** após qualquer alteração de código, sempre executar `railway up --detach`.
 
 ## Stack
 
