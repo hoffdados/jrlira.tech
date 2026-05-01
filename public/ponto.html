@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Controle de Ponto</title>
+<link rel="stylesheet" href="/shared.css">
+<script src="/shared.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: Arial, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
@@ -109,7 +111,6 @@ tr:hover td { background: #1a2638; }
 <script>
 const API = '';
 const token = () => localStorage.getItem('jrlira_token');
-const H = { 'Authorization': `Bearer ${token()}` };
 (function(){ const p = localStorage.getItem('jrlira_perfil'); if (!token() || (p !== 'admin' && p !== 'rh')) location.href = '/'; })();
 let arquivoSelecionado = null;
 
@@ -166,7 +167,7 @@ async function importar() {
   btn.textContent = 'Importando...'; btn.disabled = true;
 
   try {
-    const r = await fetch(`${API}/api/ponto/importar`, { method: 'POST', headers: H, body: fd });
+    const r = await apiFetch(`${API}/api/ponto/importar`, { method: 'POST', body: fd });
     const data = await r.json();
     btn.textContent = 'Importar'; btn.disabled = false;
 
@@ -198,7 +199,7 @@ async function importar() {
 }
 
 async function carregarImportacoes() {
-  const r = await fetch(`${API}/api/ponto/importacoes`, { headers: H });
+  const r = await apiFetch(`${API}/api/ponto/importacoes`);
   const lista = await r.json();
   const tb = document.getElementById('tbodyImport');
   document.getElementById('semImport').style.display = lista.length ? 'none' : 'block';
@@ -220,7 +221,7 @@ async function verDetalhe(id, periodo) {
   document.getElementById('detalheConteudo').innerHTML = '<div style="color:#64748b;padding:20px;text-align:center;">Carregando...</div>';
   document.getElementById('overlayDetalhe').style.display = 'block';
 
-  const r = await fetch(`${API}/api/ponto/resumo/${id}`, { headers: H });
+  const r = await apiFetch(`${API}/api/ponto/resumo/${id}`);
   const rows = await r.json();
 
   document.getElementById('detalheConteudo').innerHTML = `
@@ -249,7 +250,7 @@ async function verRegistros(matricula, importacao_id, nome) {
   document.getElementById('detalheTitle').textContent = `Ponto — ${nome}`;
   document.getElementById('detalheConteudo').innerHTML = '<div style="color:#64748b;padding:20px;text-align:center;">Carregando...</div>';
 
-  const r = await fetch(`${API}/api/ponto/registros/${matricula}?importacao_id=${importacao_id}`, { headers: H });
+  const r = await apiFetch(`${API}/api/ponto/registros/${matricula}?importacao_id=${importacao_id}`);
   const rows = await r.json();
 
   const t = v => v ? v.substring(0,5) : '—';

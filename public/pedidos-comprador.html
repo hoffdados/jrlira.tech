@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Pedidos — JR Lira</title>
+<link rel="stylesheet" href="/shared.css">
+<script src="/shared.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
@@ -56,6 +58,12 @@ tbody td{padding:8px 10px;border-bottom:1px solid #334155;vertical-align:middle}
 .nota-row:hover{background:#0f172a}
 .nota-row.selected{border-color:#0ea5e9}
 .total-val{font-size:18px;font-weight:700;color:#4ade80}
+.dias-btn.active{background:#0ea5e9;color:#fff}
+.semaforo{font-size:18px;text-align:center}
+.compras-detalhe{display:none;background:#0a1628;padding:10px 16px;font-size:12px;color:#94a3b8}
+.compras-detalhe table{font-size:11px}
+.compras-detalhe thead th{background:#0a1628;color:#475569;padding:4px 8px}
+.compras-detalhe tbody td{padding:4px 8px;border-bottom:1px solid #1e293b}
 </style>
 </head>
 <body>
@@ -90,10 +98,10 @@ tbody td{padding:8px 10px;border-bottom:1px solid #334155;vertical-align:middle}
 
       <div class="tab-bar">
         <button class="tab active" id="tabValidacao" onclick="mudarTab('validacao')">Validação</button>
-        <button class="tab" id="tabVinculo" onclick="mudarTab('vinculo')">Vincular XML</button>
+        <button class="tab" id="tabAnalise" onclick="mudarTab('analise')">Análise de Compra</button>
       </div>
 
-      <!-- TAB: VALIDAÇÃO -->
+      <!-- VALIDAÇÃO -->
       <div id="abaValidacao">
         <div class="card">
           <div class="info-grid">
@@ -108,10 +116,15 @@ tbody td{padding:8px 10px;border-bottom:1px solid #334155;vertical-align:middle}
             <div>
               <label style="font-size:12px;color:#64748b;margin-bottom:4px;display:block">Condição de pagamento</label>
               <select id="d-condicao" style="width:140px">
-                <option value="15">15 dias</option>
-                <option value="30">30 dias</option>
-                <option value="45">45 dias</option>
-                <option value="60">60 dias</option>
+                <option value="7">7 dias</option>
+                <option value="14">14 dias</option>
+                <option value="21">21 dias</option>
+                <option value="28">28 dias</option>
+                <option value="35">35 dias</option>
+                <option value="42">42 dias</option>
+                <option value="49">49 dias</option>
+                <option value="63">63 dias</option>
+                <option value="70">70 dias</option>
               </select>
             </div>
             <div style="flex:1">
@@ -143,22 +156,52 @@ tbody td{padding:8px 10px;border-bottom:1px solid #334155;vertical-align:middle}
 
         <div style="display:flex;gap:10px" id="botoesValidacao">
           <a id="btnPdf" href="#" target="_blank" class="btn-ghost" style="text-decoration:none;padding:8px 14px;border-radius:6px;font-size:13px;font-weight:600">⬇ Baixar PDF</a>
-          <button class="btn-ok" id="btnValidar" onclick="validarPedido()" style="flex:1">✓ Validar e enviar PDF ao fornecedor</button>
+          <button class="btn-ok" id="btnValidar" onclick="validarPedido(this)" style="flex:1">✓ Validar e enviar PDF ao fornecedor</button>
         </div>
       </div>
 
-      <!-- TAB: VINCULAR XML -->
-      <div id="abaVinculo" style="display:none">
+      <!-- ANÁLISE DE COMPRA -->
+      <div id="abaAnalise" style="display:none">
         <div class="card">
-          <div class="section-title">Notas disponíveis para vinculação</div>
-          <p style="font-size:13px;color:#64748b;margin-bottom:12px">Selecione a nota fiscal correspondente a este pedido. Após vincular, a nota ficará em <strong>Validação Comercial</strong> até você liberar para importação.</p>
-          <div id="listaNFVinculo"><div style="color:#475569;text-align:center;padding:16px">Carregando notas...</div></div>
+          <div style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap">
+            <div>
+              <label style="font-size:11px;color:#64748b;display:block;margin-bottom:4px">Lead time (dias)</label>
+              <input type="number" id="analiseLeadtime" min="1" max="180" value="7" style="width:90px" oninput="renderAnalise()">
+            </div>
+            <div>
+              <label style="font-size:11px;color:#64748b;display:block;margin-bottom:4px">Comprar para</label>
+              <div style="display:flex;gap:6px;align-items:center">
+                <button class="btn-ghost btn-sm dias-btn active" data-dias="30" onclick="setDias(30)">30d</button>
+                <button class="btn-ghost btn-sm dias-btn" data-dias="20" onclick="setDias(20)">20d</button>
+                <button class="btn-ghost btn-sm dias-btn" data-dias="60" onclick="setDias(60)">60d</button>
+                <button class="btn-ghost btn-sm dias-btn" data-dias="90" onclick="setDias(90)">90d</button>
+                <input type="number" id="diasCustom" min="1" max="365" placeholder="outro" style="width:70px" oninput="setDias(parseInt(this.value)||30)">
+              </div>
+            </div>
+            <button class="btn-ghost btn-sm" onclick="carregarAnalise()" style="margin-left:auto">↺ Atualizar</button>
+          </div>
         </div>
-        <div id="notaVinculada" style="display:none" class="card">
-          <div class="section-title">Nota vinculada</div>
-          <div id="infoNotaVinculada"></div>
-          <div style="margin-top:12px;display:flex;gap:10px">
-            <button class="btn-ok" onclick="liberarParaImportacao()">✓ Liberar para importação</button>
+        <div id="analiseCarregando" style="text-align:center;color:#475569;padding:32px">Clique em Atualizar para carregar a análise.</div>
+        <div id="analiseTabela" style="display:none">
+          <div class="card" style="padding:0;overflow:hidden">
+            <div style="overflow-x:auto">
+              <table id="tblAnalise" style="min-width:820px">
+                <thead>
+                  <tr>
+                    <th style="width:28px"></th>
+                    <th>Produto</th>
+                    <th style="text-align:right">Estoque</th>
+                    <th style="text-align:right">Em Trânsito</th>
+                    <th style="text-align:right">Venda/dia</th>
+                    <th style="text-align:right">Dias atual</th>
+                    <th style="text-align:right">Qtd Pedido</th>
+                    <th style="text-align:right">Sugestão</th>
+                    <th style="text-align:center">🚦</th>
+                  </tr>
+                </thead>
+                <tbody id="tbodyAnalise"></tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
@@ -173,12 +216,28 @@ const token = () => localStorage.getItem('jrlira_token');
 (function(){ const p = localStorage.getItem('jrlira_perfil'); if (!token() || !['admin','comprador'].includes(p)) location.href='/'; })();
 document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
 
-function h() { return { Authorization: `Bearer ${token()}` }; }
-function hj() { return { ...h(), 'Content-Type': 'application/json' }; }
 
 const STATUS = { rascunho:'Rascunho', aguardando_validacao:'Aguardando validação', validado:'Validado', vinculado:'Vinculado à NF' };
 let pedidoAtual = null;
 let itensAtuais = [];
+let analiseData = null;
+let diasAlvo = 30;
+
+function mudarTab(tab) {
+  document.getElementById('abaValidacao').style.display = tab === 'validacao' ? 'block' : 'none';
+  document.getElementById('abaAnalise').style.display   = tab === 'analise'   ? 'block' : 'none';
+  document.getElementById('tabValidacao').classList.toggle('active', tab === 'validacao');
+  document.getElementById('tabAnalise').classList.toggle('active', tab === 'analise');
+}
+
+function setDias(d) {
+  diasAlvo = d || 30;
+  document.querySelectorAll('.dias-btn').forEach(b => b.classList.toggle('active', parseInt(b.dataset.dias) === d));
+  if (analiseData) renderAnalise();
+}
+
+function fmtN(v, dec=2) { return parseFloat(v||0).toFixed(dec).replace('.',','); }
+function fmtD(d) { return d ? d.slice(0,10).split('-').reverse().join('/') : '—'; }
 
 function showMsg(txt, tipo='ok') {
   const el = document.getElementById('msgPedido');
@@ -195,7 +254,7 @@ async function carregarPedidos() {
   el.innerHTML = '<div style="color:#475569;text-align:center;padding:24px">Carregando...</div>';
   try {
     const url = status ? `/api/pedidos?status=${status}` : '/api/pedidos';
-    const r = await fetch(`${API}${url}`, { headers: h() });
+    const r = await apiFetch(`${API}${url}`);
     const pedidos = await r.json();
     if (!pedidos.length) { el.innerHTML = '<div style="color:#475569;text-align:center;padding:24px">Nenhum pedido.</div>'; return; }
     el.innerHTML = pedidos.map(p => `
@@ -214,13 +273,12 @@ async function carregarPedidos() {
 
 async function selecionarPedido(id) {
   try {
-    const r = await fetch(`${API}/api/pedidos/${id}`, { headers: h() });
+    const r = await apiFetch(`${API}/api/pedidos/${id}`);
     pedidoAtual = await r.json();
     itensAtuais = pedidoAtual.itens || [];
     renderDetalhe();
     document.getElementById('painelVazio').style.display = 'none';
     document.getElementById('painelPedido').style.display = 'block';
-    mudarTab('validacao');
   } catch { showMsg('Erro ao carregar pedido.', 'err'); }
 }
 
@@ -281,7 +339,7 @@ function atualizarLinha(input) {
   document.getElementById('d-total').textContent = `R$ ${total.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.')}`;
 }
 
-async function validarPedido() {
+async function validarPedido(btn) {
   if (!pedidoAtual) return;
   if (!confirm('Validar pedido e enviar PDF ao fornecedor por e-mail?')) return;
   const itensPayload = itensAtuais.map(i => ({
@@ -289,97 +347,116 @@ async function validarPedido() {
     qtd_validada: parseFloat(i.qtd_validada ?? i.quantidade),
     preco_validado: parseFloat(i.preco_validado ?? i.preco_unitario)
   }));
+  await withLoading(btn, async () => {
+    try {
+      const r = await apiFetch(`${API}/api/pedidos/${pedidoAtual.id}/validar`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          itens: itensPayload,
+          condicao_pagamento: parseInt(document.getElementById('d-condicao').value),
+          observacoes: document.getElementById('d-obs').value.trim()
+        })
+      });
+      const d = await r.json();
+      if (!r.ok) return showMsg(d.erro, 'err');
+      showMsg('Pedido validado e PDF enviado ao fornecedor!', 'ok');
+      await selecionarPedido(pedidoAtual.id);
+      carregarPedidos();
+    } catch { showMsg('Erro ao validar.', 'err'); }
+  }, 'Enviando...');
+}
+
+
+// ── ANÁLISE DE COMPRA ─────────────────────────────────────────────
+async function carregarAnalise() {
+  if (!pedidoAtual) return;
+  document.getElementById('analiseCarregando').textContent = 'Carregando análise...';
+  document.getElementById('analiseCarregando').style.display = 'block';
+  document.getElementById('analiseTabela').style.display = 'none';
   try {
-    const r = await fetch(`${API}/api/pedidos/${pedidoAtual.id}/validar`, {
-      method: 'PUT',
-      headers: hj(),
-      body: JSON.stringify({
-        itens: itensPayload,
-        condicao_pagamento: parseInt(document.getElementById('d-condicao').value),
-        observacoes: document.getElementById('d-obs').value.trim()
-      })
-    });
+    const r = await apiFetch(`${API}/api/pedidos/${pedidoAtual.id}/analise`);
     const d = await r.json();
-    if (!r.ok) return showMsg(d.erro, 'err');
-    showMsg('Pedido validado e PDF enviado ao fornecedor!', 'ok');
-    await selecionarPedido(pedidoAtual.id);
-    carregarPedidos();
-  } catch { showMsg('Erro ao validar.', 'err'); }
+    if (!r.ok) { document.getElementById('analiseCarregando').textContent = d.erro; return; }
+    analiseData = d;
+    document.getElementById('analiseLeadtime').value = d.leadtime_dias || 7;
+    renderAnalise();
+  } catch { document.getElementById('analiseCarregando').textContent = 'Erro ao carregar análise.'; }
 }
 
-// ── VINCULAR XML ──────────────────────────────────────────────────
-async function mudarTab(tab) {
-  document.getElementById('abaValidacao').style.display = tab === 'validacao' ? 'block' : 'none';
-  document.getElementById('abaVinculo').style.display = tab === 'vinculo' ? 'block' : 'none';
-  document.getElementById('tabValidacao').classList.toggle('active', tab === 'validacao');
-  document.getElementById('tabVinculo').classList.toggle('active', tab === 'vinculo');
-  if (tab === 'vinculo') carregarNotasVinculo();
+function renderAnalise() {
+  if (!analiseData) return;
+  const leadtime = parseInt(document.getElementById('analiseLeadtime').value) || 7;
+  const dias = diasAlvo;
+  const tbody = document.getElementById('tbodyAnalise');
+
+  tbody.innerHTML = analiseData.analise.map((it, idx) => {
+    const estoque    = parseFloat(it.estdisponivel || 0);
+    const transito   = parseFloat(it.em_transito   || 0);
+    const mediaDia   = parseFloat(it.media_dia     || 0);
+    const qtdPedido  = parseFloat(it.qtd_pedido    || 0);
+    const cobertura  = mediaDia > 0 ? (estoque + transito) / mediaDia : null;
+    const sugestao   = mediaDia > 0 ? Math.max(0, (dias * mediaDia) - estoque - transito) : null;
+
+    let semaforo, bgRow = '';
+    if (mediaDia === 0) {
+      semaforo = '<span title="Sem histórico de vendas">⚪</span>';
+    } else if (cobertura < leadtime) {
+      semaforo = '🔴'; bgRow = 'background:#1a0505';
+    } else if (cobertura < leadtime + dias) {
+      semaforo = '🟡'; bgRow = 'background:#1a1200';
+    } else {
+      semaforo = '🟢';
+    }
+
+    const coberturaStr = cobertura == null ? '—' : `${Math.round(cobertura)}d`;
+    const sugestaoStr  = sugestao  == null ? '—' : fmtN(sugestao, 2);
+
+    const comprasRows = it.ultimas_compras.length
+      ? it.ultimas_compras.map(c =>
+          `<tr>
+            <td>${fmtD(c.data_entrada)}</td>
+            <td>${c.fornecedor_nome}</td>
+            <td style="text-align:right">${fmtN(c.qtd_comprada,2)}</td>
+            <td style="text-align:right">R$ ${fmtN(c.preco_unitario,4)}</td>
+          </tr>`).join('')
+      : '<tr><td colspan="4" style="color:#475569">Nenhuma compra no histórico</td></tr>';
+
+    return `
+      <tr style="${bgRow}" onclick="toggleCompras(${idx})" style="cursor:pointer">
+        <td style="text-align:center;color:#475569;font-size:16px">▸</td>
+        <td>
+          <div style="font-size:12px;font-weight:600">${it.descricao}</div>
+          <div style="font-size:10px;color:#475569;font-family:monospace">${it.codigo_barras||'—'}</div>
+        </td>
+        <td style="text-align:right">${fmtN(estoque,2)}</td>
+        <td style="text-align:right;color:#60a5fa">${fmtN(transito,2)}</td>
+        <td style="text-align:right">${mediaDia > 0 ? fmtN(mediaDia,3) : '<span style="color:#475569">—</span>'}</td>
+        <td style="text-align:right;font-weight:700">${coberturaStr}</td>
+        <td style="text-align:right;color:#a78bfa">${fmtN(qtdPedido,2)}</td>
+        <td style="text-align:right;color:#fbbf24;font-weight:700">${sugestaoStr}</td>
+        <td class="semaforo">${semaforo}</td>
+      </tr>
+      <tr id="compras-${idx}" style="display:none">
+        <td colspan="9" style="padding:0">
+          <div class="compras-detalhe" style="display:block">
+            <div style="font-size:11px;font-weight:700;color:#64748b;margin-bottom:6px">Últimas 5 entradas — qualquer fornecedor</div>
+            <table><thead><tr><th>Data</th><th>Fornecedor</th><th style="text-align:right">Qtd</th><th style="text-align:right">Preço unit.</th></tr></thead>
+            <tbody>${comprasRows}</tbody></table>
+            ${it.ultima_venda ? `<div style="margin-top:6px;color:#475569">Última venda registrada: <strong style="color:#94a3b8">${fmtD(it.ultima_venda)}</strong> · Vendido (90d): <strong style="color:#94a3b8">${fmtN(it.total_90d,2)} un</strong></div>` : ''}
+          </div>
+        </td>
+      </tr>`;
+  }).join('');
+
+  document.getElementById('analiseCarregando').style.display = 'none';
+  document.getElementById('analiseTabela').style.display = 'block';
 }
 
-let notaSelecionadaId = null;
-
-async function carregarNotasVinculo() {
-  const el = document.getElementById('listaNFVinculo');
-  // Verifica se já tem nota vinculada
-  if (pedidoAtual?.nota_id) {
-    document.getElementById('listaNFVinculo').style.display = 'none';
-    document.getElementById('notaVinculada').style.display = 'block';
-    document.getElementById('infoNotaVinculada').innerHTML =
-      `<div style="font-size:13px">Nota <strong>${pedidoAtual.numero_nota || '#'+pedidoAtual.nota_id}</strong> vinculada.</div>`;
-    return;
-  }
-  el.innerHTML = '<div style="color:#475569;text-align:center;padding:16px">Carregando...</div>';
-  try {
-    // Busca notas importadas sem pedido vinculado, do mesmo fornecedor
-    const r = await fetch(`${API}/api/notas?status=importada&sem_pedido=1&fornecedor_cnpj=${encodeURIComponent(pedidoAtual?.fornecedor_cnpj||'')}`, { headers: h() });
-    const notas = await r.json();
-    if (!notas.length) { el.innerHTML = '<div style="color:#475569;text-align:center;padding:16px">Nenhuma nota importada disponível para vinculação.<br><small>Importe o XML primeiro em Notas → Cadastro.</small></div>'; return; }
-    notaSelecionadaId = null;
-    el.innerHTML = notas.slice(0,20).map(n => `
-      <div class="nota-row" id="nrow-${n.id}" onclick="selecionarNota(${n.id})">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <span style="font-size:12px;font-family:monospace;color:#38bdf8">NF ${n.numero_nota}</span>
-          <span style="font-size:12px;color:#94a3b8">${n.data_emissao ? new Date(n.data_emissao+'T00:00:00').toLocaleDateString('pt-BR') : '—'}</span>
-        </div>
-        <div style="font-size:12px;color:#e2e8f0;margin-top:2px">${n.fornecedor_nome}</div>
-        <div style="font-size:12px;color:#4ade80;margin-top:2px">R$ ${parseFloat(n.valor_total||0).toFixed(2).replace('.',',')}</div>
-      </div>
-    `).join('');
-    el.innerHTML += `<div style="margin-top:10px"><button class="btn-primary" onclick="vincularNota()" id="btnVincular" disabled style="opacity:.5">Vincular nota selecionada</button></div>`;
-  } catch { el.innerHTML = '<div style="color:#f87171;text-align:center;padding:16px">Erro ao carregar notas.</div>'; }
-}
-
-function selecionarNota(id) {
-  notaSelecionadaId = id;
-  document.querySelectorAll('.nota-row').forEach(el => el.classList.remove('selected'));
-  document.getElementById(`nrow-${id}`)?.classList.add('selected');
-  const btn = document.getElementById('btnVincular');
-  if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
-}
-
-async function vincularNota() {
-  if (!notaSelecionadaId || !pedidoAtual) return;
-  if (!confirm('Vincular esta nota ao pedido? A nota entrará em Validação Comercial.')) return;
-  try {
-    const r = await fetch(`${API}/api/pedidos/${pedidoAtual.id}/vincular/${notaSelecionadaId}`, { method:'POST', headers:h() });
-    const d = await r.json();
-    if (!r.ok) return showMsg(d.erro, 'err');
-    showMsg('Nota vinculada ao pedido. Status: Em Validação Comercial.', 'ok');
-    await selecionarPedido(pedidoAtual.id);
-    carregarNotasVinculo();
-  } catch { showMsg('Erro ao vincular.', 'err'); }
-}
-
-async function liberarParaImportacao() {
-  if (!confirm('Liberar nota para o fluxo de importação?')) return;
-  try {
-    const r = await fetch(`${API}/api/pedidos/${pedidoAtual.id}/liberar`, { method:'POST', headers:h() });
-    const d = await r.json();
-    if (!r.ok) return showMsg(d.erro, 'err');
-    showMsg('Nota liberada para importação!', 'ok');
-    await selecionarPedido(pedidoAtual.id);
-    carregarPedidos();
-  } catch { showMsg('Erro ao liberar.', 'err'); }
+function toggleCompras(idx) {
+  const row = document.getElementById(`compras-${idx}`);
+  if (!row) return;
+  const visible = row.style.display !== 'none';
+  row.style.display = visible ? 'none' : 'table-row';
 }
 
 carregarPedidos();

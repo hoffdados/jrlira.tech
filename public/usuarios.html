@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Usuários - JR Lira</title>
+<link rel="stylesheet" href="/shared.css">
+<script src="/shared.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
@@ -115,7 +117,7 @@ select[multiple]{height:72px;font-size:11px}
         </select>
       </div>
       <div style="display:flex;align-items:flex-end">
-        <button class="btn-primary" onclick="criarUsuario()">Criar Usuário</button>
+        <button class="btn-primary" onclick="criarUsuario(this)">Criar Usuário</button>
       </div>
     </div>
     <div id="wrapNovasLojas" style="display:none;margin-top:4px">
@@ -177,9 +179,9 @@ function toggleLojaSelector(perfil) {
 }
 
 async function fetchApi(url, method = 'GET', body = null) {
-  const opts = { method, headers: { Authorization: `Bearer ${token()}` } };
-  if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
-  const r = await fetch(API + url, opts);
+  const opts = { method };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await apiFetch(API + url, opts);
   const data = await r.json();
   if (!r.ok) throw new Error(data.erro || 'Erro');
   return data;
@@ -205,12 +207,12 @@ async function carregarUsuarios() {
         : '';
       const precisaLoja = PERFIS_COM_LOJA.includes(u.perfil);
       return `<tr id="row-${u.id}">
-        <td>${u.nome}</td>
-        <td style="font-family:monospace;font-size:12px">${u.usuario}</td>
-        <td style="font-size:12px;color:#94a3b8">${u.email || '—'}</td>
+        <td>${escapeHtml(u.nome)}</td>
+        <td style="font-family:monospace;font-size:12px">${escapeHtml(u.usuario)}</td>
+        <td style="font-size:12px;color:#94a3b8">${escapeHtml(u.email || '—')}</td>
         <td>
-          <span class="badge b-${u.perfil}">${PERFIL_LABEL[u.perfil] || u.perfil}</span>
-          ${lojasLabel ? `<span style="font-size:11px;color:#94a3b8;margin-left:4px">${lojasLabel}</span>` : ''}
+          <span class="badge b-${escapeHtml(u.perfil)}">${escapeHtml(PERFIL_LABEL[u.perfil] || u.perfil)}</span>
+          ${lojasLabel ? `<span style="font-size:11px;color:#94a3b8;margin-left:4px">${escapeHtml(lojasLabel)}</span>` : ''}
         </td>
         <td><span class="badge" style="background:${u.ativo ? '#14532d' : '#1e293b'};color:${u.ativo ? '#4ade80' : '#64748b'}">${u.ativo ? 'Ativo' : 'Inativo'}</span></td>
         <td>
@@ -224,11 +226,11 @@ async function carregarUsuarios() {
               <option value="comprador" ${u.perfil==='comprador'?'selected':''}>Comprador</option>
             </select>
             <select id="lojas-${u.id}" multiple style="display:${precisaLoja?'block':'none'}">${lojaMultiSelect(u.id, lojasSel)}</select>
-            <input type="email" id="email-${u.id}" value="${u.email || ''}" placeholder="E-mail" style="width:160px">
+            <input type="email" id="email-${u.id}" value="${escapeHtml(u.email || '')}" placeholder="E-mail" style="width:160px">
             <input type="password" id="senha-${u.id}" placeholder="Nova senha" autocomplete="off">
-            <button class="btn-sm btn-edit" onclick="salvarEdicao(${u.id})">Salvar</button>
-            <button class="btn-sm btn-toggle" onclick="toggleAtivo(${u.id}, ${u.ativo})">${u.ativo ? 'Desativar' : 'Ativar'}</button>
-            <button class="btn-sm btn-del" onclick="excluirUsuario(${u.id}, '${u.nome.replace(/'/g, "\\'")}')">Excluir</button>
+            <button class="btn-sm btn-edit" onclick="salvarEdicao(${u.id}, this)">Salvar</button>
+            <button class="btn-sm btn-toggle" onclick="toggleAtivo(${u.id}, ${u.ativo}, this)">${u.ativo ? 'Desativar' : 'Ativar'}</button>
+            <button class="btn-sm btn-del" data-id="${u.id}" data-nome="${escapeHtml(u.nome)}" onclick="excluirUsuario(this.dataset.id, this.dataset.nome, this)">Excluir</button>
           </div>
         </td>
       </tr>`;
@@ -241,7 +243,7 @@ function onPerfilChange(id, perfil) {
   if (el) el.style.display = PERFIS_COM_LOJA.includes(perfil) ? 'block' : 'none';
 }
 
-async function criarUsuario() {
+async function criarUsuario(btn) {
   const usuario = document.getElementById('novoUsuario').value.trim();
   const nome = document.getElementById('novoNome').value.trim();
   const email = document.getElementById('novoEmail').value.trim();
@@ -252,21 +254,23 @@ async function criarUsuario() {
     ? [...document.querySelectorAll('#checkNovasLojas input:checked')].map(el => parseInt(el.value))
     : [];
   if (PERFIS_LOJA_OBRIGATORIO.includes(perfil) && !lojas_ids.length) { showMsg('Selecione ao menos uma loja para este perfil', 'err'); return; }
-  try {
-    await fetchApi('/api/auth/usuarios', 'POST', { usuario, nome, email: email || null, senha, perfil, lojas_ids });
-    showMsg(`Usuário ${nome} criado${email ? ' — credenciais enviadas por e-mail' : ''}`, 'ok');
-    document.getElementById('novoUsuario').value = '';
-    document.getElementById('novoNome').value = '';
-    document.getElementById('novoEmail').value = '';
-    document.getElementById('novaSenha').value = '';
-    document.getElementById('novoPerfil').value = '';
-    document.querySelectorAll('#checkNovasLojas input').forEach(el => el.checked = false);
-    document.getElementById('wrapNovasLojas').style.display = 'none';
-    carregarUsuarios();
-  } catch (e) { showMsg(e.message, 'err'); }
+  await withLoading(btn, async () => {
+    try {
+      await fetchApi('/api/auth/usuarios', 'POST', { usuario, nome, email: email || null, senha, perfil, lojas_ids });
+      showMsg(`Usuário ${nome} criado${email ? ' — credenciais enviadas por e-mail' : ''}`, 'ok');
+      document.getElementById('novoUsuario').value = '';
+      document.getElementById('novoNome').value = '';
+      document.getElementById('novoEmail').value = '';
+      document.getElementById('novaSenha').value = '';
+      document.getElementById('novoPerfil').value = '';
+      document.querySelectorAll('#checkNovasLojas input').forEach(el => el.checked = false);
+      document.getElementById('wrapNovasLojas').style.display = 'none';
+      carregarUsuarios();
+    } catch (e) { showMsg(e.message, 'err'); }
+  }, 'Criando...');
 }
 
-async function salvarEdicao(id) {
+async function salvarEdicao(id, btn) {
   const perfil = document.getElementById(`perfil-${id}`).value;
   const senha = document.getElementById(`senha-${id}`).value;
   const emailEl = document.getElementById(`email-${id}`);
@@ -274,28 +278,34 @@ async function salvarEdicao(id) {
   const lojas_ids = sel ? [...sel.selectedOptions].map(o => parseInt(o.value)) : [];
   const body = { perfil, lojas_ids, email: emailEl?.value.trim() || null };
   if (senha) body.senha = senha;
-  try {
-    await fetchApi(`/api/auth/usuarios/${id}`, 'PATCH', body);
-    showMsg('Usuário atualizado', 'ok');
-    carregarUsuarios();
-  } catch (e) { showMsg(e.message, 'err'); }
+  await withLoading(btn, async () => {
+    try {
+      await fetchApi(`/api/auth/usuarios/${id}`, 'PATCH', body);
+      showMsg('Usuário atualizado', 'ok');
+      carregarUsuarios();
+    } catch (e) { showMsg(e.message, 'err'); }
+  }, 'Salvando...');
 }
 
-async function excluirUsuario(id, nome) {
+async function excluirUsuario(id, nome, btn) {
   if (!confirm(`Excluir o usuário "${nome}" permanentemente?`)) return;
-  try {
-    await fetchApi(`/api/auth/usuarios/${id}`, 'DELETE');
-    showMsg(`Usuário ${nome} excluído`, 'ok');
-    carregarUsuarios();
-  } catch (e) { showMsg(e.message, 'err'); }
+  await withLoading(btn, async () => {
+    try {
+      await fetchApi(`/api/auth/usuarios/${id}`, 'DELETE');
+      showMsg(`Usuário ${nome} excluído`, 'ok');
+      carregarUsuarios();
+    } catch (e) { showMsg(e.message, 'err'); }
+  }, 'Excluindo...');
 }
 
-async function toggleAtivo(id, ativo) {
-  try {
-    await fetchApi(`/api/auth/usuarios/${id}`, 'PATCH', { ativo: !ativo });
-    showMsg(ativo ? 'Usuário desativado' : 'Usuário ativado', 'ok');
-    carregarUsuarios();
-  } catch (e) { showMsg(e.message, 'err'); }
+async function toggleAtivo(id, ativo, btn) {
+  await withLoading(btn, async () => {
+    try {
+      await fetchApi(`/api/auth/usuarios/${id}`, 'PATCH', { ativo: !ativo });
+      showMsg(ativo ? 'Usuário desativado' : 'Usuário ativado', 'ok');
+      carregarUsuarios();
+    } catch (e) { showMsg(e.message, 'err'); }
+  }, 'Aguarde...');
 }
 
 let acTimer = null;
@@ -313,9 +323,7 @@ acInput.addEventListener('blur', () => setTimeout(() => { acList.style.display =
 
 async function acFetch(q) {
   try {
-    const r = await fetch(`${API}/api/funcionarios?q=${encodeURIComponent(q)}`, {
-      headers: { Authorization: `Bearer ${token()}` }
-    });
+    const r = await apiFetch(`${API}/api/funcionarios?q=${encodeURIComponent(q)}`);
     const data = await r.json();
     if (!r.ok || !Array.isArray(data) || !data.length) { acList.style.display = 'none'; return; }
     acList.innerHTML = data.slice(0, 10).map(f => {

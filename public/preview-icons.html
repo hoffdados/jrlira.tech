@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Preview — Ícones & Fonte</title>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f172a; color: #e2e8f0; padding: 40px 24px; }
+
+h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 2px; color: #475569; margin: 40px 0 16px; }
+h2:first-of-type { margin-top: 0; }
+
+/* ── TÍTULO ── */
+.titulo-demo { display: flex; flex-direction: column; gap: 16px; margin-bottom: 8px; }
+.titulo-opcao { background: #1e293b; border-radius: 10px; padding: 20px 28px; display: flex; align-items: center; gap: 16px; cursor: pointer; border: 2px solid transparent; transition: border-color .2s; }
+.titulo-opcao:hover { border-color: #38bdf8; }
+.titulo-opcao .label { font-size: 11px; color: #475569; margin-bottom: 4px; }
+
+.t1 { font-size: 26px; color: #38bdf8; font-family: 'Segoe UI Black', 'Segoe UI', sans-serif; font-weight: 900; letter-spacing: -0.5px; }
+.t2 { font-size: 26px; color: #38bdf8; font-family: 'Segoe UI', sans-serif; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
+.t3 { font-size: 26px; color: #e2e8f0; font-family: 'Segoe UI Black', 'Segoe UI', sans-serif; font-weight: 900; }
+.t3 span { color: #38bdf8; }
+.t4 { font-size: 22px; color: #38bdf8; font-family: 'Segoe UI Black', 'Segoe UI', sans-serif; font-weight: 900; letter-spacing: 2px; text-transform: uppercase; }
+
+/* ── ÍCONES ── */
+.icon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; }
+.icon-card { background: #1e293b; border-radius: 10px; padding: 18px 12px; display: flex; flex-direction: column; align-items: center; gap: 10px; cursor: pointer; border: 2px solid transparent; transition: border-color .2s, background .2s; }
+.icon-card:hover { border-color: #38bdf8; background: #1e3a5f; }
+.icon-card svg { color: #38bdf8; }
+.icon-name { font-size: 10px; color: #64748b; text-align: center; font-family: monospace; }
+
+/* ── CARDS DO APP ── */
+.cards-demo { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
+.app-card { background: #1e293b; border-radius: 12px; padding: 22px; display: flex; align-items: flex-start; gap: 14px; cursor: pointer; border: 1px solid #1e293b; transition: background .2s, border-color .2s; }
+.app-card:hover { background: #273549; border-color: #334155; }
+.app-card .ic { background: #0f2a3f; border-radius: 10px; padding: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.app-card .ic svg { color: #38bdf8; }
+.app-card .info .title { font-size: 14px; font-weight: 600; color: #e2e8f0; margin-bottom: 3px; }
+.app-card .info .desc { font-size: 11px; color: #64748b; line-height: 1.4; }
+
+/* ── VARIANTE COMPACTA ── */
+.cards-compact { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+.compact-card { background: #1e293b; border-radius: 12px; padding: 20px 16px; display: flex; flex-direction: column; align-items: center; gap: 12px; cursor: pointer; border: 1px solid #1e293b; transition: background .2s, border-color .2s; text-align: center; }
+.compact-card:hover { background: #273549; border-color: #334155; }
+.compact-card .ic2 { background: #0f2a3f; border-radius: 12px; padding: 12px; display: flex; }
+.compact-card .ic2 svg { color: #38bdf8; }
+.compact-card .title2 { font-size: 13px; font-weight: 600; color: #e2e8f0; }
+.compact-card .desc2 { font-size: 10px; color: #64748b; line-height: 1.3; }
+
+.badge { display: inline-block; font-size: 10px; background: #0ea5e9; color: #fff; border-radius: 4px; padding: 2px 6px; margin-left: 8px; vertical-align: middle; }
+</style>
+</head>
+<body>
+
+<h2>Opção de fonte — Título do sistema</h2>
+<div class="titulo-demo">
+  <div class="titulo-opcao"><div><div class="label">A — Segoe UI Black · peso 900</div><div class="t1">JR Lira Tech</div></div></div>
+  <div class="titulo-opcao"><div><div class="label">B — Segoe UI · peso 700 · uppercase · tracking</div><div class="t2">JR Lira Tech</div></div></div>
+  <div class="titulo-opcao"><div><div class="label">C — Segoe UI Black · destaque na sigla</div><div class="t3"><span>JR</span> Lira Tech</div></div></div>
+  <div class="titulo-opcao"><div><div class="label">D — Segoe UI Black · uppercase · letter-spacing 2px</div><div class="t4">JR Lira Tech</div></div></div>
+</div>
+
+<h2>Ícones disponíveis — Lucide <span class="badge">recomendado</span></h2>
+<div class="icon-grid" id="iconGrid"></div>
+
+<h2>Layout Opção 1 — Card com ícone à esquerda + texto</h2>
+<div class="cards-demo" id="cardsDemoA"></div>
+
+<h2>Layout Opção 2 — Card compacto com ícone centralizado</h2>
+<div class="cards-compact" id="cardsDemoB"></div>
+
+<script>
+lucide.createIcons();
+
+const MODULOS = [
+  { icon: 'users',           title: 'Quadro de Lotação',   desc: 'Funcionários e histórico' },
+  { icon: 'clock',           title: 'Controle de Ponto',   desc: 'Importação iPonto' },
+  { icon: 'file-text',       title: 'Notas — Cadastro',    desc: 'Importar XML e validar' },
+  { icon: 'package',         title: 'Notas — Estoque',     desc: 'Conferência às cegas' },
+  { icon: 'clipboard-check', title: 'Notas — Auditoria',   desc: 'Fechamento de notas' },
+  { icon: 'building-2',      title: 'Fornecedores',        desc: 'Cadastro e aprovações' },
+  { icon: 'shopping-cart',   title: 'Pedidos',             desc: 'Validação e PDF' },
+  { icon: 'shield',          title: 'Usuários',            desc: 'Perfis de acesso' },
+];
+
+const ICON_PREVIEW = [
+  'users','user','user-check','clock','clock-3','timer','file-text','file-check',
+  'package','package-open','package-check','clipboard-check','clipboard-list',
+  'building-2','factory','store','shopping-cart','shopping-bag','receipt',
+  'shield','shield-check','lock','settings','settings-2','layout-dashboard',
+  'truck','barcode','scan-barcode','tag','tags','search','magnifying-glass',
+  'chart-bar','chart-line','trending-up','dollar-sign','banknote','wallet',
+  'list-check','check-circle','circle-check-big','log-in','log-out','key',
+  'layers','grid-2x2','grid-3x3','home','bell','mail','printer','download',
+  'upload','file-up','file-down','database','server','cloud','refresh-cw'
+];
+
+// renderiza catálogo
+const grid = document.getElementById('iconGrid');
+ICON_PREVIEW.forEach(name => {
+  const d = document.createElement('div');
+  d.className = 'icon-card';
+  d.innerHTML = `<i data-lucide="${name}" width="28" height="28"></i><div class="icon-name">${name}</div>`;
+  grid.appendChild(d);
+});
+lucide.createIcons();
+
+// layout A
+const demoA = document.getElementById('cardsDemoA');
+MODULOS.forEach(m => {
+  demoA.innerHTML += `
+    <div class="app-card">
+      <div class="ic"><i data-lucide="${m.icon}" width="22" height="22"></i></div>
+      <div class="info">
+        <div class="title">${m.title}</div>
+        <div class="desc">${m.desc}</div>
+      </div>
+    </div>`;
+});
+lucide.createIcons();
+
+// layout B
+const demoB = document.getElementById('cardsDemoB');
+MODULOS.forEach(m => {
+  demoB.innerHTML += `
+    <div class="compact-card">
+      <div class="ic2"><i data-lucide="${m.icon}" width="26" height="26"></i></div>
+      <div class="title2">${m.title}</div>
+      <div class="desc2">${m.desc}</div>
+    </div>`;
+});
+lucide.createIcons();
+</script>
+</body>
+</html>

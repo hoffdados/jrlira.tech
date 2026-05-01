@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Importar QLP</title>
+<link rel="stylesheet" href="/shared.css">
+<script src="/shared.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: Arial, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
@@ -110,7 +112,6 @@ header h1 { font-size: 17px; color: #38bdf8; flex: 1; }
 <script>
 const API = '';
 const token = () => localStorage.getItem('jrlira_token');
-const H = { 'Authorization': `Bearer ${token()}` };
 let arquivoSelecionado = null;
 let todosPreview = [];
 
@@ -143,7 +144,7 @@ async function previewing() {
 
   const fd = new FormData();
   fd.append('arquivo', arquivoSelecionado);
-  const r = await fetch(`${API}/api/importacao/qlp/preview`, { method: 'POST', headers: H, body: fd });
+  const r = await apiFetch(`${API}/api/importacao/qlp/preview`, { method: 'POST', body: fd });
   const data = await r.json();
   if (!r.ok) return alert(data.erro);
 
@@ -167,7 +168,7 @@ async function importar() {
 
   const fd = new FormData();
   fd.append('arquivo', arquivoSelecionado);
-  const r = await fetch(`${API}/api/importacao/qlp`, { method: 'POST', headers: H, body: fd });
+  const r = await apiFetch(`${API}/api/importacao/qlp`, { method: 'POST', body: fd });
   const data = await r.json();
 
   btn.textContent = 'Importar todos os funcionários'; btn.disabled = false;

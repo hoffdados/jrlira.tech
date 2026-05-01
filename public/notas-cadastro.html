@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Notas de Entrada - Cadastro</title>
+<link rel="stylesheet" href="/shared.css">
+<script src="/shared.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
@@ -101,8 +103,6 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 1
   <div class="sidebar">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
       <h3 style="margin-bottom:0">Notas</h3>
-      <button class="btn-primary btn-sm" onclick="document.getElementById('fileInput').click()">+ Importar XML</button>
-      <input type="file" id="fileInput" accept=".xml" style="display:none" onchange="importarXML(this.files[0])">
     </div>
     <div id="listaNota"><p class="empty">Carregando...</p></div>
   </div>
@@ -110,18 +110,9 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 1
   <div class="main">
     <div id="msg" style="display:none"></div>
 
-    <div id="seletorLojaImport" style="background:#1e293b;border-radius:12px;padding:24px;margin-bottom:16px">
-      <div style="font-size:13px;color:#94a3b8;margin-bottom:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em">Loja de destino</div>
-      <select id="lojaImportSelect" onchange="onLojaImportChange()" style="background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;padding:9px 14px;font-size:14px;width:100%;max-width:360px">
-        <option value="">Carregando...</option>
-      </select>
-    </div>
-
-    <div id="uploadArea" class="upload-area" onclick="iniciarUpload()" style="pointer-events:none;opacity:.4">
-      <input type="file" id="fileInput2" accept=".xml" style="display:none" onchange="importarXML(this.files[0])">
-      <div class="icon">📄</div>
-      <p>Clique ou <strong>selecione um XML</strong> de NF-e para importar</p>
-      <p style="font-size:12px;margin-top:8px">Selecione uma nota da lista para visualizar</p>
+    <div id="uploadArea" style="padding:32px;text-align:center;color:#475569;font-size:13px">
+      Selecione uma nota da lista para visualizar.<br>
+      <span style="font-size:12px">A importação de XML é feita pelo Comprador.</span>
     </div>
 
     <div id="notaDetalhe" style="display:none">
@@ -140,6 +131,9 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 1
           <div id="wrapLiberar" style="display:none;align-items:center;gap:8px">
             <button id="btnLiberar" class="btn-success" onclick="liberarNota()">✓ Liberar para Estoque</button>
           </div>
+          <div id="wrapEmergencial" style="display:none;align-items:center;gap:8px">
+            <button class="btn-success" onclick="aprovarEmergencial()" style="background:#0ea5e9">✓ Aprovar Emergencial → Cadastro</button>
+          </div>
           <button id="btnExcluir" class="btn-outline" onclick="excluirNota()" style="display:none;border-color:#ef4444;color:#ef4444">✕ Excluir Nota</button>
           <button id="btnRelatorio" class="btn-outline" onclick="imprimirRelatorio()" style="display:none">🖨 Imprimir Relatório</button>
           <span id="statusMsg" style="font-size:13px;color:#64748b"></span>
@@ -150,21 +144,37 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 1
         ★ Produtos destacados em roxo são <strong>NOVOS</strong> (não encontrados no cadastro). Informe o EAN correto se o produto já existe na unidade.
       </div>
 
-      <table id="tabelaItens">
+      <!-- TOTAIS DO XML -->
+      <div id="totaisXml" style="display:none;margin-bottom:16px;background:#1e293b;border-radius:10px;padding:14px 16px">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#475569;margin-bottom:10px;font-weight:600">Totais da Nota Fiscal (ICMSTot)</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px" id="totaisGrid"></div>
+        <div style="margin-top:10px;padding-top:10px;border-top:1px solid #334155;display:flex;align-items:center;gap:6px">
+          <span style="font-size:11px;color:#64748b">Conferência:</span>
+          <span id="totaisConferencia" style="font-size:13px;font-weight:700;color:#4ade80"></span>
+        </div>
+      </div>
+
+      <div style="overflow-x:auto">
+      <table id="tabelaItens" style="min-width:1100px">
         <thead>
           <tr>
             <th>#</th>
             <th>Descrição</th>
-            <th>EAN Nota</th>
-            <th style="text-align:center">Qtd</th>
-            <th style="text-align:center">Preço Nota</th>
-            <th style="text-align:center">Custo Nota</th>
-            <th style="text-align:center">Status Preço</th>
+            <th>EAN / Fonte</th>
+            <th style="text-align:right">Qtd</th>
+            <th style="text-align:right;border-left:1px solid #334155">V.Prod</th>
+            <th style="text-align:right">IPI</th>
+            <th style="text-align:right">ICMS ST</th>
+            <th style="text-align:right">Outros</th>
+            <th style="text-align:right;border-left:1px solid #334155;color:#38bdf8">=&nbsp;Preço Nota</th>
+            <th style="text-align:right">Custo Nota</th>
+            <th style="text-align:center">Status</th>
             <th>Ação</th>
           </tr>
         </thead>
         <tbody id="tbodyItens"></tbody>
       </table>
+      </div>
     </div>
   </div>
 </div>
@@ -177,57 +187,11 @@ document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlir
 
 let notaAtualId = null;
 
-// Seletor de loja: popula opções pela lista de lojas do usuário
-(function inicializarSeletorLoja() {
-  const LOJAS_ALL = [
-    {id:1, nome:'SUPERASA ECONOMICO'},
-    {id:2, nome:'SUPERASA BR'},
-    {id:3, nome:'SUPERASA JOAO PAULO'},
-    {id:4, nome:'SUPERASA FLORESTA'},
-    {id:5, nome:'SUPERASA SAO JOSE'},
-    {id:6, nome:'SUPERASA SANTAREM'},
-  ];
-  const lojas = JSON.parse(localStorage.getItem('jrlira_lojas') || 'null');
-  const opcoes = lojas?.length ? LOJAS_ALL.filter(l => lojas.includes(l.id)) : LOJAS_ALL;
-  const sel = document.getElementById('lojaImportSelect');
-  sel.innerHTML = '<option value="">Selecione a loja...</option>' +
-    opcoes.map(l => `<option value="${l.id}">${l.nome}</option>`).join('');
-  if (lojas?.length === 1) {
-    sel.value = String(lojas[0]);
-    sel.disabled = true;
-    habilitarUpload();
-  }
-})();
-
-function onLojaImportChange() {
-  const v = document.getElementById('lojaImportSelect').value;
-  if (v) habilitarUpload(); else desabilitarUpload();
-}
-
-function habilitarUpload() {
-  const ua = document.getElementById('uploadArea');
-  ua.style.pointerEvents = 'auto';
-  ua.style.opacity = '1';
-}
-
-function desabilitarUpload() {
-  const ua = document.getElementById('uploadArea');
-  ua.style.pointerEvents = 'none';
-  ua.style.opacity = '.4';
-}
-
-function iniciarUpload() {
-  document.getElementById('fileInput2').click();
-}
-
-function lojaImportSelecionada() {
-  return document.getElementById('lojaImportSelect').value;
-}
 
 async function fetchApi(url, method = 'GET', body = null) {
-  const opts = { method, headers: { Authorization: `Bearer ${token()}` } };
-  if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
-  const r = await fetch(API + url, opts);
+  const opts = { method };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await apiFetch(API + url, opts);
   const data = await r.json();
   if (!r.ok) throw new Error(data.erro || 'Erro desconhecido');
   return data;
@@ -265,34 +229,13 @@ async function carregarNotas() {
 }
 
 function labelStatus(s) {
-  return { importada: 'Importada', em_conferencia: 'Em Conferência', em_auditoria: 'Em Auditoria', fechada: 'Fechada', em_validacao_comercial: 'Validação Comercial' }[s] || s;
+  return {
+    importada: 'Importada', em_validacao_cadastro: 'Validação Cadastro',
+    em_conferencia: 'Em Conferência', em_auditoria: 'Em Auditoria',
+    fechada: 'Fechada', em_validacao_comercial: 'Validação Comercial'
+  }[s] || s;
 }
 
-async function importarXML(file) {
-  if (!file) return;
-  const loja_id = lojaImportSelecionada();
-  if (!loja_id) { showMsg('Selecione a loja de destino antes de importar', 'err'); return; }
-  showMsg('Importando XML...', 'ok');
-  const fd = new FormData();
-  fd.append('xml', file);
-  fd.append('loja_id', loja_id);
-  try {
-    const r = await fetch(`${API}/api/notas/importar`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token()}` },
-      body: fd
-    });
-    const data = await r.json();
-    if (!r.ok) {
-      if (data.nota_id) { showMsg('Nota já importada. Abrindo...', 'warn'); abrirNota(data.nota_id); }
-      else throw new Error(data.erro);
-      return;
-    }
-    showMsg(`NF importada — ${data.total_itens} itens de ${data.fornecedor}`, 'ok');
-    await carregarNotas();
-    abrirNota(data.nota_id);
-  } catch (e) { showMsg(e.message, 'err'); }
-}
 
 async function abrirNota(id) {
   notaAtualId = id;
@@ -300,7 +243,6 @@ async function abrirNota(id) {
   const card = document.getElementById(`card-${id}`);
   if (card) card.classList.add('ativo');
   document.getElementById('uploadArea').style.display = 'none';
-  document.getElementById('seletorLojaImport').style.display = 'none';
   document.getElementById('notaDetalhe').style.display = 'block';
 
   try {
@@ -319,37 +261,121 @@ async function abrirNota(id) {
     const temNovos = itens.some(i => i.produto_novo);
     document.getElementById('legendaNovos').style.display = temNovos ? 'block' : 'none';
     const wrapLib = document.getElementById('wrapLiberar');
-    const emValidacao = nota.status === 'em_validacao_comercial';
-    wrapLib.style.display = nota.status === 'importada' ? 'flex' : 'none';
-    document.getElementById('btnExcluir').style.display = nota.status === 'importada' ? 'inline-block' : 'none';
+    const isAdmin = localStorage.getItem('jrlira_perfil') === 'admin';
+    wrapLib.style.display = nota.status === 'em_validacao_cadastro' ? 'flex' : 'none';
+    document.getElementById('wrapEmergencial').style.display = (isAdmin && nota.status === 'emergencial_pendente') ? 'flex' : 'none';
+    document.getElementById('btnExcluir').style.display = ['importada','em_validacao_cadastro'].includes(nota.status) ? 'inline-block' : 'none';
     document.getElementById('btnRelatorio').style.display = nota.status === 'fechada' ? 'inline-block' : 'none';
-    document.getElementById('statusMsg').textContent = nota.status === 'em_conferencia' ? 'Aguardando conferência do estoque' :
-      nota.status === 'em_auditoria' ? 'Em auditoria' :
-      nota.status === 'fechada' ? `Fechada em ${fmtData(nota.fechado_em)}` :
-      emValidacao ? 'Aguardando validação comercial do comprador' : '';
+    document.getElementById('statusMsg').textContent =
+      nota.status === 'importada'             ? 'Aguardando liberação pelo comprador' :
+      nota.status === 'em_validacao_cadastro' ? '' :
+      nota.status === 'em_conferencia'        ? 'Aguardando conferência do estoque' :
+      nota.status === 'em_auditoria'          ? 'Em auditoria' :
+      nota.status === 'fechada'               ? `Fechada em ${fmtData(nota.fechado_em)}` : '';
 
+    renderTotais(nota);
     renderItens(itens, nota.status);
   } catch (e) { showMsg(e.message, 'err'); }
+}
+
+function renderTotais(nota) {
+  const el = document.getElementById('totaisXml');
+  const grid = document.getElementById('totaisGrid');
+  el.style.display = 'block';
+
+  const campos = [
+    ['Total Prod.',  nota.tot_vprod],
+    ['Base ICMS',    nota.tot_vbc],
+    ['ICMS',         nota.tot_vicms],
+    ['Base ST',      nota.tot_vbcst],
+    ['ICMS ST',      nota.tot_vst],
+    ['FCP ST',       nota.tot_vfcp_st],
+    ['Base IPI',     nota.tot_vipi > 0 ? null : null], // não mostrar base se não tem IPI
+    ['IPI',          nota.tot_vipi],
+    ['Desconto',     nota.tot_vdesc],
+    ['Frete',        nota.tot_vfrete],
+    ['Outras Desp.', (parseFloat(nota.tot_vseg||0) + parseFloat(nota.tot_voutro||0)) || null],
+    ['Valor NF',     nota.valor_total],
+  ].filter(([, v]) => v != null && parseFloat(v) >= 0);
+
+  grid.innerHTML = campos.map(([label, val]) => {
+    const isNF = label === 'Valor NF';
+    return `<div style="background:#0f172a;border-radius:6px;padding:8px 10px${isNF ? ';border:1px solid #38bdf8' : ''}">
+      <div style="font-size:10px;color:#475569;margin-bottom:3px">${label}</div>
+      <div style="font-size:13px;font-weight:${isNF ? '700' : '600'};color:${isNF ? '#38bdf8' : '#e2e8f0'}">${fmtMoeda(val)}</div>
+    </div>`;
+  }).join('');
+
+  // conferência: soma dos itens deve bater com vNF
+  const vNF = parseFloat(nota.valor_total || 0);
+  const vprod = parseFloat(nota.tot_vprod || 0);
+  const vdesc = parseFloat(nota.tot_vdesc || 0);
+  const vipi  = parseFloat(nota.tot_vipi  || 0);
+  const vst   = parseFloat(nota.tot_vst   || 0);
+  const vfcp  = parseFloat(nota.tot_vfcp_st || 0);
+  const vfrete= parseFloat(nota.tot_vfrete || 0);
+  const vseg  = parseFloat(nota.tot_vseg  || 0);
+  const vout  = parseFloat(nota.tot_voutro || 0);
+  const calc  = parseFloat((vprod - vdesc + vipi + vst + vfcp + vfrete + vseg + vout).toFixed(2));
+  const diff  = Math.abs(calc - vNF);
+  const ok    = diff < 0.05;
+  document.getElementById('totaisConferencia').innerHTML =
+    ok ? `✓ Composição confere (${fmtMoeda(calc)} = ${fmtMoeda(vNF)})`
+       : `⚠ Divergência de ${fmtMoeda(diff)} — calculado ${fmtMoeda(calc)} vs XML ${fmtMoeda(vNF)}`;
+  document.getElementById('totaisConferencia').style.color = ok ? '#4ade80' : '#f97316';
+}
+
+function u(item, campo) { return parseFloat(item[campo] || 0) / parseFloat(item.quantidade || 1); }
+function fmtU(item, campo) {
+  const v = u(item, campo);
+  return v > 0 ? `<span style="color:#94a3b8">${fmtMoeda(v)}</span>` : '<span style="color:#334155">—</span>';
 }
 
 function renderItens(itens, status) {
   const tbody = document.getElementById('tbodyItens');
   tbody.innerHTML = itens.map(item => {
     const isNovo = item.produto_novo;
+    const qtd = parseFloat(item.quantidade);
     const custo = item.custo_fabrica != null ? fmtMoeda(item.custo_fabrica) : '—';
     const statusBadge = `<span class="badge b-${item.status_preco}">${labelPreco(item.status_preco, isNovo)}</span>`;
+
+    // EAN display
+    const eanNota = item.ean_nota || '—';
+    const eanTrib = item.ean_trib ? `<div style="color:#64748b;font-size:10px">Trib: ${item.ean_trib}</div>` : '';
+    const fonte = item.ean_fonte === 'ean_trib'
+      ? `<div style="color:#fbbf24;font-size:10px">✓ match: EAN Trib</div>`
+      : item.ean_fonte === 'ean_nota'
+      ? `<div style="color:#4ade80;font-size:10px">✓ match: EAN Nota</div>`
+      : '';
+
+    // Outros = frete + seg + outro + fcp_st por unidade
+    const outrosTotal = (parseFloat(item.vfrete_item||0) + parseFloat(item.vseg_item||0) +
+                         parseFloat(item.voutro_item||0) + parseFloat(item.vfcp_st||0));
+    const outrosUn = outrosTotal / qtd;
+    const outrosCell = outrosTotal > 0
+      ? `<span style="color:#94a3b8">${fmtMoeda(outrosUn)}</span>`
+      : '<span style="color:#334155">—</span>';
+
+    // V.Prod por unidade = (vProd - vDesc) / qtd
+    const vprodUn = (parseFloat(item.vprod||0) - parseFloat(item.vdesc_item||0)) / qtd;
+
     const acao = (isNovo && status === 'importada') ? `
       <div class="ean-remap">
-        <input type="text" id="ean-${item.id}" placeholder="EAN cadastro" title="Informe o EAN do produto cadastrado">
+        <input type="text" id="ean-${item.id}" placeholder="EAN cadastro">
         <button class="btn-primary btn-sm" onclick="remapearEAN(${item.id})">Associar</button>
       </div>` : (item.validado_cadastro ? `<span style="color:#4ade80;font-size:12px">✓ Associado</span>` : '—');
+
     return `<tr class="${isNovo ? 'novo-prod' : ''}">
       <td>${item.numero_item}</td>
       <td>${item.descricao_nota}${isNovo ? ' <span style="color:#a78bfa;font-size:11px">★NOVO</span>' : ''}</td>
-      <td style="font-family:monospace;font-size:12px">${item.ean_nota || '—'}</td>
-      <td style="text-align:center">${parseFloat(item.quantidade).toFixed(0)}</td>
-      <td style="text-align:center">${fmtMoeda(item.preco_unitario_nota)}</td>
-      <td style="text-align:center">${custo}</td>
+      <td style="font-family:monospace;font-size:11px;line-height:1.6">${eanNota}${eanTrib}${fonte}</td>
+      <td style="text-align:right">${qtd % 1 === 0 ? qtd.toFixed(0) : qtd.toFixed(3)}</td>
+      <td style="text-align:right;border-left:1px solid #1e293b"><span style="color:#94a3b8">${fmtMoeda(vprodUn)}</span></td>
+      <td style="text-align:right">${fmtU(item,'vipi')}</td>
+      <td style="text-align:right">${fmtU(item,'vst')}</td>
+      <td style="text-align:right">${outrosCell}</td>
+      <td style="text-align:right;border-left:1px solid #1e293b;font-weight:700;color:#e2e8f0">${fmtMoeda(item.preco_unitario_nota)}</td>
+      <td style="text-align:right">${custo}</td>
       <td style="text-align:center">${statusBadge}</td>
       <td>${acao}</td>
     </tr>`;
@@ -371,6 +397,16 @@ async function remapearEAN(itemId) {
   } catch (e) { showMsg(e.message, 'err'); }
 }
 
+async function aprovarEmergencial() {
+  if (!confirm('Aprovar nota emergencial e liberar para o Cadastro?')) return;
+  try {
+    await fetchApi(`/api/notas/${notaAtualId}/aprovar-emergencial`, 'PATCH', {});
+    showMsg('Nota aprovada e liberada para o Cadastro!', 'ok');
+    await carregarNotas();
+    abrirNota(notaAtualId);
+  } catch (e) { showMsg(e.message, 'err'); }
+}
+
 async function liberarNota() {
   if (!confirm('Liberar esta nota para conferência do estoque?')) return;
   try {
@@ -388,7 +424,6 @@ async function excluirNota() {
     showMsg('Nota excluída com sucesso', 'ok');
     notaAtualId = null;
     document.getElementById('notaDetalhe').style.display = 'none';
-    document.getElementById('seletorLojaImport').style.display = 'block';
     document.getElementById('uploadArea').style.display = 'block';
     await carregarNotas();
   } catch (e) { showMsg(e.message, 'err'); }

@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sugestão de Compras — JR Lira</title>
+<link rel="stylesheet" href="/shared.css">
+<script src="/shared.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh;display:flex;flex-direction:column}
+nav{background:#1e293b;padding:14px 24px;display:flex;align-items:center;gap:16px;border-bottom:1px solid #334155;flex-shrink:0}
+.brand{font-size:16px;font-weight:700;color:#38bdf8}
+.nav-user{margin-left:auto;font-size:13px;color:#64748b}
+.btn-nav{background:#0ea5e9;color:#fff;border:none;padding:7px 14px;border-radius:6px;font-size:13px;cursor:pointer}
+input,select{background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;padding:8px 12px;font-size:13px}
+input:focus,select:focus{outline:none;border-color:#38bdf8}
+button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 14px;font-weight:600}
+.btn-primary{background:#0ea5e9;color:#fff}
+.btn-primary:hover{background:#0284c7}
+.btn-ghost{background:#334155;color:#94a3b8}
+.btn-ok{background:#14532d;color:#4ade80}
+.btn-ok:hover{background:#166534}
+.btn-sm{padding:4px 10px;font-size:12px}
+
+/* FILTROS */
+.filtros{padding:16px 24px;background:#1e293b;border-bottom:1px solid #334155;display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap}
+.filtro-group{display:flex;flex-direction:column;gap:4px}
+.filtro-group label{font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em}
+.filtro-group select{min-width:220px}
+.dias-group{display:flex;flex-direction:column;gap:4px}
+.dias-btns{display:flex;gap:4px;flex-wrap:wrap}
+.dias-btn{background:#0f172a;border:1px solid #334155;color:#94a3b8;padding:5px 10px;border-radius:5px;font-size:12px;font-weight:600;cursor:pointer}
+.dias-btn.active{background:#0ea5e9;color:#fff;border-color:#0ea5e9}
+
+/* CONTEÚDO */
+.content{flex:1;overflow:auto;padding:20px 24px 120px}
+.empty-state{text-align:center;color:#475569;padding:60px 20px;font-size:14px}
+.loading{text-align:center;color:#64748b;padding:40px;font-size:13px}
+
+/* RESUMO */
+.resumo-bar{display:flex;gap:24px;margin-bottom:16px;padding:12px 16px;background:#1e293b;border-radius:8px;font-size:13px;flex-wrap:wrap}
+.resumo-item label{font-size:10px;color:#64748b;text-transform:uppercase;display:block;margin-bottom:2px}
+.resumo-item span{font-weight:700}
+.r-total{color:#fbbf24}
+.r-red{color:#f87171}
+.r-yellow{color:#fbbf24}
+.r-sel{color:#4ade80}
+
+/* FILTROS TABELA */
+.tbl-controls{display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
+.tbl-controls input{width:220px}
+.badge-filtro{padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;cursor:pointer;border:1px solid transparent}
+.badge-filtro.f-todos{background:#1e293b;color:#94a3b8;border-color:#334155}
+.badge-filtro.f-red{background:#1a0505;color:#f87171;border-color:#7f1d1d}
+.badge-filtro.f-yellow{background:#1a1200;color:#fbbf24;border-color:#78350f}
+.badge-filtro.f-green{background:#0a2010;color:#4ade80;border-color:#14532d}
+.badge-filtro.f-white{background:#1e293b;color:#94a3b8;border-color:#334155}
+.badge-filtro.ativo{outline:2px solid #38bdf8}
+
+/* TABELA */
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead th{background:#0f172a;padding:8px 10px;text-align:left;color:#64748b;font-weight:600;border-bottom:1px solid #334155;white-space:nowrap;position:sticky;top:0}
+tbody td{padding:7px 10px;border-bottom:1px solid #1e293b;vertical-align:middle}
+tbody tr:hover{background:#1a2744}
+tbody tr.selecionado{background:#0c2040}
+.sem{font-size:16px;text-align:center}
+.ean{font-family:monospace;font-size:10px;color:#475569}
+.qtd-input{width:80px;padding:4px 8px;font-size:12px;text-align:right}
+.qtd-input:disabled{opacity:.4;cursor:not-allowed}
+
+/* RODAPÉ FLUTUANTE */
+.footer-bar{position:fixed;bottom:0;left:0;right:0;background:#1e293b;border-top:1px solid #334155;padding:12px 24px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;z-index:100}
+.footer-info{font-size:13px}
+.footer-info strong{color:#4ade80}
+.footer-val{font-size:15px;font-weight:700;color:#fbbf24}
+.footer-sep{width:1px;height:28px;background:#334155}
+.footer-inputs{display:flex;gap:10px;align-items:center;flex:1}
+.footer-inputs select{width:130px}
+.footer-inputs input{width:200px}
+.footer-spacer{flex:1}
+.msg{padding:8px 14px;border-radius:6px;font-size:13px}
+.msg-ok{background:#14532d;color:#4ade80}
+.msg-err{background:#450a0a;color:#f87171}
+</style>
+</head>
+<body>
+<nav>
+  <span class="brand">JR Lira Tech</span>
+  <span style="color:#475569">/</span>
+  <span style="font-size:14px;color:#94a3b8">Sugestão de Compras</span>
+  <span class="nav-user" id="nomeUsuario"></span>
+  <button class="btn-nav" onclick="location.href='/'">← Início</button>
+</nav>
+
+<div class="filtros">
+  <div class="filtro-group">
+    <label>Loja</label>
+    <select id="selLoja" style="min-width:160px" onchange="onLojaChange()"><option value="">— Selecione —</option></select>
+  </div>
+  <div class="filtro-group">
+    <label>Fornecedor</label>
+    <select id="selFornecedor" style="min-width:260px" disabled><option value="">— Selecione a loja primeiro —</option></select>
+  </div>
+  <div class="dias-group">
+    <label style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em">Dias de estoque alvo</label>
+    <div class="dias-btns" id="diasBtns">
+      <button class="dias-btn" onclick="setDias(7)">7d</button>
+      <button class="dias-btn" onclick="setDias(14)">14d</button>
+      <button class="dias-btn" onclick="setDias(21)">21d</button>
+      <button class="dias-btn active" onclick="setDias(28)">28d</button>
+      <button class="dias-btn" onclick="setDias(35)">35d</button>
+      <button class="dias-btn" onclick="setDias(42)">42d</button>
+      <button class="dias-btn" onclick="setDias(49)">49d</button>
+      <button class="dias-btn" onclick="setDias(63)">63d</button>
+      <button class="dias-btn" onclick="setDias(70)">70d</button>
+    </div>
+  </div>
+  <div class="filtro-group">
+    <label>Lead time (entrega)</label>
+    <select id="selLeadtime" style="min-width:110px">
+      <option value="7">7 dias</option>
+      <option value="14">14 dias</option>
+      <option value="21">21 dias</option>
+      <option value="28" selected>28 dias</option>
+    </select>
+  </div>
+  <button class="btn-primary" onclick="buscar()" style="align-self:flex-end;padding:9px 20px">Buscar</button>
+</div>
+
+<div class="content" id="content">
+  <div class="empty-state">Selecione a loja e o fornecedor para gerar sugestões</div>
+</div>
+
+<div class="footer-bar" id="footerBar" style="display:none">
+  <div class="footer-info"><strong id="ftSelecionados">0</strong> itens selecionados</div>
+  <div class="footer-val" id="ftValor">R$ 0,00</div>
+  <div class="footer-sep"></div>
+  <div class="footer-inputs">
+    <div>
+      <div style="font-size:10px;color:#64748b;margin-bottom:3px">Cond. pagamento</div>
+      <select id="ftCondicao">
+        <option value="7">7 dias</option>
+        <option value="14">14 dias</option>
+        <option value="21">21 dias</option>
+        <option value="28" selected>28 dias</option>
+        <option value="35">35 dias</option>
+        <option value="42">42 dias</option>
+        <option value="49">49 dias</option>
+        <option value="63">63 dias</option>
+        <option value="70">70 dias</option>
+      </select>
+    </div>
+    <div style="flex:1">
+      <div style="font-size:10px;color:#64748b;margin-bottom:3px">Observações</div>
+      <input type="text" id="ftObs" placeholder="(opcional)" style="width:100%">
+    </div>
+  </div>
+  <div id="ftMsg" class="msg" style="display:none"></div>
+  <button class="btn-ok" onclick="gerarPedido(this)" style="padding:10px 20px;white-space:nowrap">Gerar Pedido Rascunho</button>
+</div>
+
+<script>
+const API = '';
+const fmtN = (v, d=2) => Number(v).toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d });
+const fmtD = v => v ? new Date(v).toLocaleDateString('pt-BR') : '—';
+const fmtR = v => 'R$ ' + fmtN(v, 2);
+
+let diasAlvo = 28;
+let leadtime = 28;
+let dados = [];
+let filtroSemaforo = 'todos';
+let buscaTexto = '';
+let fornecedores = [];
+
+document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
+
+async function init() {
+  try {
+    const rl = await apiFetch(`${API}/api/fornecedores/lojas`);
+    if (!rl.ok) {
+      document.getElementById('content').innerHTML = '<div class="empty-state" style="color:#f87171">Sessão expirada — faça login novamente</div>';
+      return;
+    }
+    const lojas = await rl.json();
+    const sl = document.getElementById('selLoja');
+    const lojasSalvas = JSON.parse(localStorage.getItem('jrlira_lojas') || 'null');
+    const perfil = localStorage.getItem('jrlira_perfil');
+    const lojasVisiveis = perfil === 'admin' || !lojasSalvas ? lojas : lojas.filter(l => lojasSalvas.includes(l.id));
+    sl.innerHTML = '<option value="">— Selecione —</option>' +
+      lojasVisiveis.map(l => `<option value="${l.id}">${l.nome}</option>`).join('');
+  } catch (e) {
+    document.getElementById('content').innerHTML = `<div class="empty-state" style="color:#f87171">Erro ao carregar: ${e.message}</div>`;
+  }
+}
+
+async function onLojaChange() {
+  const loja_id = document.getElementById('selLoja').value;
+  const sf = document.getElementById('selFornecedor');
+  dados = [];
+  document.getElementById('content').innerHTML = '<div class="empty-state">Selecione a loja e o fornecedor para gerar sugestões</div>';
+  document.getElementById('footerBar').style.display = 'none';
+
+  if (!loja_id) {
+    sf.innerHTML = '<option value="">— Selecione a loja primeiro —</option>';
+    sf.disabled = true;
+    return;
+  }
+
+  sf.innerHTML = '<option value="">Carregando fornecedores...</option>';
+  sf.disabled = true;
+  try {
+    const r = await apiFetch(`${API}/api/pedidos/fornecedores-com-historico?loja_id=${loja_id}`);
+    const d = await r.json();
+    if (!r.ok) { sf.innerHTML = `<option value="">Erro: ${d.erro}</option>`; return; }
+    fornecedores = d;
+    sf.innerHTML = '<option value="">— Selecione —</option>' +
+      d.map(f => `<option value="${f.cnpj}">${f.razao_social}${f.fantasia && f.fantasia !== f.razao_social ? ' / ' + f.fantasia : ''}</option>`).join('');
+    sf.disabled = false;
+  } catch (e) {
+    sf.innerHTML = `<option value="">Erro: ${e.message}</option>`;
+  }
+}
+
+function setDias(d) {
+  diasAlvo = d;
+  document.querySelectorAll('.dias-btn').forEach(b => b.classList.toggle('active', parseInt(b.textContent) === d));
+  if (dados.length) renderTabela();
+}
+
+document.getElementById('selLeadtime').addEventListener('change', function() {
+  leadtime = parseInt(this.value);
+  if (dados.length) renderTabela();
+});
+
+async function buscar() {
+  const cnpj = document.getElementById('selFornecedor').value;
+  const loja_id = document.getElementById('selLoja').value;
+  if (!cnpj) return alert('Selecione um fornecedor');
+  if (!loja_id) return alert('Selecione uma loja');
+  leadtime = parseInt(document.getElementById('selLeadtime').value);
+
+  document.getElementById('content').innerHTML = '<div class="loading">Buscando dados...</div>';
+  document.getElementById('footerBar').style.display = 'none';
+
+  try {
+    const r = await apiFetch(`${API}/api/pedidos/sugestao?fornecedor_cnpj=${encodeURIComponent(cnpj)}&loja_id=${loja_id}`);
+    const d = await r.json();
+    if (!r.ok) { document.getElementById('content').innerHTML = `<div class="empty-state" style="color:#f87171">${d.erro}</div>`; return; }
+    dados = d;
+    filtroSemaforo = 'todos';
+    buscaTexto = '';
+    renderTabela();
+    document.getElementById('footerBar').style.display = 'flex';
+    atualizarFooter();
+  } catch (e) { document.getElementById('content').innerHTML = `<div class="empty-state" style="color:#f87171">Erro: ${e.message}</div>`; }
+}
+
+function calcItem(it) {
+  const emb      = Math.max(1, parseFloat(it.qtdeembalagem || 1));
+  const estoque  = parseFloat(it.estdisponivel || 0);
+  const transito = parseFloat(it.em_transito   || 0);
+  const mediaDia = parseFloat(it.total_90d     || 0) / 90;  // já em unidades (qtd_vendida * emb)
+  const cobertura = mediaDia > 0 ? (estoque + transito) / mediaDia : null;
+  const sugestaoUn = mediaDia > 0 ? Math.max(0, (diasAlvo * mediaDia) - estoque - transito) : null;
+  const sugestao   = sugestaoUn !== null ? Math.ceil(sugestaoUn / emb) : null;  // em embalagens
+  let semaforo;
+  if (mediaDia === 0) semaforo = 'white';
+  else if (cobertura < leadtime) semaforo = 'red';
+  else if (cobertura < leadtime + diasAlvo) semaforo = 'yellow';
+  else semaforo = 'green';
+  return { emb, estoque, transito, mediaDia, cobertura, sugestao, semaforo };
+}
+
+function renderTabela() {
+  const filtrados = dados.filter(it => {
+    const { semaforo } = calcItem(it);
+    if (filtroSemaforo !== 'todos' && semaforo !== filtroSemaforo) return false;
+    if (buscaTexto) {
+      const q = buscaTexto.toLowerCase();
+      if (!it.descricao?.toLowerCase().includes(q) && !it.codigobarra?.includes(buscaTexto)) return false;
+    }
+    return true;
+  });
+
+  // contagens para resumo
+  const counts = { red: 0, yellow: 0, green: 0, white: 0 };
+  let totalSugerido = 0;
+  dados.forEach(it => {
+    const c = calcItem(it);
+    counts[c.semaforo]++;
+    if (c.sugestao > 0) totalSugerido += c.sugestao * c.emb * (it.custoorigem || 0);
+  });
+
+  const semaforoIcon = { red: '🔴', yellow: '🟡', green: '🟢', white: '⚪' };
+  const semaforoCor  = { red: 'red', yellow: 'yellow', green: 'green', white: 'white' };
+
+  const html = `
+    <div class="resumo-bar">
+      <div class="resumo-item"><label>Total produtos</label><span>${dados.length}</span></div>
+      <div class="resumo-item"><label>🔴 Crítico</label><span class="r-red">${counts.red}</span></div>
+      <div class="resumo-item"><label>🟡 Atenção</label><span class="r-yellow">${counts.yellow}</span></div>
+      <div class="resumo-item"><label>🟢 OK</label><span>${counts.green}</span></div>
+      <div class="resumo-item"><label>⚪ Sem venda</label><span style="color:#475569">${counts.white}</span></div>
+      <div class="resumo-item" style="margin-left:auto"><label>Valor sugerido total</label><span class="r-total">${fmtR(totalSugerido)}</span></div>
+    </div>
+    <div class="tbl-controls">
+      <input type="text" placeholder="Buscar produto ou EAN..." oninput="buscaTexto=this.value;renderTabela()" value="${buscaTexto}">
+      <span class="badge-filtro f-todos ${filtroSemaforo==='todos'?'ativo':''}" onclick="filtroSemaforo='todos';renderTabela()">Todos (${dados.length})</span>
+      <span class="badge-filtro f-red ${filtroSemaforo==='red'?'ativo':''}" onclick="filtroSemaforo='red';renderTabela()">🔴 ${counts.red}</span>
+      <span class="badge-filtro f-yellow ${filtroSemaforo==='yellow'?'ativo':''}" onclick="filtroSemaforo='yellow';renderTabela()">🟡 ${counts.yellow}</span>
+      <span class="badge-filtro f-green ${filtroSemaforo==='green'?'ativo':''}" onclick="filtroSemaforo='green';renderTabela()">🟢 ${counts.green}</span>
+      <span class="badge-filtro f-white ${filtroSemaforo==='white'?'ativo':''}" onclick="filtroSemaforo='white';renderTabela()">⚪ ${counts.white}</span>
+      <button class="btn-ghost btn-sm" onclick="selecionarTodos()">Sel. visíveis</button>
+      <button class="btn-ghost btn-sm" onclick="deselecionarTodos()">Limpar seleção</button>
+    </div>
+    <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:30px"></th>
+          <th style="width:30px"></th>
+          <th>Produto</th>
+          <th style="text-align:right">Emb.</th>
+          <th style="text-align:right">Estoque</th>
+          <th style="text-align:right">Trânsito</th>
+          <th style="text-align:right">Média/dia</th>
+          <th style="text-align:right">Cobertura</th>
+          <th style="text-align:right">Custo unit.</th>
+          <th style="text-align:right">Sugestão (emb)</th>
+          <th style="text-align:right">Valor est.</th>
+          <th>Última compra</th>
+          <th>Última venda</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${filtrados.length === 0 ? '<tr><td colspan="13" style="text-align:center;color:#475569;padding:24px">Nenhum item encontrado</td></tr>' :
+          filtrados.map((it, idx) => {
+            const { emb, estoque, transito, mediaDia, cobertura, sugestao, semaforo } = calcItem(it);
+            const globalIdx = dados.indexOf(it);
+            const checked = it._selecionado || false;
+            const qtdVal = it._qtd !== undefined ? it._qtd : (sugestao !== null ? Math.ceil(sugestao) : '');
+            const bgRow = semaforo === 'red' ? 'background:#1a0505' : semaforo === 'yellow' ? 'background:#1a1200' : '';
+            const valorEst = (parseFloat(qtdVal) || 0) * emb * (it.custoorigem || 0);
+            return `<tr style="${bgRow}" class="${checked ? 'selecionado' : ''}">
+              <td><input type="checkbox" ${checked ? 'checked' : ''} onchange="toggleSel(${globalIdx}, this.checked)"></td>
+              <td class="sem">${semaforoIcon[semaforo]}</td>
+              <td>
+                <div style="font-size:12px;font-weight:600">${it.descricao || '—'}</div>
+                <div class="ean">${it.codigobarra || '—'}</div>
+              </td>
+              <td style="text-align:right;color:#94a3b8">${it.qtdeembalagem > 1 ? fmtN(it.qtdeembalagem, 0) : '—'}</td>
+              <td style="text-align:right">${fmtN(estoque, 2)}</td>
+              <td style="text-align:right;color:#60a5fa">${fmtN(transito, 2)}</td>
+              <td style="text-align:right">${mediaDia > 0 ? fmtN(mediaDia, 3) : '<span style="color:#475569">—</span>'}</td>
+              <td style="text-align:right;font-weight:700">${cobertura == null ? '—' : Math.round(cobertura) + 'd'}</td>
+              <td style="text-align:right;color:#94a3b8">${it.custoorigem > 0 ? fmtR(it.custoorigem) : '—'}</td>
+              <td style="text-align:right">
+                <input type="number" min="0" step="1" class="qtd-input" value="${qtdVal}"
+                  ${!checked ? 'disabled' : ''}
+                  oninput="setQtd(${globalIdx}, this.value)"
+                  style="color:${sugestao > 0 ? '#fbbf24' : '#e2e8f0'}">
+              </td>
+              <td style="text-align:right;color:#4ade80">${checked && parseFloat(qtdVal) > 0 ? fmtR(valorEst) : '—'}</td>
+              <td style="color:#475569">${fmtD(it.ultima_compra)}</td>
+              <td style="color:#475569">${fmtD(it.ultima_venda)}</td>
+            </tr>`;
+          }).join('')
+        }
+      </tbody>
+    </table>
+    </div>`;
+
+  document.getElementById('content').innerHTML = html;
+  atualizarFooter();
+}
+
+function toggleSel(idx, checked) {
+  dados[idx]._selecionado = checked;
+  if (checked && dados[idx]._qtd === undefined) {
+    const { sugestao } = calcItem(dados[idx]);
+    dados[idx]._qtd = sugestao !== null ? Math.ceil(sugestao) : 1;
+  }
+  renderTabela();
+}
+
+function setQtd(idx, val) {
+  dados[idx]._qtd = val;
+  atualizarFooter();
+}
+
+function selecionarTodos() {
+  const filtrados = dados.filter(it => {
+    const { semaforo } = calcItem(it);
+    if (filtroSemaforo !== 'todos' && semaforo !== filtroSemaforo) return false;
+    if (buscaTexto) {
+      const q = buscaTexto.toLowerCase();
+      if (!it.descricao?.toLowerCase().includes(q) && !it.codigobarra?.includes(buscaTexto)) return false;
+    }
+    return true;
+  });
+  filtrados.forEach(it => {
+    it._selecionado = true;
+    if (it._qtd === undefined) {
+      const { sugestao } = calcItem(it);
+      it._qtd = sugestao !== null ? Math.ceil(sugestao) : 1;
+    }
+  });
+  renderTabela();
+}
+
+function deselecionarTodos() {
+  dados.forEach(it => { it._selecionado = false; });
+  renderTabela();
+}
+
+function atualizarFooter() {
+  const selecionados = dados.filter(it => it._selecionado);
+  let valor = 0;
+  selecionados.forEach(it => {
+    const qtd = parseFloat(it._qtd) || 0;
+    const emb = Math.max(1, parseFloat(it.qtdeembalagem || 1));
+    valor += qtd * emb * (it.custoorigem || 0);
+  });
+  document.getElementById('ftSelecionados').textContent = selecionados.length;
+  document.getElementById('ftValor').textContent = fmtR(valor);
+}
+
+async function gerarPedido(btn) {
+  const selecionados = dados.filter(it => it._selecionado && parseFloat(it._qtd) > 0);
+  if (!selecionados.length) return alert('Nenhum item selecionado com quantidade');
+
+  const cnpj = document.getElementById('selFornecedor').value;
+  const loja_id = parseInt(document.getElementById('selLoja').value);
+  const condicao = parseInt(document.getElementById('ftCondicao').value);
+  const obs = document.getElementById('ftObs').value.trim();
+
+  const forn = fornecedores.find(f => f.cnpj === cnpj);
+  if (!forn) return alert('Fornecedor não encontrado');
+
+  const itens = selecionados.map(it => ({
+    codigo_barras: it.codigobarra,
+    descricao: it.descricao,
+    quantidade: parseFloat(it._qtd),
+    preco_unitario: it.custoorigem || 0
+  }));
+
+  const ftMsg = document.getElementById('ftMsg');
+  ftMsg.style.display = 'none';
+
+  await withLoading(btn, async () => {
+    try {
+      const r = await apiFetch(`${API}/api/pedidos/de-sugestao`, {
+        method: 'POST',
+        body: JSON.stringify({ fornecedor_id: forn.id, loja_id, condicao_pagamento: condicao, observacoes: obs || null, itens })
+      });
+      const d = await r.json();
+      if (!r.ok) {
+        ftMsg.textContent = d.erro;
+        ftMsg.className = 'msg msg-err';
+        ftMsg.style.display = 'block';
+        return;
+      }
+      ftMsg.textContent = `Pedido ${d.numero_pedido} criado como rascunho!`;
+      ftMsg.className = 'msg msg-ok';
+      ftMsg.style.display = 'block';
+      setTimeout(() => { location.href = '/pedidos-comprador'; }, 1800);
+    } catch {
+      ftMsg.textContent = 'Erro de conexão';
+      ftMsg.className = 'msg msg-err';
+      ftMsg.style.display = 'block';
+    }
+  }, 'Gerando...');
+}
+
+init();
+</script>
+</body>
+</html>

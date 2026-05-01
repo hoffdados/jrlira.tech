@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Fornecedores — JR Lira</title>
+<link rel="stylesheet" href="/shared.css">
+<script src="/shared.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
@@ -132,7 +134,7 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 1
     <div style="margin-bottom:10px"><label style="font-size:12px;color:#64748b;margin-bottom:4px;display:block">CNPJ</label><input type="text" id="mFornCnpj" placeholder="00.000.000/0000-00"></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
       <button class="btn-ghost" onclick="fecharModal('modalForn')">Cancelar</button>
-      <button class="btn-primary" onclick="salvarForn()">Salvar</button>
+      <button class="btn-primary" onclick="salvarForn(this)">Salvar</button>
     </div>
   </div>
 </div>
@@ -147,7 +149,7 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 1
     <div class="config-row">
       <label>Dias de validade</label>
       <input type="number" id="cfgValidadeDias" style="width:80px" min="1" max="365">
-      <button class="btn-primary btn-sm" onclick="salvarConfig()">Salvar</button>
+      <button class="btn-primary btn-sm" onclick="salvarConfig(this)">Salvar</button>
     </div>
     <div style="text-align:right;margin-top:16px">
       <button class="btn-ghost" onclick="fecharModal('modalConfig')">Fechar</button>
@@ -161,8 +163,6 @@ const token = () => localStorage.getItem('jrlira_token');
 (function(){ const p = localStorage.getItem('jrlira_perfil'); if (!token() || !['admin','comprador'].includes(p)) location.href='/'; })();
 document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
 
-function h() { return { Authorization: `Bearer ${token()}` }; }
-function hj() { return { ...h(), 'Content-Type': 'application/json' }; }
 
 let fornecedores = [];
 let fornSelecionado = null;
@@ -179,7 +179,7 @@ function showMsg(txt, tipo='ok') {
 
 async function carregarFornecedores() {
   try {
-    const r = await fetch(`${API}/api/fornecedores`, { headers: h() });
+    const r = await apiFetch(`${API}/api/fornecedores`);
     fornecedores = await r.json();
     renderFornecedores(fornecedores);
   } catch { showMsg('Erro ao carregar fornecedores', 'err'); }
@@ -197,8 +197,8 @@ function renderFornecedores(lista) {
   if (!lista.length) { el.innerHTML = '<div style="color:#475569;text-align:center;padding:20px">Nenhum fornecedor.</div>'; return; }
   el.innerHTML = lista.map(f => `
     <div class="forn-item${fornSelecionado?.id===f.id?' selected':''}" onclick="selecionarForn(${f.id})">
-      <div class="forn-nome">${f.fantasia || f.razao_social}</div>
-      <div class="forn-cnpj">${f.razao_social !== (f.fantasia||f.razao_social) ? f.razao_social + ' &nbsp;|&nbsp; ' : ''}${f.cnpj || 'CNPJ não cadastrado'}</div>
+      <div class="forn-nome">${escapeHtml(f.fantasia || f.razao_social)}</div>
+      <div class="forn-cnpj">${f.razao_social !== (f.fantasia||f.razao_social) ? escapeHtml(f.razao_social) + ' &nbsp;|&nbsp; ' : ''}${escapeHtml(f.cnpj || 'CNPJ não cadastrado')}</div>
     </div>
   `).join('');
 }
@@ -223,24 +223,24 @@ async function selecionarForn(id) {
 async function carregarPendentes() {
   const el = document.getElementById('listaPendentes');
   try {
-    const r = await fetch(`${API}/api/fornecedores/vendedores/pendentes`, { headers: h() });
+    const r = await apiFetch(`${API}/api/fornecedores/vendedores/pendentes`);
     const lista = await r.json();
     document.getElementById('countPendentes').textContent = lista.length;
     if (!lista.length) { el.innerHTML = '<div style="color:#475569;text-align:center;padding:16px;font-size:13px">Nenhuma solicitação pendente.</div>'; return; }
     el.innerHTML = lista.map(v => `
       <div class="vend-row" style="border-left:3px solid #3b82f6">
         <div class="vend-topo">
-          ${v.foto_url ? `<img src="${v.foto_url}" class="vend-foto" onerror="this.style.display='none'">` : '<div class="vend-foto" style="display:flex;align-items:center;justify-content:center;font-size:18px">👤</div>'}
+          ${v.foto_url ? `<img src="${encodeURI(v.foto_url)}" class="vend-foto" onerror="this.style.display='none'">` : '<div class="vend-foto" style="display:flex;align-items:center;justify-content:center;font-size:18px">👤</div>'}
           <div>
-            <div class="vend-nome">${v.nome}</div>
-            <div class="vend-info" style="color:#60a5fa;font-size:11px">${v.fantasia || v.razao_social}</div>
-            <div class="vend-info">${v.email || '—'} ${v.telefone ? '| ' + v.telefone : ''}</div>
+            <div class="vend-nome">${escapeHtml(v.nome)}</div>
+            <div class="vend-info" style="color:#60a5fa;font-size:11px">${escapeHtml(v.fantasia || v.razao_social)}</div>
+            <div class="vend-info">${escapeHtml(v.email || '—')} ${v.telefone ? '| ' + escapeHtml(v.telefone) : ''}</div>
           </div>
           <div style="margin-left:auto;font-size:11px;color:#64748b">${new Date(v.criado_em).toLocaleDateString('pt-BR')}</div>
         </div>
         <div class="vend-acoes">
-          <button class="btn-ok btn-sm" onclick="aprovarVendedor(${v.id})">✓ Aprovar</button>
-          <button class="btn-danger btn-sm" onclick="rejeitarVendedor(${v.id})">✕ Rejeitar</button>
+          <button class="btn-ok btn-sm" onclick="aprovarVendedor(${v.id}, this)">✓ Aprovar</button>
+          <button class="btn-danger btn-sm" onclick="rejeitarVendedor(${v.id}, this)">✕ Rejeitar</button>
         </div>
       </div>`).join('');
   } catch { el.innerHTML = '<div style="color:#f87171;padding:12px;font-size:13px">Erro ao carregar.</div>'; }
@@ -250,7 +250,7 @@ async function carregarVendedores(fornId) {
   const el = document.getElementById('listaVendedores');
   el.innerHTML = '<div style="color:#475569;padding:12px">Carregando...</div>';
   try {
-    const r = await fetch(`${API}/api/fornecedores/${fornId}/vendedores`, { headers: h() });
+    const r = await apiFetch(`${API}/api/fornecedores/${fornId}/vendedores`);
     const todos = await r.json();
     const vendedores = todos.filter(v => v.status !== 'pendente');
     document.getElementById('countVendedores').textContent = vendedores.length;
@@ -265,54 +265,62 @@ async function carregarVendedores(fornId) {
       return `
         <div class="vend-row">
           <div class="vend-topo">
-            ${v.foto_url ? `<img src="${v.foto_url}" class="vend-foto" onerror="this.style.display='none'">` : '<div class="vend-foto" style="display:flex;align-items:center;justify-content:center;font-size:18px">👤</div>'}
+            ${v.foto_url ? `<img src="${encodeURI(v.foto_url)}" class="vend-foto" onerror="this.style.display='none'">` : '<div class="vend-foto" style="display:flex;align-items:center;justify-content:center;font-size:18px">👤</div>'}
             <div>
-              <div class="vend-nome">${v.nome}</div>
-              <div class="vend-info">${v.email || '—'} ${v.telefone ? '| ' + v.telefone : ''}</div>
-              ${v.nome_gerente ? `<div class="vend-info">Gerente: ${v.nome_gerente} ${v.telefone_gerente || ''}</div>` : ''}
+              <div class="vend-nome">${escapeHtml(v.nome)}</div>
+              <div class="vend-info">${escapeHtml(v.email || '—')} ${v.telefone ? '| ' + escapeHtml(v.telefone) : ''}</div>
+              ${v.nome_gerente ? `<div class="vend-info">Gerente: ${escapeHtml(v.nome_gerente)} ${escapeHtml(v.telefone_gerente || '')}</div>` : ''}
             </div>
-            <div style="margin-left:auto"><span class="badge ${statusClass[v.status] || 'b-inativo'}">${statusLabel[badgeStatus] || v.status}</span></div>
+            <div style="margin-left:auto"><span class="badge ${statusClass[v.status] || 'b-inativo'}">${statusLabel[badgeStatus] || escapeHtml(v.status)}</span></div>
           </div>
           ${expira ? `<div class="expira ${expirado?'expirado-txt':''}">Acesso ${expirado?'expirou':'expira'} em ${expira.toLocaleDateString('pt-BR')}</div>` : ''}
           <div class="vend-acoes">
-            ${v.status === 'pendente' ? `<button class="btn-ok btn-sm" onclick="aprovarVendedor(${v.id})">✓ Aprovar</button><button class="btn-danger btn-sm" onclick="rejeitarVendedor(${v.id})">✕ Rejeitar</button>` : ''}
-            ${(v.status === 'aprovado' || badgeStatus === 'expirado') ? `<button class="btn-warn btn-sm" onclick="revalidarVendedor(${v.id})">🔄 Revalidar acesso</button>` : ''}
-            ${v.status === 'aprovado' ? `<button class="btn-danger btn-sm" onclick="toggleVendador(${v.id}, false)">Desativar</button>` : ''}
-            ${v.status === 'inativo' ? `<button class="btn-ok btn-sm" onclick="toggleVendador(${v.id}, true)">Ativar</button>` : ''}
+            ${v.status === 'pendente' ? `<button class="btn-ok btn-sm" onclick="aprovarVendedor(${v.id}, this)">✓ Aprovar</button><button class="btn-danger btn-sm" onclick="rejeitarVendedor(${v.id}, this)">✕ Rejeitar</button>` : ''}
+            ${(v.status === 'aprovado' || badgeStatus === 'expirado') ? `<button class="btn-warn btn-sm" onclick="revalidarVendedor(${v.id}, this)">🔄 Revalidar acesso</button>` : ''}
+            ${v.status === 'aprovado' ? `<button class="btn-danger btn-sm" onclick="toggleVendador(${v.id}, false, this)">Desativar</button>` : ''}
+            ${v.status === 'inativo' ? `<button class="btn-ok btn-sm" onclick="toggleVendador(${v.id}, true, this)">Ativar</button>` : ''}
           </div>
         </div>`;
     }).join('');
   } catch { el.innerHTML = '<div style="color:#f87171;padding:12px">Erro ao carregar.</div>'; }
 }
 
-async function aprovarVendedor(id) {
+async function aprovarVendedor(id, btn) {
   if (!confirm('Aprovar este vendedor? Uma senha será gerada e enviada por e-mail.')) return;
-  const r = await fetch(`${API}/api/fornecedores/vendedores/${id}/aprovar`, { method:'POST', headers:h() });
-  const d = await r.json();
-  if (!r.ok) return showMsg(d.erro, 'err');
-  showMsg('Vendedor aprovado — e-mail com credenciais enviado.', 'ok');
-  carregarPendentes();
-  if (fornSelecionado) carregarVendedores(fornSelecionado.id);
+  await withLoading(btn, async () => {
+    const r = await apiFetch(`${API}/api/fornecedores/vendedores/${id}/aprovar`, { method:'POST' });
+    const d = await r.json();
+    if (!r.ok) return showMsg(d.erro, 'err');
+    showMsg('Vendedor aprovado — e-mail com credenciais enviado.', 'ok');
+    carregarPendentes();
+    if (fornSelecionado) carregarVendedores(fornSelecionado.id);
+  }, 'Aprovando...');
 }
 
-async function rejeitarVendedor(id) {
+async function rejeitarVendedor(id, btn) {
   if (!confirm('Rejeitar este vendedor?')) return;
-  const r = await fetch(`${API}/api/fornecedores/vendedores/${id}/rejeitar`, { method:'POST', headers:h() });
-  if (r.ok) { showMsg('Vendedor rejeitado.', 'ok'); carregarPendentes(); if (fornSelecionado) carregarVendedores(fornSelecionado.id); }
+  await withLoading(btn, async () => {
+    const r = await apiFetch(`${API}/api/fornecedores/vendedores/${id}/rejeitar`, { method:'POST' });
+    if (r.ok) { showMsg('Vendedor rejeitado.', 'ok'); carregarPendentes(); if (fornSelecionado) carregarVendedores(fornSelecionado.id); }
+  }, 'Rejeitando...');
 }
 
-async function revalidarVendedor(id) {
+async function revalidarVendedor(id, btn) {
   if (!confirm('Confirma que o vendedor ainda trabalha na empresa? Uma nova senha será gerada.')) return;
-  const r = await fetch(`${API}/api/fornecedores/vendedores/${id}/revalidar`, { method:'POST', headers:h() });
-  const d = await r.json();
-  if (!r.ok) return showMsg(d.erro, 'err');
-  showMsg('Acesso revalidado — nova senha enviada por e-mail.', 'ok');
-  carregarVendedores(fornSelecionado.id);
+  await withLoading(btn, async () => {
+    const r = await apiFetch(`${API}/api/fornecedores/vendedores/${id}/revalidar`, { method:'POST' });
+    const d = await r.json();
+    if (!r.ok) return showMsg(d.erro, 'err');
+    showMsg('Acesso revalidado — nova senha enviada por e-mail.', 'ok');
+    carregarVendedores(fornSelecionado.id);
+  }, 'Revalidando...');
 }
 
-async function toggleVendador(id, ativo) {
-  const r = await fetch(`${API}/api/fornecedores/vendedores/${id}/ativo`, { method:'PATCH', headers:hj(), body:JSON.stringify({ ativo }) });
-  if (r.ok) { showMsg(ativo ? 'Vendedor ativado.' : 'Vendedor desativado.', 'ok'); carregarVendedores(fornSelecionado.id); }
+async function toggleVendador(id, ativo, btn) {
+  await withLoading(btn, async () => {
+    const r = await apiFetch(`${API}/api/fornecedores/vendedores/${id}/ativo`, { method:'PATCH', body:JSON.stringify({ ativo }) });
+    if (r.ok) { showMsg(ativo ? 'Vendedor ativado.' : 'Vendedor desativado.', 'ok'); carregarVendedores(fornSelecionado.id); }
+  }, 'Aguarde...');
 }
 
 function copiarLinkCadastro() {
@@ -336,50 +344,56 @@ function abrirModalForn(forn = null) {
 
 function editarForn() { if (fornSelecionado) abrirModalForn(fornSelecionado); }
 
-async function salvarForn() {
+async function salvarForn(btn) {
   const razao_social = document.getElementById('mFornRazao').value.trim();
   if (!razao_social) { document.getElementById('msgModalForn').textContent='Razão social obrigatória'; document.getElementById('msgModalForn').style.display='block'; return; }
   const body = { razao_social, fantasia: document.getElementById('mFornFantasia').value.trim(), cnpj: document.getElementById('mFornCnpj').value.trim() };
   const url = editandoFornId ? `${API}/api/fornecedores/${editandoFornId}` : `${API}/api/fornecedores`;
   const method = editandoFornId ? 'PUT' : 'POST';
-  const r = await fetch(url, { method, headers:hj(), body:JSON.stringify(body) });
-  const d = await r.json();
-  if (!r.ok) { document.getElementById('msgModalForn').textContent=d.erro; document.getElementById('msgModalForn').style.display='block'; return; }
-  fecharModal('modalForn');
-  showMsg('Fornecedor salvo.', 'ok');
-  await carregarFornecedores();
-  if (editandoFornId) selecionarForn(editandoFornId);
+  await withLoading(btn, async () => {
+    const r = await apiFetch(url, { method, body:JSON.stringify(body) });
+    const d = await r.json();
+    if (!r.ok) { document.getElementById('msgModalForn').textContent=d.erro; document.getElementById('msgModalForn').style.display='block'; return; }
+    fecharModal('modalForn');
+    showMsg('Fornecedor salvo.', 'ok');
+    await carregarFornecedores();
+    if (editandoFornId) selecionarForn(editandoFornId);
+  }, 'Salvando...');
 }
 
 // ── MODAL CONFIG ──────────────────────────────────────────────────
 async function abrirModalConfig() {
   document.getElementById('modalConfig').classList.add('open');
   const [lojas] = await Promise.all([
-    fetch(`${API}/api/fornecedores/lojas`, { headers:h() }).then(r => r.json())
+    apiFetch(`${API}/api/fornecedores/lojas`).then(r => r.json())
   ]);
   document.getElementById('configLojas').innerHTML = lojas.map(l => `
     <div class="config-row">
       <label>${l.nome}</label>
       <input type="text" id="cnpjLoja${l.id}" value="${l.cnpj||''}" placeholder="00.000.000/0000-00" style="flex:1">
-      <button class="btn-primary btn-sm" onclick="salvarCnpjLoja(${l.id})">Salvar</button>
+      <button class="btn-primary btn-sm" onclick="salvarCnpjLoja(${l.id}, this)">Salvar</button>
     </div>
   `).join('');
   try {
-    const rc = await fetch(`${API}/api/pedidos`, { headers:h() }); // reutiliza token
+    const rc = await apiFetch(`${API}/api/pedidos`); // reutiliza token
     document.getElementById('cfgValidadeDias').value = 90; // default
   } catch {}
 }
 
-async function salvarCnpjLoja(id) {
+async function salvarCnpjLoja(id, btn) {
   const cnpj = document.getElementById(`cnpjLoja${id}`).value.trim();
-  const r = await fetch(`${API}/api/fornecedores/lojas/${id}`, { method:'PUT', headers:hj(), body:JSON.stringify({ cnpj }) });
-  if (r.ok) showMsg('CNPJ salvo.', 'ok');
+  await withLoading(btn, async () => {
+    const r = await apiFetch(`${API}/api/fornecedores/lojas/${id}`, { method:'PUT', body:JSON.stringify({ cnpj }) });
+    if (r.ok) showMsg('CNPJ salvo.', 'ok');
+  }, 'Salvando...');
 }
 
-async function salvarConfig() {
+async function salvarConfig(btn) {
   const dias = document.getElementById('cfgValidadeDias').value;
-  await fetch(`${API}/api/pedidos/config`, { method:'PUT', headers:hj(), body:JSON.stringify({ validade_acesso_vendedor_dias: dias }) });
-  showMsg('Configuração salva.', 'ok');
+  await withLoading(btn, async () => {
+    await apiFetch(`${API}/api/pedidos/config`, { method:'PUT', body:JSON.stringify({ validade_acesso_vendedor_dias: dias }) });
+    showMsg('Configuração salva.', 'ok');
+  }, 'Salvando...');
 }
 
 function fecharModal(id) { document.getElementById(id).classList.remove('open'); }

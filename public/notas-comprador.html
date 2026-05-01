@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NF-e — Comprador</title>
+<link rel="stylesheet" href="/shared.css">
+<script src="/shared.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+nav{background:#1e293b;padding:12px 20px;display:flex;align-items:center;gap:14px;border-bottom:1px solid #334155}
+.brand{font-family:'Segoe UI Black','Segoe UI',sans-serif;font-weight:900;font-size:18px;color:#38bdf8}
+.nav-user{margin-left:auto;font-size:12px;color:#475569}
+.btn-nav{background:#0ea5e9;color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:12px;cursor:pointer}
+.layout{display:grid;grid-template-columns:320px 1fr;height:calc(100vh - 49px)}
+.sidebar{border-right:1px solid #334155;display:flex;flex-direction:column;overflow:hidden}
+.sidebar-top{padding:12px;border-bottom:1px solid #334155;display:flex;gap:8px;align-items:center}
+.sidebar-list{flex:1;overflow-y:auto}
+.main{overflow-y:auto;padding:20px}
+input,select{background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;padding:7px 11px;font-size:13px}
+input:focus,select:focus{outline:none;border-color:#38bdf8}
+button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 14px;font-weight:600}
+.btn-primary{background:#0ea5e9;color:#fff}.btn-primary:hover{background:#0284c7}
+.btn-ok{background:#14532d;color:#4ade80}.btn-ok:hover{background:#166534}
+.btn-warn{background:#78350f;color:#fbbf24}.btn-warn:hover{background:#92400e}
+.btn-ghost{background:#1e293b;color:#94a3b8;border:1px solid #334155}.btn-ghost:hover{background:#273549}
+.btn-sm{padding:4px 10px;font-size:12px}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700}
+.nota-card{padding:12px;border-bottom:1px solid #334155;cursor:pointer;transition:.15s}
+.nota-card:hover,.nota-card.ativo{background:#1e3a5f}
+.nc-num{font-size:12px;font-family:monospace;color:#38bdf8;font-weight:700}
+.nc-forn{font-size:13px;font-weight:600;margin:2px 0}
+.nc-info{font-size:11px;color:#64748b}
+.card{background:#1e293b;border-radius:10px;padding:16px;margin-bottom:14px}
+.card-title{font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px}
+.info-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px}
+.info-item label{font-size:11px;color:#64748b;display:block;margin-bottom:2px}
+.info-item span{font-size:13px;color:#e2e8f0}
+.msg{padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:13px}
+.msg-ok{background:#14532d;color:#4ade80}
+.msg-err{background:#450a0a;color:#f87171}
+.msg-warn{background:#431407;color:#f97316}
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead th{background:#0f172a;padding:8px 10px;text-align:left;color:#64748b;font-weight:600;border-bottom:1px solid #334155;white-space:nowrap}
+tbody td{padding:7px 10px;border-bottom:1px solid #1e293b;vertical-align:middle}
+tbody tr:hover{background:#1a2744}
+.b-importada{background:#1e3a5f;color:#60a5fa}
+.b-emergencial_pendente{background:#451a03;color:#fbbf24}
+.b-em_validacao_cadastro{background:#312e81;color:#a5b4fc}
+.b-em_conferencia{background:#1a4731;color:#34d399}
+.b-em_auditoria{background:#451a03;color:#fbbf24}
+.b-fechada{background:#1e293b;color:#475569}
+.b-igual{background:#14532d;color:#4ade80}
+.b-divergente{background:#431407;color:#f97316}
+.b-sem_cadastro,.b-novo{background:#2e1065;color:#a78bfa}
+.b-nao-pedido{background:#7f1d1d;color:#fca5a5}
+.drop-zone{border:2px dashed #334155;border-radius:10px;padding:28px;text-align:center;cursor:pointer;transition:.2s}
+.drop-zone:hover{border-color:#38bdf8;background:#0c1a2e}
+.empty{text-align:center;color:#475569;padding:40px;font-size:13px}
+.divider{height:1px;background:#334155;margin:14px 0}
+</style>
+</head>
+<body>
+<nav>
+  <span class="brand">JR Lira Tech</span>
+  <span style="color:#475569">/</span>
+  <span style="font-size:13px;color:#94a3b8">NF-e — Comprador</span>
+  <span class="nav-user" id="nomeUsuario"></span>
+  <button class="btn-nav" onclick="location.href='/'">← Início</button>
+</nav>
+
+<div class="layout">
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="sidebar-top">
+      <select id="filtroStatus" onchange="carregarNotas()" style="flex:1;font-size:12px">
+        <option value="">Todas</option>
+        <option value="importada">Importadas</option>
+        <option value="emergencial_pendente">Emergencial — Pendente</option>
+        <option value="em_validacao_cadastro">Em Validação Cadastro</option>
+        <option value="em_conferencia">Em Conferência</option>
+        <option value="fechada">Fechadas</option>
+      </select>
+      <button class="btn-primary btn-sm" onclick="abrirModalImport()">+ XML</button>
+    </div>
+    <div class="sidebar-list" id="listaNotas"><div class="empty">Carregando...</div></div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+    <div id="msg" style="display:none"></div>
+
+    <!-- Modal import -->
+    <div id="modalImport" style="display:none;background:#1e293b;border-radius:12px;padding:20px;margin-bottom:16px;border:1px solid #334155">
+      <div style="font-size:14px;font-weight:700;color:#e2e8f0;margin-bottom:12px">Importar NF-e</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div>
+          <label style="font-size:11px;color:#64748b;display:block;margin-bottom:4px">Loja de destino</label>
+          <select id="lojaImportSelect" style="width:100%">
+            <option value="">Selecione...</option>
+          </select>
+        </div>
+      </div>
+      <div class="drop-zone" id="dropZone" onclick="document.getElementById('xmlInput').click()">
+        <input type="file" id="xmlInput" accept=".xml" style="display:none" onchange="importarXML(this.files[0])">
+        <div style="font-size:24px;margin-bottom:8px">📄</div>
+        <div style="font-size:13px;color:#94a3b8">Clique para selecionar o <strong style="color:#38bdf8">XML da NF-e</strong></div>
+        <div style="font-size:11px;color:#475569;margin-top:4px">Pode importar vários XMLs sequencialmente</div>
+      </div>
+      <div style="margin-top:10px;text-align:right">
+        <button class="btn-ghost btn-sm" onclick="fecharModalImport()">Fechar</button>
+      </div>
+    </div>
+
+    <!-- Painel da nota selecionada -->
+    <div id="painelVazio" class="empty">← Selecione uma nota ou importe um XML</div>
+
+    <div id="painelNota" style="display:none">
+
+      <!-- Header da nota -->
+      <div class="card">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px">
+          <div>
+            <div style="font-size:16px;font-weight:700;color:#38bdf8" id="pNfNum"></div>
+            <div style="font-size:13px;color:#94a3b8;margin-top:2px" id="pForn"></div>
+          </div>
+          <span id="pStatusBadge"></span>
+        </div>
+        <div class="info-grid">
+          <div class="info-item"><label>CNPJ Fornecedor</label><span id="pCnpj"></span></div>
+          <div class="info-item"><label>Data Emissão</label><span id="pData"></span></div>
+          <div class="info-item"><label>Loja Destino</label><span id="pLoja"></span></div>
+          <div class="info-item"><label>Valor NF</label><span id="pValor" style="font-weight:700;color:#4ade80"></span></div>
+          <div class="info-item"><label>Importado por</label><span id="pImport"></span></div>
+          <div class="info-item"><label>Pedido vinculado</label><span id="pPedido"></span></div>
+        </div>
+      </div>
+
+      <!-- Ações por status -->
+      <div id="acoesNota"></div>
+
+      <!-- Tabela de itens -->
+      <div class="card" style="padding:0;overflow:hidden">
+        <div style="padding:12px 16px;border-bottom:1px solid #334155;display:flex;align-items:center;gap:8px">
+          <span style="font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em">Itens da Nota</span>
+          <span id="resumoBadges" style="display:flex;gap:6px"></span>
+        </div>
+        <div style="overflow-x:auto">
+          <table id="tabelaItens" style="min-width:900px">
+            <thead id="theadItens"></thead>
+            <tbody id="tbodyItens"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '';
+const token = () => localStorage.getItem('jrlira_token');
+const perfil = () => localStorage.getItem('jrlira_perfil');
+(function(){ if (!token() || !['admin','comprador'].includes(perfil())) location.href='/'; })();
+document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
+
+const LOJAS = {1:'ECONOMICO',2:'BR',3:'JOAO PAULO',4:'FLORESTA',5:'SAO JOSE',6:'SANTAREM'};
+const STATUS_LABEL = {
+  importada:'Importada', emergencial_pendente:'Emergencial — Pendente',
+  em_validacao_cadastro:'Validação Cadastro', em_conferencia:'Em Conferência',
+  em_auditoria:'Em Auditoria', fechada:'Fechada'
+};
+
+let notaAtual = null;
+let itensAtuais = [];
+
+function fmtM(v) { return 'R$ '+parseFloat(v||0).toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,'.'); }
+function fmtD(d) { return d ? d.slice(0,10).split('-').reverse().join('/') : '—'; }
+
+function showMsg(txt, tipo='ok') {
+  const el = document.getElementById('msg');
+  el.className = `msg msg-${tipo}`;
+  el.textContent = txt;
+  el.style.display = 'block';
+  setTimeout(() => el.style.display='none', 5000);
+}
+
+// ── SIDEBAR ──────────────────────────────────────────────────────
+async function carregarNotas() {
+  const status = document.getElementById('filtroStatus').value;
+  const el = document.getElementById('listaNotas');
+  el.innerHTML = '<div class="empty">Carregando...</div>';
+  try {
+    const url = status ? `/api/notas?status=${status}` : '/api/notas';
+    const r = await apiFetch(`${API}${url}`);
+    const notas = await r.json();
+    if (!notas.length) { el.innerHTML = '<div class="empty">Nenhuma nota encontrada</div>'; return; }
+    el.innerHTML = notas.map(n => `
+      <div class="nota-card${notaAtual?.id===n.id?' ativo':''}" id="nc-${n.id}" onclick="abrirNota(${n.id})">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
+          <span class="nc-num">NF ${n.numero_nota}/${n.serie}</span>
+          <span class="badge b-${n.status}" style="font-size:10px">${STATUS_LABEL[n.status]||n.status}</span>
+          ${n.emergencial ? '<span class="badge b-emergencial_pendente" style="font-size:10px">⚠</span>' : ''}
+        </div>
+        <div class="nc-forn">${n.fornecedor_nome}</div>
+        <div class="nc-info">${fmtD(n.data_emissao)} · ${fmtM(n.valor_total)} · ${n.total_itens||0} itens</div>
+      </div>`).join('');
+  } catch { el.innerHTML = '<div class="empty" style="color:#f87171">Erro ao carregar</div>'; }
+}
+
+// ── IMPORT MODAL ─────────────────────────────────────────────────
+function abrirModalImport() {
+  // popula lojas
+  const sel = document.getElementById('lojaImportSelect');
+  sel.innerHTML = '<option value="">Selecione a loja...</option>' +
+    Object.entries(LOJAS).map(([id,nm]) => `<option value="${id}">${nm}</option>`).join('');
+  document.getElementById('modalImport').style.display = 'block';
+  document.getElementById('painelVazio').style.display = 'none';
+  document.getElementById('painelNota').style.display = 'none';
+}
+function fecharModalImport() {
+  document.getElementById('modalImport').style.display = 'none';
+  if (!notaAtual) document.getElementById('painelVazio').style.display = 'block';
+}
+
+async function importarXML(file) {
+  if (!file) return;
+  const loja_id = document.getElementById('lojaImportSelect').value;
+  if (!loja_id) { showMsg('Selecione a loja de destino', 'err'); return; }
+  const dropZone = document.getElementById('dropZone');
+  const original = dropZone.innerHTML;
+  dropZone.style.pointerEvents = 'none';
+  dropZone.style.opacity = '0.6';
+  dropZone.innerHTML = '<div style="font-size:13px;color:#38bdf8;padding:20px">⏳ Importando XML...</div>';
+  showMsg('Importando XML...', 'ok');
+  const fd = new FormData();
+  fd.append('xml', file);
+  fd.append('loja_id', loja_id);
+  try {
+    const r = await apiFetch(`${API}/api/notas/importar-comprador`, { method:'POST', body:fd });
+    const d = await r.json();
+    if (!r.ok) {
+      if (d.nota_id) { showMsg('Nota já importada.', 'warn'); fecharModalImport(); abrirNota(d.nota_id); }
+      else showMsg(d.erro, 'err');
+      return;
+    }
+    showMsg(`✓ NF importada — ${d.total_itens} itens de ${d.fornecedor}`, 'ok');
+    document.getElementById('xmlInput').value = '';
+    await carregarNotas();
+    fecharModalImport();
+    abrirNota(d.nota_id);
+  } catch { showMsg('Erro ao importar XML', 'err'); }
+  finally {
+    dropZone.style.pointerEvents = '';
+    dropZone.style.opacity = '';
+    dropZone.innerHTML = original;
+  }
+}
+
+// ── NOTA DETALHE ─────────────────────────────────────────────────
+async function abrirNota(id) {
+  document.querySelectorAll('.nota-card').forEach(c => c.classList.remove('ativo'));
+  document.getElementById(`nc-${id}`)?.classList.add('ativo');
+  document.getElementById('painelVazio').style.display = 'none';
+  document.getElementById('modalImport').style.display = 'none';
+  document.getElementById('painelNota').style.display = 'block';
+  try {
+    const r = await apiFetch(`${API}/api/notas/${id}`);
+    const { nota, itens } = await r.json();
+    notaAtual = nota;
+    itensAtuais = itens;
+    renderHeader(nota);
+    renderAcoes(nota, itens);
+    renderItens(nota, itens);
+  } catch { showMsg('Erro ao carregar nota', 'err'); }
+}
+
+function renderHeader(nota) {
+  document.getElementById('pNfNum').textContent = `NF ${nota.numero_nota} / Série ${nota.serie}`;
+  document.getElementById('pForn').textContent = nota.fornecedor_nome;
+  document.getElementById('pCnpj').textContent = nota.fornecedor_cnpj || '—';
+  document.getElementById('pData').textContent = fmtD(nota.data_emissao);
+  document.getElementById('pLoja').textContent = LOJAS[nota.loja_id] || nota.loja_id || '—';
+  document.getElementById('pValor').textContent = fmtM(nota.valor_total);
+  document.getElementById('pImport').textContent = `${nota.importado_por||'—'} em ${fmtD(nota.importado_em)}`;
+  document.getElementById('pPedido').innerHTML = nota.pedido_id
+    ? `<span style="color:#38bdf8">#${nota.pedido_id}</span>` : '—';
+  document.getElementById('pStatusBadge').innerHTML =
+    `<span class="badge b-${nota.status}">${STATUS_LABEL[nota.status]||nota.status}</span>
+     ${nota.emergencial ? ' <span class="badge b-emergencial_pendente">EMERGENCIAL</span>' : ''}`;
+}
+
+async function renderAcoes(nota, itens) {
+  const el = document.getElementById('acoesNota');
+
+  const isAdmin = perfil() === 'admin';
+  const botoesBase = `
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <button class="btn-ghost btn-sm" onclick="reprocessarEANs(this)" title="Reprocessa o comparativo de EANs com o cadastro atual">↺ Reprocessar EANs</button>
+      ${isAdmin ? `<button class="btn-ghost btn-sm" style="color:#f87171;border-color:#7f1d1d" onclick="excluirNota(this)">✕ Excluir XML</button>` : ''}
+    </div>`;
+
+  if (nota.status === 'importada' && !nota.pedido_id) {
+    // Busca todos os pedidos validados — fornecedor pode ter CNPJs diferentes por filial/CD
+    let pedidosHtml = '<option value="">Carregando...</option>';
+    try {
+      const r = await apiFetch(`${API}/api/pedidos?status=validado`);
+      const pedidos = await r.json();
+      pedidosHtml = pedidos.length
+        ? pedidos.map(p => {
+            const cnpjMatch = p.fornecedor_cnpj && nota.fornecedor_cnpj &&
+              p.fornecedor_cnpj.replace(/\D/g,'') === nota.fornecedor_cnpj.replace(/\D/g,'');
+            const label = `${p.numero_pedido||'#'+p.id} — ${p.fornecedor_fantasia||p.fornecedor_nome||'—'} — ${p.loja_nome||''}${cnpjMatch ? ' ✓' : ''}`;
+            return `<option value="${p.id}">${label}</option>`;
+          }).join('')
+        : '<option value="">Nenhum pedido validado em aberto</option>';
+    } catch { pedidosHtml = '<option value="">Erro ao buscar pedidos</option>'; }
+
+    el.innerHTML = botoesBase + `
+      <div class="card">
+        <div class="card-title">Vincular a Pedido</div>
+        <p style="font-size:12px;color:#475569;margin-bottom:10px">Todos os pedidos validados em aberto são exibidos. Pedidos com CNPJ coincidente aparecem com ✓.</p>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+          <select id="selPedido" style="flex:1"><option value="">-- selecione --</option>${pedidosHtml}</select>
+          <button class="btn-primary" onclick="vincularPedido(this)">Vincular</button>
+        </div>
+      </div>
+      <div class="card" style="border:1px solid #78350f">
+        <div class="card-title" style="color:#fbbf24">Nota Emergencial</div>
+        <p style="font-size:13px;color:#94a3b8;margin-bottom:12px">Não há pedido para esta nota. Marque como emergencial para enviar à aprovação do administrador antes de seguir para o cadastro.</p>
+        <button class="btn-warn" onclick="marcarEmergencial(this)">⚠ Marcar como Emergencial</button>
+      </div>`;
+
+  } else if (nota.status === 'importada' && nota.pedido_id) {
+    el.innerHTML = botoesBase + `
+      <div class="card" style="border:1px solid #14532d">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <div class="card-title" style="color:#4ade80;margin-bottom:4px">Vinculado ao Pedido #${nota.pedido_id}</div>
+            <p style="font-size:12px;color:#64748b">Revise os itens abaixo e libere para o Cadastro.</p>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn-ghost btn-sm" style="color:#f87171;border-color:#7f1d1d" onclick="desvincularPedido(this)">✕ Desvincular</button>
+            <button class="btn-ok" onclick="liberarCadastro(this)">✓ Liberar para Cadastro</button>
+          </div>
+        </div>
+      </div>`;
+
+  } else if (nota.status === 'emergencial_pendente') {
+    const isAdmin = perfil() === 'admin';
+    el.innerHTML = `
+      <div class="card" style="border:1px solid #78350f">
+        <div class="card-title" style="color:#fbbf24">⚠ Nota Emergencial — Aguardando Aprovação</div>
+        <p style="font-size:13px;color:#94a3b8;margin-bottom:${isAdmin?'12px':'0'}">
+          Esta nota foi marcada como emergencial e aguarda aprovação do administrador para seguir para o cadastro.
+        </p>
+        ${isAdmin ? `<button class="btn-ok" onclick="aprovarEmergencial(this)">✓ Aprovar — Liberar para Cadastro</button>` : ''}
+      </div>`;
+
+  } else {
+    const msgs = {
+      em_validacao_cadastro: '📋 Cadastro está tratando os produtos e importando no EcoCentauro.',
+      em_conferencia: '📦 Estoque está realizando a conferência física.',
+      em_auditoria: '🔍 Em auditoria pelo auditor.',
+      fechada: '✓ Nota finalizada.'
+    };
+    el.innerHTML = `<div class="card"><p style="font-size:13px;color:#94a3b8">${msgs[nota.status]||''}</p></div>`;
+  }
+}
+
+function renderItens(nota, itens) {
+  const temPedido = !!nota.pedido_id;
+
+  // Header da tabela
+  document.getElementById('theadItens').innerHTML = `<tr>
+    <th>#</th><th>Descrição</th><th>EAN / Fonte</th>
+    <th style="text-align:right">Qtd</th>
+    ${temPedido ? '<th style="text-align:right">Qtd Ped.</th><th style="text-align:right">Δ Qtd</th>' : ''}
+    <th style="text-align:right">Preço Nota</th>
+    ${temPedido ? '<th style="text-align:right">Preço Ped.</th><th style="text-align:right">Δ%</th>' : '<th style="text-align:right">Custo Base</th>'}
+    <th>Status</th>
+  </tr>`;
+
+  let novos=0, divP=0, divQ=0, naoP=0;
+  const tbody = document.getElementById('tbodyItens');
+  tbody.innerHTML = itens.map(it => {
+    const fp = it.fora_pedido;
+    const novo = it.produto_novo;
+    const qtdN = parseFloat(it.quantidade);
+    const qtdP = parseFloat(it.qtd_pedido||0);
+    const precoN = parseFloat(it.preco_unitario_nota);
+    const precoP = parseFloat(it.preco_pedido||0);
+    const dQ = temPedido && !fp ? qtdN - qtdP : null;
+    const dP = temPedido && !fp && precoP ? (precoN - precoP) / precoP * 100 : null;
+
+    if (novo) novos++;
+    if (fp) naoP++;
+    if (dP != null && Math.abs(dP) > 1) divP++;
+    if (dQ != null && Math.abs(dQ) > 0.001) divQ++;
+
+    const ean = it.ean_trib || it.ean_nota || '—';
+    const eanSub = (it.ean_trib && it.ean_nota && it.ean_trib !== it.ean_nota)
+      ? `<div style="font-size:10px;color:#475569">${it.ean_nota}</div>` : '';
+    const fonteTag = it.ean_fonte === 'ean_trib'
+      ? '<div style="font-size:10px;color:#fbbf24">via EANTrib</div>'
+      : it.ean_fonte === 'ean_nota'
+      ? '<div style="font-size:10px;color:#4ade80">via EAN</div>' : '';
+
+    const rowBg = fp ? '#1a0505' : (Math.abs(dP??0)>1||Math.abs(dQ??0)>0.001) ? '#1a1200' : '';
+
+    const statusBadge = fp
+      ? `<span class="badge b-nao-pedido">NÃO PEDIDO</span>`
+      : novo
+      ? `<span class="badge b-novo">NOVO</span>`
+      : `<span class="badge b-${it.status_preco}">${{igual:'✓ OK',divergente:'⚠ DIV.',sem_cadastro:'S/CAD'}[it.status_preco]||it.status_preco}</span>`;
+
+    const dQCell = dQ==null ? '' : `<td style="text-align:right"><span style="color:${Math.abs(dQ)>0.001?'#f97316':'#4ade80'}">${dQ>=0?'+':''}${dQ.toFixed(2)}</span></td>`;
+    const dPCell = dP==null ? '' : `<td style="text-align:right"><span style="color:${Math.abs(dP)>1?'#f97316':'#4ade80'}">${dP>=0?'+':''}${dP.toFixed(1)}%</span></td>`;
+    const custoCell = !temPedido ? `<td style="text-align:right;color:#64748b">${it.custo_fabrica!=null?fmtM(it.custo_fabrica):'—'}</td>` : '';
+    const precoP_cell = temPedido ? `<td style="text-align:right;color:#64748b">${fp||!precoP?'—':fmtM(precoP)}</td>` : '';
+    const qtdP_cell = temPedido ? `<td style="text-align:right;color:#64748b">${fp?'—':qtdP.toFixed(2)}</td>` : '';
+
+    return `<tr style="${rowBg?'background:'+rowBg:''}">
+      <td>${it.numero_item}</td>
+      <td style="font-size:12px">${it.descricao_nota}</td>
+      <td style="font-family:monospace;font-size:11px;line-height:1.5">${ean}${eanSub}${fonteTag}</td>
+      <td style="text-align:right">${qtdN%1===0?qtdN.toFixed(0):qtdN.toFixed(3)}</td>
+      ${qtdP_cell}${dQCell}
+      <td style="text-align:right;font-weight:600">${fmtM(precoN)}</td>
+      ${precoP_cell}${dPCell}${custoCell}
+      <td>${statusBadge}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('resumoBadges').innerHTML = [
+    naoP>0 ? `<span class="badge b-nao-pedido">${naoP} não ped.</span>` : '',
+    novos>0 ? `<span class="badge b-novo">${novos} novo(s)</span>` : '',
+    divP>0  ? `<span class="badge b-divergente">${divP} div.preço</span>` : '',
+    divQ>0  ? `<span class="badge b-divergente">${divQ} div.qtd</span>` : '',
+  ].join('');
+}
+
+// ── AÇÕES ────────────────────────────────────────────────────────
+async function desvincularPedido(btn) {
+  if (!confirm('Desvincular o pedido desta nota? O pedido voltará ao status validado.')) return;
+  await withLoading(btn, async () => {
+    try {
+      const r = await apiFetch(`${API}/api/notas/${notaAtual.id}/desvincular-pedido`, { method:'PATCH' });
+      const d = await r.json();
+      if (!r.ok) return showMsg(d.erro, 'err');
+      showMsg('Pedido desvinculado.', 'ok');
+      abrirNota(notaAtual.id);
+      carregarNotas();
+    } catch { showMsg('Erro ao desvincular', 'err'); }
+  }, 'Desvinculando...');
+}
+
+async function vincularPedido(btn) {
+  const pid = document.getElementById('selPedido')?.value;
+  if (!pid) { showMsg('Selecione um pedido', 'err'); return; }
+  await withLoading(btn, async () => {
+    try {
+      const r = await apiFetch(`${API}/api/notas/${notaAtual.id}/vincular-pedido`, {
+        method:'PATCH', body:JSON.stringify({ pedido_id: parseInt(pid) })
+      });
+      const d = await r.json();
+      if (!r.ok) return showMsg(d.erro, 'err');
+      showMsg('Pedido vinculado. Revise o comparativo.', 'ok');
+      abrirNota(notaAtual.id);
+      carregarNotas();
+    } catch { showMsg('Erro ao vincular pedido', 'err'); }
+  }, 'Vinculando...');
+}
+
+async function marcarEmergencial(btn) {
+  if (!confirm('Marcar esta nota como emergencial? Ela ficará bloqueada até aprovação do administrador.')) return;
+  await withLoading(btn, async () => {
+    try {
+      const r = await apiFetch(`${API}/api/notas/${notaAtual.id}/marcar-emergencial`, { method:'PATCH' });
+      const d = await r.json();
+      if (!r.ok) return showMsg(d.erro, 'err');
+      showMsg('Nota marcada como emergencial. Aguardando aprovação do admin.', 'ok');
+      abrirNota(notaAtual.id);
+      carregarNotas();
+    } catch { showMsg('Erro', 'err'); }
+  }, 'Marcando...');
+}
+
+async function liberarCadastro(btn) {
+  if (!confirm('Liberar NF-e para o Cadastro?')) return;
+  await withLoading(btn, async () => {
+    try {
+      const r = await apiFetch(`${API}/api/notas/${notaAtual.id}/liberar-cadastro`, { method:'PATCH' });
+      const d = await r.json();
+      if (!r.ok) return showMsg(d.erro, 'err');
+      showMsg('NF-e liberada para o Cadastro!', 'ok');
+      abrirNota(notaAtual.id);
+      carregarNotas();
+    } catch { showMsg('Erro', 'err'); }
+  }, 'Liberando...');
+}
+
+async function aprovarEmergencial(btn) {
+  if (!confirm('Aprovar esta nota emergencial e liberar para o Cadastro?')) return;
+  await withLoading(btn, async () => {
+    try {
+      const r = await apiFetch(`${API}/api/notas/${notaAtual.id}/aprovar-emergencial`, { method:'PATCH' });
+      const d = await r.json();
+      if (!r.ok) return showMsg(d.erro, 'err');
+      showMsg('Nota aprovada e liberada para o Cadastro!', 'ok');
+      abrirNota(notaAtual.id);
+      carregarNotas();
+    } catch { showMsg('Erro', 'err'); }
+  }, 'Aprovando...');
+}
+
+async function reprocessarEANs(btn) {
+  await withLoading(btn, async () => {
+    try {
+      const r = await apiFetch(`${API}/api/notas/${notaAtual.id}/reprocessar`, { method:'PATCH' });
+      const d = await r.json();
+      if (!r.ok) return showMsg(d.erro, 'err');
+      showMsg(`✓ ${d.atualizados} itens atualizados com base no cadastro atual.`, 'ok');
+      abrirNota(notaAtual.id);
+    } catch { showMsg('Erro ao reprocessar', 'err'); }
+  }, 'Reprocessando...');
+}
+
+async function excluirNota(btn) {
+  if (!confirm(`Excluir XML — NF ${notaAtual.numero_nota}?\n\nEsta ação é irreversível e só pode ser feita pelo administrador.`)) return;
+  await withLoading(btn, async () => {
+    try {
+      const r = await apiFetch(`${API}/api/notas/${notaAtual.id}`, { method:'DELETE' });
+      const d = await r.json();
+      if (!r.ok) return showMsg(d.erro, 'err');
+      showMsg('Nota excluída.', 'ok');
+      notaAtual = null;
+      document.getElementById('painelNota').style.display = 'none';
+      document.getElementById('painelVazio').style.display = 'block';
+      carregarNotas();
+    } catch { showMsg('Erro ao excluir', 'err'); }
+  }, 'Excluindo...');
+}
+
+carregarNotas();
+</script>
+</body>
+</html>

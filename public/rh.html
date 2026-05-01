@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>RH - Quadro de Lotação</title>
+<link rel="stylesheet" href="/shared.css">
+<script src="/shared.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: Arial, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
@@ -255,7 +257,7 @@ tr:hover td { background: #1a2638; }
 
   <div style="display:flex;gap:10px;margin-top:24px;justify-content:flex-end;">
     <button class="btn btn-ghost" onclick="fecharModal()">Cancelar</button>
-    <button class="btn btn-primary" onclick="salvar()">Salvar</button>
+    <button class="btn btn-primary" onclick="salvar(this)">Salvar</button>
   </div>
 </div>
 </div>
@@ -263,7 +265,6 @@ tr:hover td { background: #1a2638; }
 <script>
 const API = '';
 const token = () => localStorage.getItem('jrlira_token');
-const H = { 'Authorization': `Bearer ${token()}` };
 (function(){ const p = localStorage.getItem('jrlira_perfil'); if (!token() || (p !== 'admin' && p !== 'rh')) location.href = '/'; })();
 
 const LOJAS = {1:'SUPERASA ECONOMICO',2:'SUPERASA BR',3:'SUPERASA JOAO PESSOA',4:'SUPERASA FLORESTA',5:'SUPERASA SAO JOSE',6:'SUPERASA SANTAREM'};
@@ -348,7 +349,7 @@ async function carregar() {
   if (grupo_cargo) params.set('grupo_cargo', grupo_cargo);
   if (loja_id) params.set('loja_id', loja_id);
   if (cargo) params.set('cargo', cargo);
-  const r = await fetch(`${API}/api/funcionarios?${params}`, { headers: H });
+  const r = await apiFetch(`${API}/api/funcionarios?${params}`);
   todos = await r.json();
   renderTabela(todos);
 }
@@ -391,7 +392,7 @@ function abrirNovo() {
 
 async function editar(id) {
   editId = id;
-  const r = await fetch(`${API}/api/funcionarios/${id}`, { headers: H });
+  const r = await apiFetch(`${API}/api/funcionarios/${id}`);
   const f = await r.json();
   document.getElementById('modalTitle').textContent = `Editar: ${f.nome}`;
   preencherForm(f);
@@ -405,7 +406,7 @@ async function enviarLinkFotoTabela(id, btn) {
   btn.disabled = true;
   btn.textContent = '...';
   try {
-    const r = await fetch(`${API}/api/foto-upload/gerar/${id}`, { method: 'POST', headers: H });
+    const r = await apiFetch(`${API}/api/foto-upload/gerar/${id}`, { method: 'POST' });
     const data = await r.json();
     if (!r.ok) throw new Error(data.erro);
     btn.textContent = 'Enviado!';
@@ -471,16 +472,15 @@ async function adicionarEvento() {
     descricao: document.getElementById('eDesc').value
   };
   if (!body.data_inicio) return alert('Data início obrigatória');
-  const r = await fetch(`${API}/api/funcionarios/${editId}/eventos`, {
-    method: 'POST', headers: { ...H, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
+  const r = await apiFetch(`${API}/api/funcionarios/${editId}/eventos`, {
+    method: 'POST', body: JSON.stringify(body)
   });
   if (r.ok) editar(editId);
 }
 
 async function excluirEvento(id) {
   if (!confirm('Excluir evento?')) return;
-  await fetch(`${API}/api/funcionarios/eventos/${id}`, { method: 'DELETE', headers: H });
+  await apiFetch(`${API}/api/funcionarios/eventos/${id}`, { method: 'DELETE' });
   editar(editId);
 }
 
@@ -494,7 +494,7 @@ function previewFoto(input) {
   reader.readAsDataURL(file);
 }
 
-async function salvar() {
+async function salvar(btn) {
   const fd = new FormData();
   const campos = {
     matricula:'fMatricula', nome:'fNome', cpf:'fCpf', pis:'fPis',
@@ -516,11 +516,13 @@ async function salvar() {
 
   const url = editId ? `${API}/api/funcionarios/${editId}` : `${API}/api/funcionarios`;
   const method = editId ? 'PUT' : 'POST';
-  const r = await fetch(url, { method, headers: H, body: fd });
-  const data = await r.json();
-  if (!r.ok) return alert(data.erro);
-  fecharModal();
-  carregar();
+  await withLoading(btn, async () => {
+    const r = await apiFetch(url, { method, body: fd });
+    const data = await r.json();
+    if (!r.ok) return alert(data.erro);
+    fecharModal();
+    carregar();
+  }, 'Salvando...');
 }
 
 function maskCep(input) {

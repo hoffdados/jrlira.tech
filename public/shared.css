@@ -1,0 +1,122 @@
+/* shared.css — estilos base compartilhados entre páginas */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: Arial, sans-serif;
+  background: #0f172a;
+  color: #e2e8f0;
+  min-height: 100vh;
+}
+
+/* ── NAV ─────────────────────────────────────────────── */
+nav {
+  background: #1e293b;
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border-bottom: 1px solid #334155;
+}
+.brand { font-size: 16px; font-weight: 700; color: #38bdf8; }
+.nav-user { margin-left: auto; font-size: 13px; color: #64748b; }
+
+/* ── FORM CONTROLS ───────────────────────────────────── */
+input, select, textarea {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  color: #e2e8f0;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-family: inherit;
+}
+input:focus, select:focus, textarea:focus { outline: none; border-color: #38bdf8; }
+
+button {
+  cursor: pointer;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  padding: 8px 14px;
+  font-weight: 600;
+  font-family: inherit;
+}
+
+/* ── BUTTONS ─────────────────────────────────────────── */
+.btn-nav     { background: #0ea5e9; color: #fff; padding: 7px 14px; }
+.btn-primary { background: #0ea5e9; color: #fff; }
+.btn-primary:hover { background: #0284c7; }
+.btn-ok, .btn-green { background: #14532d; color: #4ade80; }
+.btn-ok:hover, .btn-green:hover { background: #166534; }
+.btn-danger  { background: #7f1d1d; color: #fca5a5; }
+.btn-danger:hover { background: #991b1b; }
+.btn-ghost   { background: #334155; color: #94a3b8; }
+.btn-ghost:hover { background: #475569; }
+.btn-warn    { background: #431407; color: #f97316; }
+.btn-warn:hover { background: #7c2d12; }
+.btn-sm      { padding: 4px 10px; font-size: 12px; }
+button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* ── BADGES ──────────────────────────────────────────── */
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.b-pendente  { background: #1e3a5f; color: #60a5fa; }
+.b-aprovado  { background: #14532d; color: #4ade80; }
+.b-expirado  { background: #450a0a; color: #f87171; }
+.b-rejeitado { background: #1e293b; color: #94a3b8; }
+.b-inativo   { background: #1e293b; color: #64748b; }
+
+/* ── MENSAGENS ───────────────────────────────────────── */
+.msg {
+  padding: 10px 14px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+.msg-ok  { background: #14532d; color: #4ade80; }
+.msg-err { background: #450a0a; color: #f87171; }
+
+/* ── MODAL ───────────────────────────────────────────── */
+.overlay, .modal-bg {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.6);
+  z-index: 200;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+.overlay.open, .modal-bg.open { display: flex; }
+.modal {
+  background: #1e293b;
+  border-radius: 10px;
+  padding: 24px;
+  width: 460px;
+  max-width: 95vw;
+  max-height: 90vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.modal-title { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+
+/* ── TABELA PADRÃO ───────────────────────────────────── */
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+thead th {
+  background: #0f172a;
+  padding: 8px 10px;
+  text-align: left;
+  color: #64748b;
+  font-weight: 600;
+  border-bottom: 1px solid #334155;
+  white-space: nowrap;
+}
+tbody td { padding: 7px 10px; border-bottom: 1px solid #1a2744; vertical-align: middle; }
