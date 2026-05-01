@@ -1,18 +1,136 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const xml2js = require('xml2js');
 const { query, pool } = require('../db');
 const { autenticar } = require('../auth');
+const { parseNFe, MAX_XML_BYTES } = require('../parsers/nfe');
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_XML_BYTES } });
 
 function n(v) { return parseFloat(v) || 0; }
+
+// Importa NF-e parseada: retorna { nota_id, duplicado }
+async function importarNotaParseada(client, header, itens, loja_id, importado_por) {
+  await client.query('BEGIN');
+
+  const ins = await client.query(`
+    INSERT INTO notas_entrada
+      (chave_nfe, numero_nota, serie, fornecedor_nome, fornecedor_cnpj, data_emissao,
+       valor_total, importado_por, loja_id,
+       tot_vprod, tot_vbc, tot_vicms, tot_vbcst, tot_vst, tot_vfcp_st,
+       tot_vipi, tot_vdesc, tot_vfrete, tot_vseg, tot_voutro)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+    ON CONFLICT (chave_nfe) DO NOTHING
+    RETURNING id
+  `, [header.chave_nfe, header.numero_nota, header.serie, header.fornecedor_nome,
+      header.fornecedor_cnpj, header.data_emissao, header.valor_total, importado_por, loja_id,
+      header.tot_vprod, header.tot_vbc, header.tot_vicms, header.tot_vbcst, header.tot_vst, header.tot_vfcp_st,
+      header.tot_vipi, header.tot_vdesc, header.tot_vfrete, header.tot_vseg, header.tot_voutro]);
+
+  if (!ins.rows.length) {
+    await client.query('ROLLBACK');
+    const existente = await client.query('SELECT id FROM notas_entrada WHERE chave_nfe = $1', [header.chave_nfe]);
+    return { nota_id: existente.rows[0]?.id || null, duplicado: true };
+  }
+
+  const nota_id = ins.rows[0].id;
+
+  // Lookup em batch dos custos no catálogo externo
+  const eans = [...new Set(itens.flatMap(it => [it.ean_trib, it.ean_nota].filter(Boolean)))];
+  const custoMap = new Map();
+  if (eans.length) {
+    const { rows: prods } = await client.query(
+      'SELECT codigobarra, custoorigem FROM produtos_externo WHERE codigobarra = ANY($1) AND loja_id = $2',
+      [eans, loja_id]
+    );
+    for (const p of prods) custoMap.set(p.codigobarra, parseFloat(p.custoorigem) || 0);
+  }
+
+  // Bulk insert dos itens via UNNEST
+  if (itens.length) {
+    const cols = {
+      nota_id: [], numero_item: [], ean_nota: [], ean_trib: [], ean_validado: [], ean_fonte: [],
+      descricao_nota: [], quantidade: [], preco_unitario_nota: [], preco_total_nota: [],
+      custo_fabrica: [], status_preco: [], produto_novo: [],
+      vprod: [], vdesc_item: [], vfrete_item: [], vseg_item: [], voutro_item: [],
+      vicms_bc: [], vicms: [], vst_bc: [], vst: [], vfcp_st: [], vipi_bc: [], vipi: [],
+    };
+
+    for (const it of itens) {
+      let custo_fabrica = null, status_preco = 'sem_cadastro', produto_novo = true;
+      let ean_matched = null, ean_fonte = null;
+      const candidatos = [];
+      if (it.ean_trib) candidatos.push([it.ean_trib, 'ean_trib']);
+      if (it.ean_nota && it.ean_nota !== it.ean_trib) candidatos.push([it.ean_nota, 'ean_nota']);
+      for (const [ean, fonte] of candidatos) {
+        if (custoMap.has(ean)) {
+          custo_fabrica = custoMap.get(ean);
+          produto_novo = false;
+          status_preco = Math.abs(it.preco_unitario_nota - custo_fabrica) <= 0.01 ? 'igual' : 'divergente';
+          ean_matched = ean;
+          ean_fonte = fonte;
+          break;
+        }
+      }
+      cols.nota_id.push(nota_id);
+      cols.numero_item.push(it.numero_item);
+      cols.ean_nota.push(it.ean_nota);
+      cols.ean_trib.push(it.ean_trib);
+      cols.ean_validado.push(ean_matched || it.ean_nota || it.ean_trib);
+      cols.ean_fonte.push(ean_fonte);
+      cols.descricao_nota.push(it.descricao_nota);
+      cols.quantidade.push(it.quantidade);
+      cols.preco_unitario_nota.push(it.preco_unitario_nota);
+      cols.preco_total_nota.push(it.preco_total_nota);
+      cols.custo_fabrica.push(custo_fabrica);
+      cols.status_preco.push(status_preco);
+      cols.produto_novo.push(produto_novo);
+      cols.vprod.push(it.vprod);
+      cols.vdesc_item.push(it.vdesc_item);
+      cols.vfrete_item.push(it.vfrete_item);
+      cols.vseg_item.push(it.vseg_item);
+      cols.voutro_item.push(it.voutro_item);
+      cols.vicms_bc.push(it.vicms_bc);
+      cols.vicms.push(it.vicms);
+      cols.vst_bc.push(it.vst_bc);
+      cols.vst.push(it.vst);
+      cols.vfcp_st.push(it.vfcp_st);
+      cols.vipi_bc.push(it.vipi_bc);
+      cols.vipi.push(it.vipi);
+    }
+
+    await client.query(`
+      INSERT INTO itens_nota
+        (nota_id, numero_item, ean_nota, ean_trib, ean_validado, ean_fonte, descricao_nota,
+         quantidade, preco_unitario_nota, preco_total_nota, custo_fabrica, status_preco, produto_novo,
+         vprod, vdesc_item, vfrete_item, vseg_item, voutro_item,
+         vicms_bc, vicms, vst_bc, vst, vfcp_st, vipi_bc, vipi)
+      SELECT * FROM UNNEST(
+        $1::int[], $2::int[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[],
+        $8::numeric[], $9::numeric[], $10::numeric[], $11::numeric[], $12::text[], $13::bool[],
+        $14::numeric[], $15::numeric[], $16::numeric[], $17::numeric[], $18::numeric[],
+        $19::numeric[], $20::numeric[], $21::numeric[], $22::numeric[], $23::numeric[], $24::numeric[], $25::numeric[]
+      )
+    `, [
+      cols.nota_id, cols.numero_item, cols.ean_nota, cols.ean_trib, cols.ean_validado, cols.ean_fonte,
+      cols.descricao_nota, cols.quantidade, cols.preco_unitario_nota, cols.preco_total_nota,
+      cols.custo_fabrica, cols.status_preco, cols.produto_novo,
+      cols.vprod, cols.vdesc_item, cols.vfrete_item, cols.vseg_item, cols.voutro_item,
+      cols.vicms_bc, cols.vicms, cols.vst_bc, cols.vst, cols.vfcp_st, cols.vipi_bc, cols.vipi
+    ]);
+  }
+
+  await client.query('COMMIT');
+  return { nota_id, duplicado: false };
+}
 
 async function enviarWebhookEntrada(nota_id) {
   const url = process.env.ACOUGUE_WEBHOOK_URL;
   const key = process.env.ACOUGUE_WEBHOOK_KEY;
-  if (!url || !key) return;
+  if (!url || !key) {
+    console.warn(`[webhook] nota=${nota_id} ignorado — ACOUGUE_WEBHOOK_URL/KEY não configurados`);
+    return;
+  }
   try {
     const [nota] = await query('SELECT id, loja_id, numero_nota FROM notas_entrada WHERE id = $1', [nota_id]);
     if (!nota) return;
@@ -66,112 +184,22 @@ async function enviarWebhookEntrada(nota_id) {
       }))
     };
 
-    await fetch(url, {
+    const r = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-webhook-key': key },
       body: JSON.stringify(payload)
     });
+    if (!r.ok) {
+      const txt = await r.text().catch(() => '');
+      console.error(`[webhook] nota=${nota_id} falhou status=${r.status}: ${txt.slice(0, 200)}`);
+    } else {
+      console.log(`[webhook] nota=${nota_id} enviada (${payload.itens.length} itens)`);
+    }
   } catch (err) {
-    console.error('[webhook] Erro ao enviar entrada de validade:', err.message);
+    console.error(`[webhook] nota=${nota_id} erro:`, err.message);
   }
 }
 
-function extractICMS(det) {
-  const grp = det.imposto?.ICMS || {};
-  const e = Object.values(grp)[0] || {};
-  return {
-    vicms_bc: n(e.vBC),
-    vicms:    n(e.vICMS),
-    vst_bc:   n(e.vBCST),
-    vst:      n(e.vST ?? e.vICMSST),
-    vfcp_st:  n(e.vFCPST),
-  };
-}
-
-function extractIPI(det) {
-  const t = det.imposto?.IPI?.IPITrib || {};
-  return { vipi_bc: n(t.vBC), vipi: n(t.vIPI) };
-}
-
-async function parseNFe(buf) {
-  const parser = new xml2js.Parser({
-    explicitArray: false,
-    ignoreAttrs: false,
-    tagNameProcessors: [xml2js.processors.stripPrefix],
-  });
-  const raw = await parser.parseStringPromise(buf.toString('utf8'));
-
-  const nfeProc = raw.nfeProc || raw;
-  const nfe = nfeProc.NFe;
-  if (!nfe) throw new Error('Elemento NFe não encontrado no XML');
-  const inf = nfe.infNFe;
-  const ide = inf.ide;
-  const emit = inf.emit;
-
-  let chave = null;
-  if (nfeProc.protNFe?.infProt?.chNFe) chave = nfeProc.protNFe.infProt.chNFe;
-  else if (inf.$?.Id) chave = inf.$.Id.replace('NFe', '');
-
-  const tot = inf.total?.ICMSTot || {};
-  const header = {
-    chave_nfe:    chave,
-    numero_nota:  String(ide.nNF || ''),
-    serie:        String(ide.serie || ''),
-    fornecedor_nome: String(emit.xNome || emit.xFant || ''),
-    fornecedor_cnpj: String(emit.CNPJ || emit.CPF || ''),
-    data_emissao: String(ide.dhEmi || ide.dEmi || '').substring(0, 10) || null,
-    valor_total:  n(tot.vNF),
-    tot_vprod:    n(tot.vProd),
-    tot_vbc:      n(tot.vBC),
-    tot_vicms:    n(tot.vICMS),
-    tot_vbcst:    n(tot.vBCST),
-    tot_vst:      n(tot.vST),
-    tot_vfcp_st:  n(tot.vFCPST),
-    tot_vipi:     n(tot.vIPI),
-    tot_vdesc:    n(tot.vDesc),
-    tot_vfrete:   n(tot.vFrete),
-    tot_vseg:     n(tot.vSeg),
-    tot_voutro:   n(tot.vOutro),
-  };
-
-  const detRaw = inf.det;
-  const dets = !detRaw ? [] : (Array.isArray(detRaw) ? detRaw : [detRaw]);
-
-  const itens = dets.map((det, idx) => {
-    const prod = det.prod || {};
-    const qCom        = n(prod.qCom) || n(prod.qTrib) || 1;
-    const vprod       = n(prod.vProd);
-    const vdesc_item  = n(prod.vDesc);
-    const vfrete_item = n(prod.vFrete);
-    const vseg_item   = n(prod.vSeg);
-    const voutro_item = n(prod.vOutro);
-
-    const { vicms_bc, vicms, vst_bc, vst, vfcp_st } = extractICMS(det);
-    const { vipi_bc, vipi } = extractIPI(det);
-
-    const custo_total       = (vprod - vdesc_item) + vfrete_item + vseg_item + voutro_item + vipi + vst + vfcp_st;
-    const preco_total_nota  = parseFloat(custo_total.toFixed(2));
-    const preco_unitario_nota = parseFloat((custo_total / qCom).toFixed(4));
-
-    const eanRaw    = prod.cEAN;
-    const ean       = (!eanRaw || eanRaw === 'SEM GTIN') ? null : String(eanRaw).trim();
-    const eanTribRaw = prod.cEANTrib;
-    const eanTrib   = (!eanTribRaw || eanTribRaw === 'SEM GTIN') ? null : String(eanTribRaw).trim();
-
-    return {
-      numero_item: parseInt(det.$?.nItem || idx + 1) || idx + 1,
-      ean_nota: ean,
-      ean_trib: eanTrib,
-      descricao_nota: String(prod.xProd || '').trim(),
-      quantidade: qCom,
-      preco_unitario_nota, preco_total_nota,
-      vprod, vdesc_item, vfrete_item, vseg_item, voutro_item,
-      vicms_bc, vicms, vst_bc, vst, vfcp_st, vipi_bc, vipi,
-    };
-  });
-
-  return { header, itens };
-}
 
 // POST /api/notas/importar
 router.post('/importar', autenticar, upload.single('xml'), async (req, res) => {
@@ -183,64 +211,9 @@ router.post('/importar', autenticar, upload.single('xml'), async (req, res) => {
     if (!loja_id) return res.status(400).json({ erro: 'Selecione a loja de destino antes de importar' });
 
     const { header, itens } = await parseNFe(req.file.buffer);
+    const { nota_id, duplicado } = await importarNotaParseada(client, header, itens, loja_id, req.usuario.nome);
+    if (duplicado) return res.status(409).json({ erro: 'Nota já importada', nota_id });
 
-    if (header.chave_nfe) {
-      const dup = await query('SELECT id FROM notas_entrada WHERE chave_nfe = $1', [header.chave_nfe]);
-      if (dup.length) return res.status(409).json({ erro: 'Nota já importada', nota_id: dup[0].id });
-    }
-
-    await client.query('BEGIN');
-    const { rows: [nova] } = await client.query(`
-      INSERT INTO notas_entrada
-        (chave_nfe, numero_nota, serie, fornecedor_nome, fornecedor_cnpj, data_emissao,
-         valor_total, importado_por, loja_id,
-         tot_vprod, tot_vbc, tot_vicms, tot_vbcst, tot_vst, tot_vfcp_st,
-         tot_vipi, tot_vdesc, tot_vfrete, tot_vseg, tot_voutro)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
-      RETURNING id
-    `, [header.chave_nfe, header.numero_nota, header.serie, header.fornecedor_nome,
-        header.fornecedor_cnpj, header.data_emissao, header.valor_total, req.usuario.nome, loja_id,
-        header.tot_vprod, header.tot_vbc, header.tot_vicms, header.tot_vbcst, header.tot_vst, header.tot_vfcp_st,
-        header.tot_vipi, header.tot_vdesc, header.tot_vfrete, header.tot_vseg, header.tot_voutro]);
-
-    const nota_id = nova.id;
-
-    for (const item of itens) {
-      let custo_fabrica = null, status_preco = 'sem_cadastro', produto_novo = true;
-      let ean_matched = null, ean_fonte = null;
-      const eansToCheck = [];
-      if (item.ean_trib) eansToCheck.push([item.ean_trib, 'ean_trib']);
-      if (item.ean_nota && item.ean_nota !== item.ean_trib) eansToCheck.push([item.ean_nota, 'ean_nota']);
-      for (const [ean, fonte] of eansToCheck) {
-        const { rows: prods } = await client.query(
-          'SELECT custoorigem FROM produtos_externo WHERE codigobarra = $1 AND loja_id = $2 LIMIT 1',
-          [ean, loja_id]
-        );
-        if (prods.length) {
-          custo_fabrica = parseFloat(prods[0].custoorigem) || 0;
-          produto_novo = false;
-          const diff = Math.abs(item.preco_unitario_nota - custo_fabrica);
-          status_preco = diff <= 0.01 ? 'igual' : 'divergente';
-          ean_matched = ean;
-          ean_fonte = fonte;
-          break;
-        }
-      }
-      await client.query(`
-        INSERT INTO itens_nota
-          (nota_id, numero_item, ean_nota, ean_trib, ean_validado, ean_fonte, descricao_nota,
-           quantidade, preco_unitario_nota, preco_total_nota, custo_fabrica, status_preco, produto_novo,
-           vprod, vdesc_item, vfrete_item, vseg_item, voutro_item,
-           vicms_bc, vicms, vst_bc, vst, vfcp_st, vipi_bc, vipi)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
-      `, [nota_id, item.numero_item, item.ean_nota, item.ean_trib, ean_matched || item.ean_nota, ean_fonte,
-          item.descricao_nota, item.quantidade, item.preco_unitario_nota, item.preco_total_nota,
-          custo_fabrica, status_preco, produto_novo,
-          item.vprod, item.vdesc_item, item.vfrete_item, item.vseg_item, item.voutro_item,
-          item.vicms_bc, item.vicms, item.vst_bc, item.vst, item.vfcp_st, item.vipi_bc, item.vipi]);
-    }
-
-    await client.query('COMMIT');
     res.json({ ok: true, nota_id, total_itens: itens.length, fornecedor: header.fornecedor_nome });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
@@ -260,64 +233,9 @@ router.post('/importar-comprador', autenticar, upload.single('xml'), async (req,
     if (!loja_id) return res.status(400).json({ erro: 'loja_id obrigatório' });
 
     const { header, itens } = await parseNFe(req.file.buffer);
+    const { nota_id, duplicado } = await importarNotaParseada(client, header, itens, loja_id, req.usuario.nome);
+    if (duplicado) return res.status(409).json({ erro: 'Nota já importada', nota_id });
 
-    if (header.chave_nfe) {
-      const dup = await query('SELECT id FROM notas_entrada WHERE chave_nfe=$1', [header.chave_nfe]);
-      if (dup.length) return res.status(409).json({ erro: 'Nota já importada', nota_id: dup[0].id });
-    }
-
-    await client.query('BEGIN');
-    const { rows: [nova] } = await client.query(`
-      INSERT INTO notas_entrada
-        (chave_nfe, numero_nota, serie, fornecedor_nome, fornecedor_cnpj, data_emissao,
-         valor_total, importado_por, loja_id,
-         tot_vprod, tot_vbc, tot_vicms, tot_vbcst, tot_vst, tot_vfcp_st,
-         tot_vipi, tot_vdesc, tot_vfrete, tot_vseg, tot_voutro)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
-      RETURNING id`,
-      [header.chave_nfe, header.numero_nota, header.serie, header.fornecedor_nome,
-       header.fornecedor_cnpj, header.data_emissao, header.valor_total, req.usuario.nome, loja_id,
-       header.tot_vprod, header.tot_vbc, header.tot_vicms, header.tot_vbcst, header.tot_vst, header.tot_vfcp_st,
-       header.tot_vipi, header.tot_vdesc, header.tot_vfrete, header.tot_vseg, header.tot_voutro]);
-
-    const nota_id = nova.id;
-
-    for (const item of itens) {
-      let custo_fabrica = null, status_preco = 'sem_cadastro', produto_novo = true;
-      let ean_matched = null, ean_fonte = null;
-      const eansToCheck2 = [];
-      if (item.ean_trib) eansToCheck2.push([item.ean_trib, 'ean_trib']);
-      if (item.ean_nota && item.ean_nota !== item.ean_trib) eansToCheck2.push([item.ean_nota, 'ean_nota']);
-      for (const [ean, fonte] of eansToCheck2) {
-        const { rows: prods } = await client.query(
-          'SELECT custoorigem FROM produtos_externo WHERE codigobarra=$1 AND loja_id=$2 LIMIT 1',
-          [ean, loja_id]
-        );
-        if (prods.length) {
-          custo_fabrica = parseFloat(prods[0].custoorigem) || 0;
-          produto_novo  = false;
-          const diff    = Math.abs(item.preco_unitario_nota - custo_fabrica);
-          status_preco  = diff <= 0.01 ? 'igual' : 'divergente';
-          ean_matched   = ean;
-          ean_fonte     = fonte;
-          break;
-        }
-      }
-      await client.query(`
-        INSERT INTO itens_nota
-          (nota_id, numero_item, ean_nota, ean_trib, ean_validado, ean_fonte, descricao_nota,
-           quantidade, preco_unitario_nota, preco_total_nota, custo_fabrica, status_preco, produto_novo,
-           vprod, vdesc_item, vfrete_item, vseg_item, voutro_item,
-           vicms_bc, vicms, vst_bc, vst, vfcp_st, vipi_bc, vipi)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)`,
-        [nota_id, item.numero_item, item.ean_nota, item.ean_trib,
-         ean_matched || item.ean_nota || item.ean_trib, ean_fonte,
-         item.descricao_nota, item.quantidade, item.preco_unitario_nota, item.preco_total_nota,
-         custo_fabrica, status_preco, produto_novo,
-         item.vprod, item.vdesc_item, item.vfrete_item, item.vseg_item, item.voutro_item,
-         item.vicms_bc, item.vicms, item.vst_bc, item.vst, item.vfcp_st, item.vipi_bc, item.vipi]);
-    }
-    await client.query('COMMIT');
     res.json({ ok: true, nota_id, total_itens: itens.length, fornecedor: header.fornecedor_nome });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
@@ -644,7 +562,7 @@ router.post('/:id/conferencia', autenticar, async (req, res) => {
       [rodada, novoStatus, req.params.id]
     );
     await client.query('COMMIT');
-    if (novoStatus === 'fechada') enviarWebhookEntrada(req.params.id).catch(() => {});
+    if (novoStatus === 'fechada') enviarWebhookEntrada(req.params.id);
     res.json({ ok: true, rodada, divergentes, novo_status: novoStatus, resultados });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
@@ -684,7 +602,7 @@ router.post('/:id/auditoria', autenticar, async (req, res) => {
     }
     await client.query('UPDATE notas_entrada SET status=$1, fechado_em=NOW() WHERE id=$2', ['fechada', req.params.id]);
     await client.query('COMMIT');
-    enviarWebhookEntrada(req.params.id).catch(() => {});
+    enviarWebhookEntrada(req.params.id);
     res.json({ ok: true });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});

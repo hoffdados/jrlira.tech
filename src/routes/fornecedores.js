@@ -4,16 +4,10 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const multer = require('multer');
 const pool = require('../db');
-const { autenticar, apenasAdmin } = require('../auth');
+const { autenticar, apenasAdmin, compradorOuAdmin } = require('../auth');
 const { enviarEmail } = require('../mailer');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
-
-function compradorOuAdmin(req, res, next) {
-  if (!['admin', 'comprador'].includes(req.usuario.perfil))
-    return res.status(403).json({ erro: 'Acesso restrito' });
-  next();
-}
 
 // ── LOJAS ─────────────────────────────────────────────────────────
 
@@ -24,7 +18,7 @@ router.get('/lojas', autenticar, async (req, res) => {
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
-router.put('/lojas/:id', autenticar, apenasAdmin, async (req, res) => {
+router.put('/lojas/:id', apenasAdmin, async (req, res) => {
   try {
     const { cnpj } = req.body;
     await pool.query('UPDATE lojas SET cnpj = $1 WHERE id = $2', [cnpj || null, req.params.id]);
@@ -50,7 +44,7 @@ router.get('/', autenticar, async (req, res) => {
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
-router.post('/', autenticar, apenasAdmin, upload.single('foto'), async (req, res) => {
+router.post('/', apenasAdmin, upload.single('foto'), async (req, res) => {
   try {
     const { razao_social, fantasia, cnpj } = req.body;
     if (!razao_social) return res.status(400).json({ erro: 'razao_social obrigatória' });
@@ -64,7 +58,7 @@ router.post('/', autenticar, apenasAdmin, upload.single('foto'), async (req, res
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
-router.put('/:id', autenticar, apenasAdmin, upload.single('foto'), async (req, res) => {
+router.put('/:id', apenasAdmin, upload.single('foto'), async (req, res) => {
   try {
     const { razao_social, fantasia, cnpj, ativo } = req.body;
     const fotoClause = req.file ? ', foto_data=$5, foto_mime=$6' : '';
@@ -91,7 +85,7 @@ router.get('/:id/foto', async (req, res) => {
 
 // ── VENDEDORES ────────────────────────────────────────────────────
 
-router.get('/vendedores/pendentes', autenticar, compradorOuAdmin, async (req, res) => {
+router.get('/vendedores/pendentes', compradorOuAdmin, async (req, res) => {
   try {
     const rows = await pool.query(
       `SELECT v.id, v.nome, v.email, v.telefone, v.status, v.criado_em,
@@ -105,7 +99,7 @@ router.get('/vendedores/pendentes', autenticar, compradorOuAdmin, async (req, re
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
-router.get('/:id/vendedores', autenticar, compradorOuAdmin, async (req, res) => {
+router.get('/:id/vendedores', compradorOuAdmin, async (req, res) => {
   try {
     const rows = await pool.query(
       `SELECT id, nome, cpf, email, telefone, nome_gerente, telefone_gerente,
@@ -129,7 +123,7 @@ router.get('/vendedor-foto/:id', async (req, res) => {
 });
 
 // Gerar token de cadastro para vendedor
-router.post('/:id/gerar-token', autenticar, compradorOuAdmin, async (req, res) => {
+router.post('/:id/gerar-token', compradorOuAdmin, async (req, res) => {
   try {
     const rows = await pool.query('SELECT id FROM fornecedores WHERE id=$1', [req.params.id]);
     if (!rows.length) return res.status(404).json({ erro: 'Fornecedor não encontrado' });
@@ -145,7 +139,7 @@ router.post('/:id/gerar-token', autenticar, compradorOuAdmin, async (req, res) =
 });
 
 // Aprovar vendedor
-router.post('/vendedores/:vid/aprovar', autenticar, compradorOuAdmin, async (req, res) => {
+router.post('/vendedores/:vid/aprovar', compradorOuAdmin, async (req, res) => {
   try {
     const rows = await pool.query('SELECT * FROM vendedores WHERE id=$1', [req.params.vid]);
     if (!rows.length) return res.status(404).json({ erro: 'Vendedor não encontrado' });
@@ -174,7 +168,7 @@ router.post('/vendedores/:vid/aprovar', autenticar, compradorOuAdmin, async (req
 });
 
 // Rejeitar vendedor
-router.post('/vendedores/:vid/rejeitar', autenticar, compradorOuAdmin, async (req, res) => {
+router.post('/vendedores/:vid/rejeitar', compradorOuAdmin, async (req, res) => {
   try {
     await pool.query(`UPDATE vendedores SET status='rejeitado' WHERE id=$1`, [req.params.vid]);
     res.json({ ok: true });
@@ -182,7 +176,7 @@ router.post('/vendedores/:vid/rejeitar', autenticar, compradorOuAdmin, async (re
 });
 
 // Revalidar acesso do vendedor
-router.post('/vendedores/:vid/revalidar', autenticar, compradorOuAdmin, async (req, res) => {
+router.post('/vendedores/:vid/revalidar', compradorOuAdmin, async (req, res) => {
   try {
     const rows = await pool.query('SELECT * FROM vendedores WHERE id=$1', [req.params.vid]);
     if (!rows.length) return res.status(404).json({ erro: 'Vendedor não encontrado' });
@@ -211,7 +205,7 @@ router.post('/vendedores/:vid/revalidar', autenticar, compradorOuAdmin, async (r
 });
 
 // Desativar/ativar vendedor
-router.patch('/vendedores/:vid/ativo', autenticar, compradorOuAdmin, async (req, res) => {
+router.patch('/vendedores/:vid/ativo', compradorOuAdmin, async (req, res) => {
   try {
     const { ativo } = req.body;
     const status = ativo ? 'aprovado' : 'inativo';

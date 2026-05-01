@@ -5,7 +5,18 @@ const path = require('path');
 const { pool } = require('./src/db');
 
 const app = express();
-app.use(cors());
+
+const corsOrigins = (process.env.CORS_ORIGIN || '')
+  .split(',').map(s => s.trim()).filter(Boolean);
+app.use(cors({
+  origin: corsOrigins.length
+    ? (origin, cb) => {
+        if (!origin || corsOrigins.includes(origin)) return cb(null, true);
+        return cb(new Error('Origem não permitida pelo CORS'));
+      }
+    : false,
+  credentials: true,
+}));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -43,9 +54,28 @@ app.get('/contas-receber', (req, res) => res.sendFile(path.join(__dirname, 'publ
 app.get('/preview-icons', (req, res) => res.sendFile(path.join(__dirname, 'public/preview-icons.html')));
 
 // ── INIT DB ───────────────────────────────────────────────────────
+async function runMigration(client, name, sql) {
+  const { rows } = await client.query('SELECT 1 FROM _migrations WHERE name = $1', [name]);
+  if (rows.length) return;
+  try {
+    await client.query(sql);
+    await client.query('INSERT INTO _migrations (name) VALUES ($1)', [name]);
+    console.log(`[DB] Migration aplicada: ${name}`);
+  } catch (err) {
+    console.error(`[DB] Migration falhou (${name}):`, err.message);
+  }
+}
+
 async function initDB() {
   const client = await pool.connect();
   try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS _migrations (
+        name TEXT PRIMARY KEY,
+        aplicada_em TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
     await client.query(`
       CREATE TABLE IF NOT EXISTS rh_usuarios (
         id SERIAL PRIMARY KEY,
@@ -427,17 +457,37 @@ async function initDB() {
       )
     `).catch(() => {});
 
-    // Admin padrão
-    const { rows } = await client.query("SELECT id FROM rh_usuarios WHERE usuario = 'admin'");
-    if (!rows.length) {
-      const bcrypt = require('bcryptjs');
-      const hash = await bcrypt.hash('admin123', 10);
-      await client.query(
-        "INSERT INTO rh_usuarios (usuario, senha_hash, nome, perfil) VALUES ('admin', $1, 'Administrador', 'admin')",
-        [hash]
-      );
-      console.log('[DB] Usuário admin criado (senha: admin123)');
-    }
+    // ── Índices e constraints adicionais ──────────────────────────
+    await runMigration(client, '20260501_idx_itens_nota_id',
+      'CREATE INDEX IF NOT EXISTS idx_itens_nota_id ON itens_nota(nota_id)');
+    await runMigration(client, '20260501_idx_conferencias_item_id',
+      'CREATE INDEX IF NOT EXISTS idx_conferencias_item_id ON conferencias_estoque(item_id)');
+    await runMigration(client, '20260501_idx_conferencia_lotes_conf',
+      'CREATE INDEX IF NOT EXISTS idx_conferencia_lotes_conf ON conferencia_lotes(conferencia_id)');
+    await runMigration(client, '20260501_idx_funcionarios_matricula',
+      'CREATE INDEX IF NOT EXISTS idx_funcionarios_matricula ON funcionarios(matricula)');
+    await runMigration(client, '20260501_idx_compras_loja_data',
+      'CREATE INDEX IF NOT EXISTS idx_compras_loja_data ON compras_historico(loja_id, data_entrada)');
+    await runMigration(client, '20260501_idx_compras_codbarra',
+      'CREATE INDEX IF NOT EXISTS idx_compras_codbarra ON compras_historico(codigobarra)');
+    await runMigration(client, '20260501_idx_vendas_loja_data',
+      'CREATE INDEX IF NOT EXISTS idx_vendas_loja_data ON vendas_historico(loja_id, data_venda)');
+    await runMigration(client, '20260501_idx_vendas_codbarra',
+      'CREATE INDEX IF NOT EXISTS idx_vendas_codbarra ON vendas_historico(codigobarra)');
+    await runMigration(client, '20260501_idx_notas_loja',
+      'CREATE INDEX IF NOT EXISTS idx_notas_loja ON notas_entrada(loja_id)');
+    await runMigration(client, '20260501_idx_notas_status',
+      'CREATE INDEX IF NOT EXISTS idx_notas_status ON notas_entrada(status)');
+    await runMigration(client, '20260501_idx_cr_debitos_forn',
+      'CREATE INDEX IF NOT EXISTS idx_cr_debitos_forn ON cr_debitos(fornecedor_id)');
+    await runMigration(client, '20260501_idx_cr_creditos_debito',
+      'CREATE INDEX IF NOT EXISTS idx_cr_creditos_debito ON cr_creditos(debito_id)');
+    await runMigration(client, '20260501_idx_cr_debito_itens_debito',
+      'CREATE INDEX IF NOT EXISTS idx_cr_debito_itens_debito ON cr_debito_itens(debito_id)');
+    await runMigration(client, '20260501_idx_pedidos_fornecedor',
+      'CREATE INDEX IF NOT EXISTS idx_pedidos_fornecedor ON pedidos(fornecedor_id)');
+    await runMigration(client, '20260501_idx_pedidos_status',
+      'CREATE INDEX IF NOT EXISTS idx_pedidos_status ON pedidos(status)');
 
     console.log('[DB] Tabelas inicializadas');
   } finally {
@@ -445,10 +495,42 @@ async function initDB() {
   }
 }
 
+// Middleware global de erro — captura exceções não tratadas das rotas
+app.use((err, req, res, next) => {
+  console.error(`[erro] ${req.method} ${req.path}:`, err.message);
+  if (res.headersSent) return next(err);
+  res.status(err.status || 500).json({ erro: err.message || 'Erro interno' });
+});
+
 const PORT = process.env.PORT || 3001;
+let server;
+
 initDB().then(() => {
-  app.listen(PORT, () => console.log(`jrlira.tech rodando na porta ${PORT}`));
+  server = app.listen(PORT, () => console.log(`jrlira.tech rodando na porta ${PORT}`));
 }).catch(err => {
   console.error('[DB] Erro init:', err.message);
   process.exit(1);
 });
+
+// Graceful shutdown — fecha conexões ativas antes de encerrar
+async function shutdown(signal) {
+  console.log(`[${signal}] iniciando shutdown...`);
+  const timeoutId = setTimeout(() => {
+    console.error('[shutdown] timeout — encerrando à força');
+    process.exit(1);
+  }, 15000);
+  try {
+    if (server) await new Promise(r => server.close(r));
+    await pool.end();
+    clearTimeout(timeoutId);
+    console.log('[shutdown] concluído');
+    process.exit(0);
+  } catch (err) {
+    console.error('[shutdown] erro:', err.message);
+    process.exit(1);
+  }
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('unhandledRejection', err => console.error('[unhandledRejection]', err));
+process.on('uncaughtException', err => { console.error('[uncaughtException]', err); shutdown('uncaughtException'); });

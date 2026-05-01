@@ -3,7 +3,7 @@ const router = express.Router();
 const multer = require('multer');
 const XLSX = require('xlsx');
 const pool = require('../db');
-const { autenticar, apenasAdmin } = require('../auth');
+const { autenticar } = require('../auth');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 

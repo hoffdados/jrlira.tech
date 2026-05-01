@@ -152,7 +152,7 @@ router.get('/produto/:barcode', autVendedor, async (req, res) => {
   try {
     const bc = req.params.barcode.trim();
     const rows = await pool.query(
-      `SELECT codigobarra as codigo_barras, descricao, custofabrica as preco
+      `SELECT codigobarra as codigo_barras, descricao, custoorigem as preco
        FROM produtos_externo WHERE codigobarra=$1 LIMIT 1`,
       [bc]
     );

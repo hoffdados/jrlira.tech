@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const pool = require('../db');
-const { autenticar, apenasAdmin } = require('../auth');
+const { autenticar } = require('../auth');
 
 const upload = multer({
   storage: multer.memoryStorage(),
