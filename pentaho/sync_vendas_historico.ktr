@@ -10,8 +10,8 @@
     <parameters>
       <parameter>
         <name>LOJA_ID</name>
-        <default_value>1</default_value>
-        <description>ID da loja no sistema</description>
+        <default_value/>
+        <description>ID da loja no sistema (obrigatorio — sem default pra evitar gravar como loja 1 por engano)</description>
       </parameter>
     </parameters>
     <log>
@@ -713,7 +713,14 @@
       <jsScript>
         <jsScript_type>0</jsScript_type>
         <jsScript_name>Script 1</jsScript_name>
-        <jsScript_script>var loja_id = parseInt( getVariable("LOJA_ID", "1"), 10 );</jsScript_script>
+        <jsScript_script>var loja_id_str = getVariable("LOJA_ID", "");
+if (loja_id_str === "" || loja_id_str === null) {
+  throw new Error("LOJA_ID nao foi propagado do .kjb para o .ktr. Verifique no Spoon o step 'Sync Vendas' do job: marcar 'Pass all parameter values down to the sub-transformation' OU adicionar parametro LOJA_ID com valor ${LOJA_ID}.");
+}
+var loja_id = parseInt(loja_id_str, 10);
+if (isNaN(loja_id) || loja_id &lt; 1 || loja_id &gt; 100) {
+  throw new Error("LOJA_ID invalido: '" + loja_id_str + "'");
+}</jsScript_script>
       </jsScript>
     </jsScripts>
     <fields>

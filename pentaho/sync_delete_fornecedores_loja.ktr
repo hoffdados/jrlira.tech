@@ -10,8 +10,8 @@
     <parameters>
       <parameter>
         <name>LOJA_ID</name>
-        <default_value>1</default_value>
-        <description>ID da loja</description>
+        <default_value/>
+        <description>ID da loja (obrigatorio — sem default)</description>
       </parameter>
     </parameters>
     <size_rowset>10000</size_rowset>
@@ -88,7 +88,7 @@
     <quoting_settings>N</quoting_settings>
     <include_result_row_count>N</include_result_row_count>
     <result_field_name>result</result_field_name>
-    <sql>DELETE FROM public.fornecedores WHERE loja_id = ${LOJA_ID};</sql>
+    <sql>SELECT 1 -- NO-OP: DELETE removido. Sync agora é incremental (UPSERT via trigger Postgres).</sql>
     <GUI><xloc>304</xloc><yloc>200</yloc><draw>Y</draw></GUI>
   </step>
 
