@@ -55,8 +55,19 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:9px 1
 .pedido-status{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700}
 .s-rascunho{background:#1e293b;color:#64748b}
 .s-aguardando{background:#1e3a5f;color:#60a5fa}
+.s-aguardando_validacao{background:#1e3a5f;color:#60a5fa}
+.s-aguardando_auditoria{background:#431407;color:#f97316}
 .s-validado{background:#14532d;color:#4ade80}
+.s-faturado{background:#0c4a6e;color:#38bdf8}
+.s-atrasado{background:#7f1d1d;color:#fca5a5}
+.s-cancelado_pelo_vendedor{background:#3f0f0f;color:#fca5a5;text-decoration:line-through}
 .s-vinculado{background:#2e1065;color:#a78bfa}
+.s-rejeitado{background:#450a0a;color:#f87171}
+.pedido-row.rejeitado{border-left:4px solid #ef4444;background:#1a0505}
+.pedido-row.auditoria{border-left:4px solid #f97316}
+.pedido-row.atrasado{border-left:4px solid #ef4444;background:#1a0505;animation:pulse 2s infinite}
+.pedido-row.faturavel{border-left:4px solid #14532d}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.7}}
 .tab-bar{display:flex;gap:0;margin-bottom:16px;background:#0f172a;border-radius:8px;padding:4px}
 .tab{flex:1;text-align:center;padding:8px;border-radius:6px;font-size:13px;cursor:pointer;color:#64748b;border:none;background:none}
 .tab.active{background:#1e293b;color:#e2e8f0;font-weight:700}
@@ -101,6 +112,8 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:9px 1
       <div class="card-title">Dados do Pedido</div>
       <label>Loja destino *</label>
       <select id="lojaId" style="margin-bottom:12px"><option value="">Selecione...</option></select>
+      <label>Preço válido até *</label>
+      <input type="date" id="precoValidoAte" style="margin-bottom:12px">
       <label>Condição de pagamento *</label>
       <select id="condicaoPgto" style="margin-bottom:4px">
         <option value="">Selecione...</option>
@@ -262,12 +275,14 @@ function calcItem() {
 // ── ITENS ─────────────────────────────────────────────────────────
 async function adicionarItem() {
   const loja_id = document.getElementById('lojaId').value;
+  const precoValidoAte = document.getElementById('precoValidoAte').value;
   const condicao = document.getElementById('condicaoPgto').value;
   const desc = document.getElementById('itemDesc').value.trim();
   const qtde = parseFloat(document.getElementById('itemQtde').value);
   const preco = parseFloat(document.getElementById('itemPreco').value);
 
   if (!loja_id) return showMsg('Selecione a loja antes de adicionar itens.', 'err');
+  if (!precoValidoAte) return showMsg('Informe a data de validade do preço.', 'err');
   if (!condicao) return showMsg('Selecione a condição de pagamento.', 'err');
   if (!desc || !qtde || !preco) return showMsg('Descrição, quantidade e preço são obrigatórios.', 'err');
 
@@ -275,11 +290,18 @@ async function adicionarItem() {
     const r = await fetch(`${API}/api/vendedores/pedido`, {
       method: 'POST',
       headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ loja_id, condicao_pagamento: condicao, observacoes: document.getElementById('observacoes').value.trim() })
+      body: JSON.stringify({ loja_id, condicao_pagamento: condicao, preco_valido_ate: precoValidoAte, observacoes: document.getElementById('observacoes').value.trim() })
     });
     const d = await r.json();
     if (!r.ok) return showMsg(d.erro, 'err');
     pedidoAtual = d.id;
+  } else {
+    // Atualiza cabeçalho a cada item (caso vendedor mude validade/condição)
+    fetch(`${API}/api/vendedores/pedido/${pedidoAtual}`, {
+      method: 'PUT',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ loja_id, condicao_pagamento: condicao, preco_valido_ate: precoValidoAte, observacoes: document.getElementById('observacoes').value.trim() })
+    }).catch(() => {});
   }
 
   const bc = document.getElementById('barcode').value.trim();
@@ -309,15 +331,47 @@ function renderItens() {
   document.getElementById('cardItens').style.display = itensLocais.length ? 'block' : 'none';
   document.getElementById('listaItens').innerHTML = itensLocais.map((item, idx) => `
     <div class="item-row">
-      <div class="item-info">
+      <div class="item-info" style="flex:1;min-width:0">
         <div class="item-desc">${item.produto_novo ? '<span class="badge-novo">NOVO</span> ' : ''}${item.descricao}</div>
-        <div class="item-sub">${item.codigo_barras || 'S/código'} &nbsp;|&nbsp; ${item.quantidade} × R$ ${item.preco_unitario.toFixed(2).replace('.',',')}</div>
+        <div class="item-sub">${item.codigo_barras || 'S/código'}</div>
+        <div style="display:flex;gap:8px;margin-top:6px;align-items:center;flex-wrap:wrap">
+          <label style="font-size:10px;color:#64748b">Qtd</label>
+          <input type="number" step="0.001" min="0" value="${item.quantidade}" data-idx="${idx}" data-field="quantidade"
+                 onchange="editarItem(this)" style="width:90px;padding:4px 8px;font-size:12px;background:#0f172a;border:1px solid #334155;color:#e2e8f0;border-radius:4px">
+          <label style="font-size:10px;color:#64748b">×</label>
+          <label style="font-size:10px;color:#64748b">R$</label>
+          <input type="number" step="0.0001" min="0" value="${item.preco_unitario.toFixed(4)}" data-idx="${idx}" data-field="preco_unitario"
+                 onchange="editarItem(this)" style="width:100px;padding:4px 8px;font-size:12px;background:#0f172a;border:1px solid #334155;color:#e2e8f0;border-radius:4px">
+        </div>
       </div>
-      <div class="item-total">R$ ${item.valor_total.toFixed(2).replace('.',',')}</div>
+      <div class="item-total" id="itemTotal-${idx}">R$ ${item.valor_total.toFixed(2).replace('.',',')}</div>
       <button class="btn-danger" onclick="removerItem(${idx}, ${item.id})">✕</button>
     </div>
   `).join('');
   document.getElementById('totalPedido').textContent = `R$ ${total.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.')}`;
+}
+
+async function editarItem(input) {
+  const idx = parseInt(input.dataset.idx);
+  const field = input.dataset.field;
+  const valor = parseFloat(input.value);
+  if (!Number.isFinite(valor) || valor < 0) { input.value = itensLocais[idx][field]; return; }
+  const item = itensLocais[idx];
+  item[field] = valor;
+  item.valor_total = item.quantidade * item.preco_unitario;
+  // Atualiza visualmente
+  document.getElementById(`itemTotal-${idx}`).textContent = `R$ ${item.valor_total.toFixed(2).replace('.',',')}`;
+  const total = itensLocais.reduce((s, i) => s + i.valor_total, 0);
+  document.getElementById('totalPedido').textContent = `R$ ${total.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.')}`;
+  // Persiste no backend (delete + create na rota antiga, ou usa PUT se existir)
+  try {
+    const r = await fetch(`${API}/api/vendedores/pedido/${pedidoAtual}/item/${item.id}`, {
+      method: 'PUT',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ quantidade: item.quantidade, preco_unitario: item.preco_unitario })
+    });
+    if (!r.ok) showMsg('Erro ao salvar alteração do item', 'err');
+  } catch { showMsg('Erro de conexão ao editar item', 'err'); }
 }
 
 async function removerItem(idx, itemId) {
@@ -328,17 +382,42 @@ async function removerItem(idx, itemId) {
 
 async function enviarPedido() {
   if (!pedidoAtual) return showMsg('Adicione itens ao pedido.', 'err');
+  if (!itensLocais.length) return showMsg('Adicione ao menos um item.', 'err');
+
+  const loja_id = document.getElementById('lojaId').value;
+  const precoValidoAte = document.getElementById('precoValidoAte').value;
+  const condicao = document.getElementById('condicaoPgto').value;
+  const observacoes = document.getElementById('observacoes').value.trim();
+
+  if (!loja_id) return showMsg('Selecione a loja.', 'err');
+  if (!precoValidoAte) return showMsg('Informe a data de validade do preço.', 'err');
+  if (!condicao) return showMsg('Selecione a condição de pagamento.', 'err');
+
   if (!confirm('Enviar o pedido para validação do comprador?')) return;
-  const r = await fetch(`${API}/api/vendedores/pedido/${pedidoAtual}/enviar`, { method: 'POST', headers: authHeaders() });
-  const data = await r.json();
-  if (!r.ok) return showMsg(data.erro, 'err');
-  showMsg(`Pedido ${data.numero_pedido} enviado com sucesso!`, 'ok');
-  pedidoAtual = null;
-  itensLocais = [];
-  renderItens();
-  document.getElementById('lojaId').value = '';
-  document.getElementById('condicaoPgto').value = '';
-  document.getElementById('observacoes').value = '';
+
+  // Sempre salva o cabeçalho antes de enviar (importante pra fluxo de duplicar)
+  try {
+    const rPut = await fetch(`${API}/api/vendedores/pedido/${pedidoAtual}`, {
+      method: 'PUT',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ loja_id, condicao_pagamento: condicao, preco_valido_ate: precoValidoAte, observacoes })
+    });
+    if (!rPut.ok) { const dp = await rPut.json(); return showMsg('Erro ao salvar cabeçalho: ' + (dp.erro || ''), 'err'); }
+  } catch { return showMsg('Erro ao salvar cabeçalho do pedido.', 'err'); }
+
+  try {
+    const r = await fetch(`${API}/api/vendedores/pedido/${pedidoAtual}/enviar`, { method: 'POST', headers: authHeaders() });
+    const data = await r.json();
+    if (!r.ok) return showMsg(data.erro || 'Erro ao enviar', 'err');
+    showMsg(`Pedido ${data.numero_pedido} enviado com sucesso!`, 'ok');
+    pedidoAtual = null;
+    itensLocais = [];
+    renderItens();
+    document.getElementById('lojaId').value = '';
+    document.getElementById('condicaoPgto').value = '';
+    document.getElementById('precoValidoAte').value = '';
+    document.getElementById('observacoes').value = '';
+  } catch { showMsg('Erro de conexão ao enviar.', 'err'); }
 }
 
 // ── MEUS PEDIDOS ──────────────────────────────────────────────────
@@ -349,18 +428,191 @@ async function carregarMeusPedidos() {
     const r = await fetch(`${API}/api/vendedores/meus-pedidos`, { headers: authHeaders() });
     const pedidos = await r.json();
     if (!pedidos.length) { el.innerHTML = '<div style="color:#475569;text-align:center;padding:20px">Nenhum pedido encontrado.</div>'; return; }
-    const STATUS = { rascunho:'Rascunho', aguardando_validacao:'Aguardando validação', validado:'Validado', vinculado:'Vinculado à NF' };
-    el.innerHTML = pedidos.map(p => `
-      <div class="pedido-row">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-          <span class="pedido-num">${p.numero_pedido || '#' + p.id}</span>
-          <span class="pedido-status s-${p.status}">${STATUS[p.status] || p.status}</span>
+    const STATUS = {
+      rascunho:'Rascunho',
+      aguardando_validacao:'Aguardando validação',
+      aguardando_auditoria:'Em análise (auditoria)',
+      validado:'Validado — faturar em até 48h',
+      faturado:'Faturado',
+      atrasado:'ATRASADO — sujeito a nova validação',
+      vinculado:'Vinculado à NF',
+      rejeitado:'Rejeitado',
+      cancelado_pelo_vendedor:'Cancelado por você',
+    };
+    el.innerHTML = pedidos.map(p => {
+      let acoes = '';
+      if (p.status === 'rascunho') {
+        acoes = `<button class="btn-primary btn-sm" onclick="continuarRascunho(${p.id})" style="white-space:nowrap">▶ Continuar</button>
+                 <button class="btn-danger btn-sm" onclick="excluirRascunho(${p.id}, this)" style="white-space:nowrap">✕ Excluir</button>`;
+      } else if (p.status === 'validado' || p.status === 'atrasado') {
+        acoes = `<button class="btn-ok btn-sm" onclick="confirmarFaturamento(${p.id}, '${(p.numero_pedido||'').replace(/'/g,'')}', this)" style="white-space:nowrap">📑 Confirmar Faturamento</button>
+                 <button class="btn-ghost btn-sm" onclick="duplicarPedido(${p.id}, this)" style="white-space:nowrap">⎘ Duplicar</button>
+                 <button class="btn-danger btn-sm" onclick="cancelarPedido(${p.id}, '${(p.numero_pedido||'').replace(/'/g,'')}', this)" style="white-space:nowrap">🚫 Cancelar</button>`;
+      } else if (p.status === 'aguardando_validacao' || p.status === 'aguardando_auditoria') {
+        acoes = `<button class="btn-ghost btn-sm" onclick="duplicarPedido(${p.id}, this)" style="white-space:nowrap">⎘ Duplicar</button>
+                 <button class="btn-danger btn-sm" onclick="cancelarPedido(${p.id}, '${(p.numero_pedido||'').replace(/'/g,'')}', this)" style="white-space:nowrap">🚫 Cancelar</button>`;
+      } else {
+        acoes = `<button class="btn-ghost btn-sm" onclick="duplicarPedido(${p.id}, this)" style="white-space:nowrap">⎘ Duplicar</button>`;
+      }
+      let classeExtra = '';
+      if (p.status === 'rejeitado') classeExtra = ' rejeitado';
+      else if (p.status === 'aguardando_auditoria') classeExtra = ' auditoria';
+      else if (p.status === 'atrasado') classeExtra = ' atrasado';
+      else if (p.status === 'validado') classeExtra = ' faturavel';
+
+      const motivoLinha = p.status === 'rejeitado' && p.motivo_rejeicao
+        ? `<div style="font-size:11px;color:#f87171;margin-top:4px;font-style:italic">⚠ Motivo: ${escapeHtml(p.motivo_rejeicao)}</div>`
+        : (p.status === 'cancelado_pelo_vendedor' && p.motivo_cancelamento
+          ? `<div style="font-size:11px;color:#fca5a5;margin-top:4px;font-style:italic">🚫 Cancelado: ${escapeHtml(p.motivo_cancelamento)}</div>` : '');
+      const nfLinha = p.status === 'faturado' && p.numero_nf_faturada
+        ? `<div style="font-size:11px;color:#38bdf8;margin-top:4px">📄 NF ${escapeHtml(p.numero_nf_faturada)} · ${new Date(p.faturado_em).toLocaleDateString('pt-BR')}</div>` : '';
+      const horasRest = p.status === 'validado' && p.validado_em
+        ? Math.max(0, 48 - Math.floor((Date.now() - new Date(p.validado_em).getTime()) / 3600000))
+        : null;
+      const prazoLinha = horasRest != null
+        ? `<div style="font-size:11px;color:${horasRest<=12?'#f87171':'#fbbf24'};margin-top:4px;font-weight:700">⏰ ${horasRest}h restantes para faturar</div>` : '';
+
+      return `
+      <div class="pedido-row${classeExtra}" style="display:flex;align-items:center;gap:10px">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
+            <span class="pedido-num">${p.numero_pedido || '#' + p.id}</span>
+            <span class="pedido-status s-${p.status}">${STATUS[p.status] || p.status}</span>
+          </div>
+          <div style="font-size:12px;color:#94a3b8">${p.loja_nome || '—'} &nbsp;|&nbsp; ${p.condicao_pagamento || '?'} dias &nbsp;|&nbsp; R$ ${parseFloat(p.valor_total||0).toFixed(2).replace('.',',')}</div>
+          <div style="font-size:11px;color:#475569;margin-top:2px">${p.enviado_em ? 'Enviado em ' + new Date(p.enviado_em).toLocaleDateString('pt-BR') : 'Rascunho — não enviado'}</div>
+          ${motivoLinha}${nfLinha}${prazoLinha}
         </div>
-        <div style="font-size:12px;color:#94a3b8">${p.loja_nome || '—'} &nbsp;|&nbsp; ${p.condicao_pagamento || '?'} dias &nbsp;|&nbsp; R$ ${parseFloat(p.valor_total||0).toFixed(2).replace('.',',')}</div>
-        <div style="font-size:11px;color:#475569;margin-top:2px">${p.enviado_em ? 'Enviado em ' + new Date(p.enviado_em).toLocaleDateString('pt-BR') : 'Não enviado'}</div>
-      </div>
-    `).join('');
+        <div style="display:flex;flex-direction:column;gap:4px">${acoes}</div>
+      </div>`;
+    }).join('');
   } catch { el.innerHTML = '<div style="color:#f87171;text-align:center;padding:20px">Erro ao carregar.</div>'; }
+}
+
+async function cancelarPedido(id, numero, btn) {
+  const motivo = prompt(
+    `Cancelar o pedido ${numero}?\n\n` +
+    `Use o cancelamento quando o produto faltou na indústria, houve reajuste de preço, ou outro motivo que impeça o faturamento.\n\n` +
+    `O comprador será notificado por e-mail e WhatsApp com o motivo informado.\n\n` +
+    `Informe o motivo (mínimo 5 caracteres):`
+  );
+  if (!motivo || motivo.trim().length < 5) {
+    if (motivo !== null) showMsg('Motivo muito curto. Cancelamento abortado.', 'err');
+    return;
+  }
+  if (!confirm(`Confirmar cancelamento do pedido ${numero}?\n\nMotivo: ${motivo.trim()}`)) return;
+  const txtOrig = btn.textContent;
+  btn.disabled = true; btn.textContent = '...';
+  try {
+    const r = await fetch(`${API}/api/vendedores/pedido/${id}/cancelar`, {
+      method: 'POST',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ motivo: motivo.trim() })
+    });
+    const d = await r.json();
+    if (!r.ok) { showMsg(d.erro || 'Erro ao cancelar', 'err'); btn.disabled = false; btn.textContent = txtOrig; return; }
+    showMsg('Pedido cancelado. Comprador foi notificado.', 'ok');
+    carregarMeusPedidos();
+  } catch {
+    showMsg('Erro de conexão', 'err');
+    btn.disabled = false; btn.textContent = txtOrig;
+  }
+}
+
+async function confirmarFaturamento(id, numero, btn) {
+  // Modal simples via prompt — captura nº NF
+  const nf = prompt(`Confirmar faturamento do pedido ${numero}\n\nDigite o número da Nota Fiscal:\n\n⚠ Não fature sem o pedido validado — risco de recusa da NF na SEFA, EVITE transtornos e prejuízos.`);
+  if (!nf || !nf.trim()) return;
+  const txtOrig = btn.textContent;
+  btn.disabled = true; btn.textContent = '...';
+  try {
+    const r = await fetch(`${API}/api/vendedores/pedido/${id}/faturar`, {
+      method: 'POST',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ numero_nf: nf.trim() })
+    });
+    const d = await r.json();
+    if (!r.ok) { showMsg(d.erro || 'Erro ao confirmar faturamento', 'err'); btn.disabled = false; btn.textContent = txtOrig; return; }
+    showMsg('Faturamento confirmado! Comprador foi notificado.', 'ok');
+    carregarMeusPedidos();
+  } catch {
+    showMsg('Erro de conexão', 'err');
+    btn.disabled = false; btn.textContent = txtOrig;
+  }
+}
+
+async function continuarRascunho(id) {
+  try {
+    const r = await fetch(`${API}/api/vendedores/pedido/${id}`, { headers: authHeaders() });
+    const ped = await r.json();
+    if (!r.ok) return showMsg(ped.erro || 'Erro ao carregar', 'err');
+    if (ped.status !== 'rascunho') return showMsg('Este pedido não é mais rascunho.', 'err');
+    pedidoAtual = ped.id;
+    itensLocais = (ped.itens || []).map(i => ({
+      id: i.id, codigo_barras: i.codigo_barras, descricao: i.descricao,
+      quantidade: parseFloat(i.quantidade), preco_unitario: parseFloat(i.preco_unitario),
+      valor_total: parseFloat(i.valor_total), produto_novo: i.produto_novo
+    }));
+    renderItens();
+    document.getElementById('lojaId').value = ped.loja_id || '';
+    document.getElementById('precoValidoAte').value = ped.preco_valido_ate ? ped.preco_valido_ate.substring(0,10) : '';
+    document.getElementById('condicaoPgto').value = ped.condicao_pagamento || '';
+    document.getElementById('observacoes').value = ped.observacoes || '';
+    abrirTab('novo');
+    showMsg('Rascunho carregado. Continue de onde parou.', 'ok');
+  } catch { showMsg('Erro ao carregar rascunho', 'err'); }
+}
+
+async function excluirRascunho(id, btn) {
+  if (!confirm('Excluir este rascunho? Os itens serão perdidos.')) return;
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = '...';
+  try {
+    const r = await fetch(`${API}/api/vendedores/pedido/${id}`, { method: 'DELETE', headers: authHeaders() });
+    const d = await r.json();
+    if (!r.ok) { showMsg(d.erro || 'Erro ao excluir', 'err'); btn.disabled = false; btn.textContent = orig; return; }
+    // Se era o pedido atual aberto na aba Novo, limpa o estado
+    if (pedidoAtual === id) {
+      pedidoAtual = null;
+      itensLocais = [];
+      renderItens();
+      document.getElementById('lojaId').value = '';
+      document.getElementById('precoValidoAte').value = '';
+      document.getElementById('condicaoPgto').value = '';
+      document.getElementById('observacoes').value = '';
+    }
+    carregarMeusPedidos();
+    showMsg('Rascunho excluído.', 'ok');
+  } catch { showMsg('Erro ao excluir', 'err'); btn.disabled = false; btn.textContent = orig; }
+}
+
+async function duplicarPedido(id, btn) {
+  if (!confirm('Duplicar este pedido? Os itens (qtd e preço) serão copiados para um novo rascunho. Você só precisa preencher loja, validade do preço e condição.')) return;
+  const txtOrig = btn.textContent;
+  btn.disabled = true; btn.textContent = '...';
+  try {
+    const r = await fetch(`${API}/api/vendedores/pedido/${id}/duplicar`, { method: 'POST', headers: authHeaders() });
+    const d = await r.json();
+    if (!r.ok) { showMsg(d.erro || 'Erro ao duplicar', 'err'); return; }
+    pedidoAtual = d.id;
+    // Carrega itens do novo pedido pra aba Novo Pedido
+    const r2 = await fetch(`${API}/api/vendedores/pedido/${d.id}`, { headers: authHeaders() });
+    const ped = await r2.json();
+    itensLocais = (ped.itens || []).map(i => ({
+      id: i.id, codigo_barras: i.codigo_barras, descricao: i.descricao,
+      quantidade: parseFloat(i.quantidade), preco_unitario: parseFloat(i.preco_unitario),
+      valor_total: parseFloat(i.valor_total), produto_novo: i.produto_novo
+    }));
+    renderItens();
+    // Limpa cabeçalho — vendedor vai preencher loja/validade/condição
+    document.getElementById('lojaId').value = '';
+    document.getElementById('precoValidoAte').value = '';
+    document.getElementById('condicaoPgto').value = '';
+    document.getElementById('observacoes').value = '';
+    abrirTab('novo');
+    showMsg('Pedido duplicado. Ajuste itens se quiser e preencha loja, validade e condição para enviar.', 'ok');
+  } catch {
+    showMsg('Erro ao duplicar', 'err');
+  } finally { btn.disabled = false; btn.textContent = txtOrig; }
 }
 
 // ── UTIL ──────────────────────────────────────────────────────────

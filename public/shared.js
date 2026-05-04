@@ -3,10 +3,18 @@
 const LOJAS = {
   1: 'ECONOMICO',
   2: 'BR',
-  3: 'JOAO PAULO',
+  3: 'JOAO PESSOA',
   4: 'FLORESTA',
   5: 'SAO JOSE',
   6: 'SANTAREM',
+};
+const LOJAS_FULL = {
+  1: 'SUPERASA ECONOMICO',
+  2: 'SUPERASA BR',
+  3: 'SUPERASA JOAO PESSOA',
+  4: 'SUPERASA FLORESTA',
+  5: 'SUPERASA SAO JOSE',
+  6: 'SUPERASA SANTAREM',
 };
 
 function escapeHtml(s) {
@@ -33,6 +41,14 @@ function fmtData(d) {
 
 function nomeLoja(id) {
   return LOJAS[id] || `Loja ${id}`;
+}
+
+// Anexa o token JWT à URL para endpoints autenticados consumidos por <img>/<a>
+function fotoUrl(path) {
+  if (!path) return '';
+  const t = localStorage.getItem('jrlira_token');
+  if (!t) return path;
+  return path + (path.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(t);
 }
 
 // Desabilita o botão durante a Promise. Restaura texto e estado mesmo em erro.

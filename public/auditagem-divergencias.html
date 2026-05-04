@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Auditagem Divergências CD — JR Lira Tech</title>
+<link rel="stylesheet" href="/shared.css">
+<script src="/shared.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+nav{background:#1e293b;padding:14px 24px;display:flex;align-items:center;gap:16px;border-bottom:1px solid #334155}
+nav .brand{font-size:16px;font-weight:700;color:#38bdf8}
+nav .sep{color:#475569}
+nav .page{font-size:14px;color:#94a3b8}
+nav .user{margin-left:auto;font-size:13px;color:#64748b}
+nav .btn-nav{background:#0ea5e9;color:#fff;border:none;padding:7px 14px;border-radius:6px;font-size:13px;cursor:pointer}
+.wrap{padding:20px;max-width:1500px;margin:0 auto}
+.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:20px}
+.stat{background:#1e293b;border-radius:10px;padding:14px}
+.stat-label{font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em}
+.stat-value{font-size:22px;font-weight:700;margin-top:4px}
+.stat-value.warn{color:#fbbf24}.stat-value.err{color:#f87171}.stat-value.ok{color:#4ade80}
+.toolbar{display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+.toolbar select,.toolbar input{padding:8px 12px;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:13px}
+.toolbar button{padding:8px 16px;background:#0ea5e9;border:none;border-radius:6px;color:#fff;font-weight:600;cursor:pointer;font-size:13px}
+.toolbar button.ghost{background:transparent;border:1px solid #334155;color:#94a3b8}
+table{width:100%;border-collapse:collapse;background:#1e293b;border-radius:10px;overflow:hidden;font-size:13px}
+thead th{background:#0f2a3f;padding:10px;text-align:left;color:#94a3b8;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+tbody tr{border-bottom:1px solid #1e3148}
+tbody td{padding:10px;vertical-align:top}
+.badge{display:inline-block;padding:2px 8px;border-radius:5px;font-size:10px;font-weight:700;text-transform:uppercase}
+.b-pendente{background:#451a03;color:#fbbf24}
+.b-resolvida_cd{background:#14532d;color:#4ade80}
+.b-devolvida_loja{background:#1e3a5f;color:#60a5fa}
+.b-baixada{background:#1e293b;color:#64748b}
+.diff-falta{color:#f87171;font-weight:700}
+.diff-sobra{color:#4ade80;font-weight:700}
+.acoes{display:flex;gap:6px;flex-wrap:wrap}
+.acoes button{padding:5px 10px;font-size:11px;border:none;border-radius:5px;cursor:pointer;font-weight:700}
+.btn-resolvido{background:#16a34a;color:#fff}
+.btn-devolucao{background:#0ea5e9;color:#fff}
+.btn-baixar{background:#64748b;color:#fff}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,0.7);display:none;align-items:center;justify-content:center;z-index:100}
+.modal.show{display:flex}
+.modal-box{background:#1e293b;border-radius:12px;padding:24px;width:480px;max-width:92vw}
+.modal h3{color:#38bdf8;margin-bottom:16px;font-size:18px}
+.modal label{display:block;font-size:11px;color:#94a3b8;text-transform:uppercase;margin-top:12px;margin-bottom:4px}
+.modal input,.modal textarea,.modal select{width:100%;padding:8px 12px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:13px}
+.modal textarea{min-height:60px;font-family:inherit;resize:vertical}
+.modal-act{display:flex;gap:8px;justify-content:flex-end;margin-top:20px}
+.modal-act button{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:13px}
+.modal-act .cancel{background:transparent;color:#94a3b8;border:1px solid #334155}
+.modal-act .confirm{background:#0ea5e9;color:#fff}
+.empty{padding:40px;text-align:center;color:#64748b}
+</style>
+</head>
+<body>
+<nav>
+  <span class="brand">JR Lira Tech</span>
+  <span class="sep">/</span>
+  <span class="page">Auditagem Divergências CD</span>
+  <span class="user" id="nomeUsuario"></span>
+  <button class="btn-nav" onclick="location.href='/'">← Início</button>
+</nav>
+
+<div class="wrap">
+  <div class="stats" id="stats"></div>
+
+  <div class="toolbar">
+    <select id="fStatus" onchange="carregar()">
+      <option value="pendente" selected>Pendentes</option>
+      <option value="">Todos</option>
+      <option value="resolvida_cd">Resolvidas (CD)</option>
+      <option value="devolvida_loja">Devolvidas (loja)</option>
+      <option value="baixada">Baixadas</option>
+    </select>
+    <select id="fLoja" onchange="carregar()">
+      <option value="">Todas as lojas</option>
+      <option value="1">L1 Economico</option><option value="2">L2 BR</option><option value="3">L3 João Pessoa</option>
+      <option value="4">L4 Floresta</option><option value="5">L5 São José</option><option value="6">L6 Santarém</option>
+    </select>
+    <input type="date" id="fDesde" onchange="carregar()">
+    <input type="date" id="fAte" onchange="carregar()">
+    <input type="text" id="fQ" placeholder="Buscar descrição/EAN/MAT" oninput="debouncedCarregar()">
+    <button onclick="exportar()">📊 Exportar Excel</button>
+  </div>
+
+  <div id="lista"></div>
+</div>
+
+<div class="modal" id="modalResolver">
+  <div class="modal-box">
+    <h3 id="modalTit">Resolver divergência</h3>
+    <div id="modalDesc" style="font-size:12px;color:#94a3b8;margin-bottom:8px"></div>
+    <label>Tipo de resolução</label>
+    <select id="modalTipo" onchange="atualizarModal()">
+      <option value="resolvida_cd">CD encontrou o produto / acertou contagem</option>
+      <option value="devolvida_loja">Loja gerou nota de devolução</option>
+      <option value="baixada">Baixar (perda assumida)</option>
+    </select>
+    <div id="wrapNF" style="display:none">
+      <label>Número da NF de devolução</label>
+      <input type="text" id="modalNF">
+    </div>
+    <label>Observação</label>
+    <textarea id="modalObs" placeholder="Detalhes da resolução"></textarea>
+    <div class="modal-act">
+      <button class="cancel" onclick="fecharModal()">Cancelar</button>
+      <button class="confirm" onclick="salvarResolver()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const LOJAS_NOMES = {1:'L1 ECONOMICO',2:'L2 BR',3:'L3 JOÃO PESSOA',4:'L4 FLORESTA',5:'L5 SÃO JOSÉ',6:'L6 SANTARÉM'};
+let timer=null;
+function debouncedCarregar(){clearTimeout(timer);timer=setTimeout(carregar,400)}
+function fmtData(d){if(!d)return'—';return new Date(d).toLocaleDateString('pt-BR')}
+function fmtMoeda(v){return'R$ '+(parseFloat(v||0)).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}
+document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
+
+async function carregar(){
+  const params = new URLSearchParams();
+  ['fStatus','fLoja','fDesde','fAte','fQ'].forEach(id=>{
+    const v=document.getElementById(id).value;
+    if(v){const k={fStatus:'status',fLoja:'loja_id',fDesde:'desde',fAte:'ate',fQ:'q'}[id];params.set(k,v)}
+  });
+  try{
+    const r=await apiFetch('/api/auditagem-divergencias?'+params);
+    const d=await r.json();
+    renderStats(d);
+    renderLista(d.rows);
+  }catch(e){alert('Erro: '+e.message)}
+}
+
+function renderStats(d){
+  document.getElementById('stats').innerHTML=`
+    <div class="stat"><div class="stat-label">Total filtrado</div><div class="stat-value">${d.total}</div></div>
+    <div class="stat"><div class="stat-label">Valor de FALTA</div><div class="stat-value err">${fmtMoeda(d.total_falta)}</div></div>
+    <div class="stat"><div class="stat-label">Valor de SOBRA</div><div class="stat-value ok">${fmtMoeda(d.total_sobra)}</div></div>
+    <div class="stat"><div class="stat-label">Saldo (sobra-falta)</div><div class="stat-value warn">${fmtMoeda((d.total_sobra||0)-(d.total_falta||0))}</div></div>
+  `;
+}
+
+function renderLista(rows){
+  const el=document.getElementById('lista');
+  if(!rows.length){el.innerHTML='<div class="empty">Nenhuma divergência</div>';return}
+  el.innerHTML=`<table><thead><tr>
+    <th>Data</th><th>Loja</th><th>MCP</th><th>MAT_CODI</th><th>Descrição</th>
+    <th style="text-align:right">Esperado</th><th style="text-align:right">Contado</th>
+    <th style="text-align:right">Diferença</th><th style="text-align:right">R$</th>
+    <th>Status</th><th>Resolução</th><th>Ações</th>
+  </tr></thead><tbody>
+  ${rows.map(r=>{
+    const dif=parseFloat(r.diferenca);
+    const cls=dif<0?'diff-falta':'diff-sobra';
+    const lbl=dif<0?'FALTA':'SOBRA';
+    const acoes=r.status==='pendente'
+      ? `<button class="btn-resolvido" onclick='abrirModal(${r.id},${JSON.stringify(r.descricao||'').replace(/'/g,"&apos;")})'>Resolver</button>`
+      : `<span style="color:#64748b;font-size:11px">${r.resolvido_por||''} ${fmtData(r.resolvido_em)}</span>`;
+    const resol = r.numero_nf_devolucao ? `NF dev ${r.numero_nf_devolucao}` : (r.observacao||'').slice(0,50);
+    return `<tr>
+      <td>${fmtData(r.criado_em)}</td>
+      <td>${LOJAS_NOMES[r.loja_id]||'L'+r.loja_id}</td>
+      <td><span style="font-family:monospace;font-size:11px">${r.cd_mov_codi||'—'}</span></td>
+      <td><span style="font-family:monospace;font-size:11px">${r.cd_pro_codi||'—'}</span></td>
+      <td>${(r.descricao||'').trim()}<div style="font-size:10px;color:#64748b">EAN ${r.ean_nota||'—'}</div></td>
+      <td style="text-align:right">${parseFloat(r.qtd_esperada).toFixed(0)}</td>
+      <td style="text-align:right">${parseFloat(r.qtd_contada).toFixed(0)}</td>
+      <td style="text-align:right" class="${cls}">${dif>0?'+':''}${dif.toFixed(0)} ${lbl}</td>
+      <td style="text-align:right" class="${cls}">${fmtMoeda(r.valor_total_diferenca)}</td>
+      <td><span class="badge b-${r.status}">${r.status.replace('_',' ')}</span></td>
+      <td style="font-size:11px;color:#94a3b8">${resol}</td>
+      <td><div class="acoes">${acoes}</div></td>
+    </tr>`;
+  }).join('')}
+  </tbody></table>`;
+}
+
+let resolverId=null;
+function abrirModal(id, desc){
+  resolverId=id;
+  document.getElementById('modalDesc').textContent=desc;
+  document.getElementById('modalTipo').value='resolvida_cd';
+  document.getElementById('modalObs').value='';
+  document.getElementById('modalNF').value='';
+  atualizarModal();
+  document.getElementById('modalResolver').classList.add('show');
+}
+function fecharModal(){document.getElementById('modalResolver').classList.remove('show');resolverId=null}
+function atualizarModal(){
+  const t=document.getElementById('modalTipo').value;
+  document.getElementById('wrapNF').style.display=t==='devolvida_loja'?'block':'none';
+}
+async function salvarResolver(){
+  const tipo=document.getElementById('modalTipo').value;
+  const observacao=document.getElementById('modalObs').value.trim();
+  const numero_nf_devolucao=document.getElementById('modalNF').value.trim();
+  if(tipo==='devolvida_loja' && !numero_nf_devolucao){alert('Informe o número da NF de devolução');return}
+  try{
+    const r=await apiFetch(`/api/auditagem-divergencias/${resolverId}/resolver`,{
+      method:'POST',body:JSON.stringify({tipo,observacao,numero_nf_devolucao})
+    });
+    if(!r.ok)throw new Error((await r.json()).erro);
+    fecharModal();
+    carregar();
+  }catch(e){alert('Erro: '+e.message)}
+}
+
+async function exportar(){
+  const params=new URLSearchParams();
+  ['fStatus','fLoja','fDesde','fAte'].forEach(id=>{
+    const v=document.getElementById(id).value;
+    if(v){const k={fStatus:'status',fLoja:'loja_id',fDesde:'desde',fAte:'ate'}[id];params.set(k,v)}
+  });
+  try{
+    const r=await apiFetch('/api/auditagem-divergencias/export.xlsx?'+params);
+    if(!r.ok)throw new Error((await r.json()).erro);
+    const blob=await r.blob();
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download='auditagem_divergencias.xlsx';a.click();
+    URL.revokeObjectURL(url);
+  }catch(e){alert('Erro: '+e.message)}
+}
+
+if(!localStorage.getItem('jrlira_token'))location.href='/';
+else carregar();
+</script>
+</body>
+</html>

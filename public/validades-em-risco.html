@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Validades em Risco — JR Lira Tech</title>
+<link rel="stylesheet" href="/shared.css">
+<script src="/shared.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+nav{background:#1e293b;padding:14px 24px;display:flex;align-items:center;gap:16px;border-bottom:1px solid #334155}
+nav .brand{font-size:16px;font-weight:700;color:#38bdf8}
+nav .sep{color:#475569}
+nav .page{font-size:14px;color:#94a3b8}
+nav .user{margin-left:auto;font-size:13px;color:#64748b}
+nav .btn-nav{background:#0ea5e9;color:#fff;border:none;padding:7px 14px;border-radius:6px;font-size:13px;cursor:pointer}
+.wrap{padding:20px;max-width:1500px;margin:0 auto}
+.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:20px}
+.stat{background:#1e293b;border-radius:10px;padding:14px}
+.stat-label{font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em}
+.stat-value{font-size:22px;font-weight:700;margin-top:4px}
+.stat-value.warn{color:#fbbf24}.stat-value.err{color:#f87171}.stat-value.ok{color:#4ade80}
+.toolbar{display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+.toolbar select,.toolbar input{padding:8px 12px;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:13px}
+table{width:100%;border-collapse:collapse;background:#1e293b;border-radius:10px;overflow:hidden;font-size:12px}
+thead th{background:#0f2a3f;padding:10px;text-align:left;color:#94a3b8;font-weight:600;font-size:11px;text-transform:uppercase}
+tbody tr{border-bottom:1px solid #1e3148}
+tbody td{padding:10px;vertical-align:top}
+.badge{display:inline-block;padding:2px 8px;border-radius:5px;font-size:10px;font-weight:700;text-transform:uppercase}
+.b-pendente{background:#451a03;color:#fbbf24}
+.b-liberado{background:#14532d;color:#4ade80}
+.b-devolucao{background:#1e3a5f;color:#60a5fa}
+.b-ja_vencido{background:#450a0a;color:#f87171}
+.b-sem_historico_vendas{background:#312e81;color:#a5b4fc}
+.b-risco_por_giro{background:#451a03;color:#fbbf24}
+.acoes{display:flex;gap:6px}
+.acoes button{padding:5px 10px;font-size:11px;border:none;border-radius:5px;cursor:pointer;font-weight:700}
+.btn-liberar{background:#16a34a;color:#fff}
+.btn-devolver{background:#dc2626;color:#fff}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,0.7);display:none;align-items:center;justify-content:center;z-index:100}
+.modal.show{display:flex}
+.modal-box{background:#1e293b;border-radius:12px;padding:24px;width:480px;max-width:92vw}
+.modal h3{color:#38bdf8;margin-bottom:16px}
+.modal label{display:block;font-size:11px;color:#94a3b8;text-transform:uppercase;margin-top:12px;margin-bottom:4px}
+.modal textarea{width:100%;padding:8px 12px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:13px;min-height:60px;font-family:inherit;resize:vertical}
+.modal-act{display:flex;gap:8px;justify-content:flex-end;margin-top:20px}
+.modal-act button{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:13px}
+.modal-act .cancel{background:transparent;color:#94a3b8;border:1px solid #334155}
+.modal-act .confirm{background:#0ea5e9;color:#fff}
+.empty{padding:40px;text-align:center;color:#64748b}
+</style>
+</head>
+<body>
+<nav>
+  <span class="brand">JR Lira Tech</span><span class="sep">/</span>
+  <span class="page">Validades em Risco</span>
+  <span class="user" id="nomeUsuario"></span>
+  <button class="btn-nav" onclick="location.href='/'">← Início</button>
+</nav>
+
+<div class="wrap">
+  <div class="stats" id="stats"></div>
+
+  <div class="toolbar">
+    <select id="fStatus" onchange="carregar()">
+      <option value="pendente" selected>Pendentes</option>
+      <option value="">Todos</option>
+      <option value="liberado">Liberadas</option>
+      <option value="devolucao">Devolução</option>
+    </select>
+    <select id="fLoja" onchange="carregar()">
+      <option value="">Todas as lojas</option>
+      <option value="1">L1 Economico</option><option value="2">L2 BR</option><option value="3">L3 João Pessoa</option>
+      <option value="4">L4 Floresta</option><option value="5">L5 São José</option><option value="6">L6 Santarém</option>
+    </select>
+    <input type="text" id="fQ" placeholder="Buscar descrição/EAN/MAT" oninput="debouncedCarregar()">
+  </div>
+
+  <div id="lista"></div>
+</div>
+
+<div class="modal" id="modalDecidir">
+  <div class="modal-box">
+    <h3 id="modalTit">Decidir validade em risco</h3>
+    <div id="modalDesc" style="font-size:12px;color:#94a3b8;margin-bottom:8px"></div>
+    <label>Observação (opcional)</label>
+    <textarea id="modalObs" placeholder="Ex: produto promocional vai vender mais rápido"></textarea>
+    <div class="modal-act">
+      <button class="cancel" onclick="fecharModal()">Cancelar</button>
+      <button class="confirm" id="btnConfirm" onclick="salvar()">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const LOJAS_NOMES={1:'L1 ECON',2:'L2 BR',3:'L3 JP',4:'L4 FLO',5:'L5 SJ',6:'L6 SAN'};
+let timer=null;
+function debouncedCarregar(){clearTimeout(timer);timer=setTimeout(carregar,400)}
+function fmtData(d){if(!d)return'—';return new Date(d).toLocaleDateString('pt-BR',{timeZone:'UTC'})}
+function fmtMoeda(v){return'R$ '+(parseFloat(v||0)).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}
+document.getElementById('nomeUsuario').textContent=localStorage.getItem('jrlira_nome')||'';
+
+async function carregar(){
+  const params=new URLSearchParams();
+  ['fStatus','fLoja','fQ'].forEach(id=>{
+    const v=document.getElementById(id).value;
+    if(v){const k={fStatus:'status',fLoja:'loja_id',fQ:'q'}[id];params.set(k,v)}
+  });
+  try{
+    const r=await apiFetch('/api/validades-em-risco?'+params);
+    const d=await r.json();
+    renderStats(d);renderLista(d.rows);
+  }catch(e){alert('Erro: '+e.message)}
+}
+
+function renderStats(d){
+  document.getElementById('stats').innerHTML=`
+    <div class="stat"><div class="stat-label">Itens em risco</div><div class="stat-value warn">${d.total}</div></div>
+    <div class="stat"><div class="stat-label">Valor em risco</div><div class="stat-value err">${fmtMoeda(d.total_em_risco)}</div></div>
+    <div class="stat"><div class="stat-label">Já vencidos</div><div class="stat-value err">${d.ja_vencidos}</div></div>
+    <div class="stat"><div class="stat-label">Sem histórico vendas</div><div class="stat-value warn">${d.sem_historico}</div></div>
+  `;
+}
+
+function renderLista(rows){
+  const el=document.getElementById('lista');
+  if(!rows.length){el.innerHTML='<div class="empty">Nenhuma validade em risco</div>';return}
+  el.innerHTML=`<table><thead><tr>
+    <th>Loja</th><th>Produto</th><th>Validade</th>
+    <th style="text-align:right">Recebido</th>
+    <th style="text-align:right">Estoque pós</th><th style="text-align:right">Vendas/dia</th>
+    <th style="text-align:right">Devolver (cx)</th>
+    <th style="text-align:right">R$ devolver</th><th>Motivo</th><th>Status</th><th>Ações</th>
+  </tr></thead><tbody>
+  ${rows.map(r=>{
+    const acoes=r.status==='pendente'?`
+      <button class="btn-liberar" onclick='abrirDecidir(${r.id},"liberado","${(r.descricao||'').replace(/"/g,'')}")'>Liberar</button>
+      <button class="btn-devolver" onclick='abrirDecidir(${r.id},"devolucao","${(r.descricao||'').replace(/"/g,'')}",${r.qtd_em_risco_caixas||0})'>Devolução</button>
+    `:`<span style="color:#64748b;font-size:11px">${r.decidido_por||''} ${fmtData(r.decidido_em)}</span>`;
+    const dias = r.dias_ate_vencer;
+    const corDias = dias < 0 ? '#f87171' : dias < 30 ? '#fbbf24' : '#94a3b8';
+    const cx = r.qtd_em_risco_caixas != null ? r.qtd_em_risco_caixas : Math.ceil(parseFloat(r.qtd_em_risco)/(parseFloat(r.qtd_embalagem)||1));
+    const emb = parseFloat(r.qtd_embalagem) || 1;
+    return `<tr>
+      <td><strong>${LOJAS_NOMES[r.loja_id]||'L'+r.loja_id}</strong></td>
+      <td>${(r.descricao||'').trim()}<div style="font-size:10px;color:#64748b">MAT ${r.cd_pro_codi||'—'} · EAN ${r.ean||'—'} · emb ${emb}</div></td>
+      <td>${fmtData(r.validade)}<div style="font-size:10px;color:${corDias}">${dias<0?'venceu há '+(-dias)+'d':dias+' dias'}</div></td>
+      <td style="text-align:right">${parseFloat(r.qtd_recebida_lote).toFixed(0)} un</td>
+      <td style="text-align:right">${parseFloat(r.estoque_pos_recebimento).toFixed(0)} un</td>
+      <td style="text-align:right">${parseFloat(r.vendas_media_dia).toFixed(2)}</td>
+      <td style="text-align:right;color:#f87171;font-weight:700">${cx} cx<div style="font-size:10px;color:#94a3b8">(${parseFloat(r.qtd_em_risco).toFixed(0)} un)</div></td>
+      <td style="text-align:right;color:#f87171;font-weight:700">${fmtMoeda(r.valor_em_risco)}</td>
+      <td><span class="badge b-${r.motivo_risco}">${(r.motivo_risco||'').replace(/_/g,' ')}</span></td>
+      <td><span class="badge b-${r.status}">${r.status}</span></td>
+      <td><div class="acoes">${acoes}</div></td>
+    </tr>`;
+  }).join('')}</tbody></table>`;
+}
+
+let decidirCtx=null;
+function abrirDecidir(id, tipo, desc, cxDevolver){
+  decidirCtx={id,tipo};
+  document.getElementById('modalTit').textContent = tipo==='liberado'?'Liberar (segue fluxo normal)':'Marcar pra devolução';
+  document.getElementById('modalDesc').textContent=desc;
+  // Pré-preenche observação com sugestão de qtd em caixas
+  document.getElementById('modalObs').value = (tipo==='devolucao' && cxDevolver) ? `Devolver ${cxDevolver} caixa(s)` : '';
+  document.getElementById('btnConfirm').style.background = tipo==='liberado'?'#16a34a':'#dc2626';
+  document.getElementById('modalDecidir').classList.add('show');
+}
+function fecharModal(){document.getElementById('modalDecidir').classList.remove('show');decidirCtx=null}
+async function salvar(){
+  if(!decidirCtx)return;
+  const obs=document.getElementById('modalObs').value.trim();
+  try{
+    const r=await apiFetch(`/api/validades-em-risco/${decidirCtx.id}/decidir`,{
+      method:'POST',body:JSON.stringify({tipo:decidirCtx.tipo,observacao:obs})
+    });
+    if(!r.ok)throw new Error((await r.json()).erro);
+    fecharModal();carregar();
+  }catch(e){alert('Erro: '+e.message)}
+}
+
+if(!localStorage.getItem('jrlira_token'))location.href='/';
+else carregar();
+</script>
+</body>
+</html>

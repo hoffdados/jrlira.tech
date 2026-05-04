@@ -6,6 +6,7 @@
 <title>Conferência de Estoque</title>
 <link rel="stylesheet" href="/shared.css">
 <script src="/shared.js"></script>
+<script src="https://unpkg.com/html5-qrcode" defer></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
@@ -17,6 +18,33 @@ nav .user{margin-left:auto;font-size:13px;color:#64748b}
 nav .btn-nav{background:#0ea5e9;color:#fff;border:none;padding:7px 14px;border-radius:6px;font-size:13px;cursor:pointer}
 nav .btn-nav:hover{background:#0284c7}
 .layout{display:grid;grid-template-columns:280px 1fr;height:calc(100vh - 53px)}
+.btn-voltar-lista{display:none;position:fixed;top:62px;left:8px;z-index:100;background:#0ea5e9;color:#fff;border:none;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.4)}
+@media (max-width:768px){
+  .layout{grid-template-columns:1fr;height:auto}
+  .sidebar{display:block;border-right:none;height:auto}
+  .main{display:none;padding:12px!important}
+  body.nota-aberta .sidebar{display:none}
+  body.nota-aberta .main{display:block}
+  body.nota-aberta .btn-voltar-lista{display:block}
+  .nota-card{padding:14px}
+  nav{padding:10px 14px;gap:8px}
+  nav .brand{font-size:14px}
+  nav .page{font-size:13px}
+  nav .user{display:none}
+  /* Tabela transferência vira cards no mobile */
+  table.transf-conf{display:block}
+  table.transf-conf thead{display:none}
+  table.transf-conf tbody,
+  table.transf-conf tr,
+  table.transf-conf td{display:block;width:100%}
+  table.transf-conf tr{background:#1e293b;border-radius:10px;padding:14px;margin-bottom:12px;border:1px solid #334155;border-bottom:1px solid #334155!important}
+  table.transf-conf td{padding:4px 0!important;text-align:left!important}
+  table.transf-conf td[data-l]:before{content:attr(data-l);display:block;font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px;font-weight:700}
+  /* Inputs de lote maiores no mobile */
+  table.transf-conf input[type="number"]{width:80px!important;padding:10px!important;font-size:14px!important}
+  table.transf-conf input[type="date"]{width:160px!important;padding:10px!important;font-size:13px!important}
+  table.transf-conf [data-lote]{flex-wrap:wrap!important;justify-content:flex-start!important;gap:8px!important;margin-bottom:8px!important;padding:8px;background:#0f172a;border-radius:6px}
+}
 .sidebar{background:#1e293b;border-right:1px solid #334155;overflow-y:auto;padding:16px}
 .sidebar h3{font-size:13px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px}
 .nota-card{background:#0f172a;border:1px solid #334155;border-radius:8px;padding:12px;margin-bottom:8px;cursor:pointer;transition:.15s}
@@ -87,8 +115,18 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 1
 <div class="layout">
   <div class="sidebar">
     <h3>Notas Pendentes</h3>
+    <div style="margin-bottom:12px">
+      <select id="fOrigem" onchange="carregarNotas()" style="width:100%;padding:7px 10px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:12px">
+        <option value="">Todas (Fornecedor + Transferências)</option>
+        <option value="nfe">Fornecedores</option>
+        <option value="cd">Transferências CD</option>
+        <option value="cd,transferencia_loja">Todas transferências</option>
+      </select>
+    </div>
     <div id="listaNota"><p class="empty">Carregando...</p></div>
   </div>
+
+  <button class="btn-voltar-lista" onclick="voltarLista()">← Lista</button>
 
   <div class="main">
     <div id="msg" style="display:none"></div>
@@ -141,20 +179,41 @@ function showMsg(txt, tipo = 'ok') {
 
 async function carregarNotas() {
   try {
-    const notas = await fetchApi('/api/notas');
-    const pendentes = notas.filter(n => n.status === 'em_conferencia');
+    const filtroOrigem = document.getElementById('fOrigem')?.value || '';
+    const url = '/api/notas' + (filtroOrigem ? `?origem=${filtroOrigem}` : '');
+    const notas = await fetchApi(url);
+    // NF-e: em_conferencia (rodadas). Transferências: em_transito (marcar recebida) ou em_conferencia (conferir)
+    const pendentes = notas.filter(n => {
+      const isTransf = n.origem === 'cd' || n.origem === 'transferencia_loja';
+      if (isTransf) return ['em_transito','em_conferencia'].includes(n.status);
+      return n.status === 'em_conferencia';
+    });
     const el = document.getElementById('listaNota');
     if (!pendentes.length) {
-      el.innerHTML = '<p class="empty" style="padding:24px 0">Nenhuma nota aguardando conferência</p>';
+      el.innerHTML = '<p class="empty" style="padding:24px 0">Nenhuma nota pendente</p>';
       return;
     }
     el.innerHTML = pendentes.map(n => {
-      const rodada = (n.conferencia_rodada || 0) + 1;
+      const isCd = n.origem === 'cd';
+      const isLoja = n.origem === 'transferencia_loja';
+      const isTransf = isCd || isLoja;
+      const titulo = isCd ? `📦 CD ${n.cd_mov_codi || n.numero_nota}`
+                   : isLoja ? `🏪 Transf ${n.numero_nota}`
+                   : `NF ${n.numero_nota}/${n.serie}`;
+      const rodada = isTransf ? null : (n.conferencia_rodada || 0) + 1;
+      let badgeStatus;
+      if (isTransf && n.status === 'em_transito') badgeStatus = '<span class="badge" style="background:#451a03;color:#fbbf24">Marcar Recebida</span>';
+      else if (isTransf) badgeStatus = '<span class="badge b-em_conferencia">Conferir</span>';
+      else badgeStatus = `<span class="badge b-em_conferencia">Conferência ${rodada}</span>`;
       return `<div class="nota-card" id="card-${n.id}" onclick="abrirNota(${n.id})">
-        <div class="nc-num">NF ${n.numero_nota}/${n.serie}</div>
+        <div class="nc-num">${titulo}</div>
         <div class="nc-forn">${n.fornecedor_nome}</div>
         <div class="nc-info">${fmtData(n.data_emissao)} · ${fmtMoeda(n.valor_total)}</div>
-        <div class="nc-tags"><span class="badge b-em_conferencia">Conferência ${rodada}</span></div>
+        <div class="nc-tags">
+          ${isCd ? '<span class="badge" style="background:#0c4a6e;color:#7dd3fc">CD</span>' : ''}
+          ${isLoja ? '<span class="badge" style="background:#3b0a4a;color:#e9d5ff">Loja</span>' : ''}
+          ${badgeStatus}
+        </div>
       </div>`;
     }).join('');
   } catch (e) { showMsg(e.message, 'err'); }
@@ -169,9 +228,12 @@ async function abrirNota(id) {
   document.getElementById('placeholder').style.display = 'none';
   document.getElementById('resultado').style.display = 'none';
   document.getElementById('conferencia').style.display = 'block';
+  document.body.classList.add('nota-aberta');
 
   try {
     const { nota, itens } = await fetchApi(`/api/notas/${id}`);
+    const isTransf = nota.origem === 'cd' || nota.origem === 'transferencia_loja';
+    if (isTransf) { renderTransfSimples(nota, itens); return; }
     rodadaAtual = (nota.conferencia_rodada || 0) + 1;
 
     document.getElementById('notaInfo').innerHTML = `
@@ -179,7 +241,20 @@ async function abrirNota(id) {
       <span>Fornecedor: <strong>${nota.fornecedor_nome}</strong></span>
       <span>Data: <strong>${fmtData(nota.data_emissao)}</strong></span>
       <span>Valor: <strong>${fmtMoeda(nota.valor_total)}</strong></span>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid #334155;width:100%">
+        <span style="font-size:12px;color:#64748b">📷 Bipar:</span>
+        <input id="bipEan" placeholder="Bipe o código de barras" style="flex:1;max-width:280px;padding:8px 10px;background:#0f172a;border:1px solid #38bdf8;border-radius:6px;color:#e2e8f0;font-size:13px;font-family:monospace" autofocus>
+        <span id="bipMsg" style="font-size:12px;color:#64748b">aguardando bipe...</span>
+      </div>
     `;
+
+    // Indexa itens por EAN pra bipador (fornecedor)
+    const norm0 = s => (s || '').replace(/\D/g, '').replace(/^0+/, '');
+    itensIndex = {};
+    for (const i of itens) {
+      const k = norm0(i.ean_nota);
+      if (k) itensIndex[k] = i.id;
+    }
 
     const ri = document.getElementById('rodadaInfo');
     if (rodadaAtual === 1) {
@@ -358,9 +433,302 @@ function mostrarResultado(res, payload) {
 
 function voltarLista() {
   document.getElementById('resultado').style.display = 'none';
+  document.getElementById('conferencia').style.display = 'none';
   document.getElementById('placeholder').style.display = 'block';
   notaAtualId = null;
   document.querySelectorAll('.nota-card').forEach(c => c.classList.remove('ativo'));
+  document.body.classList.remove('nota-aberta');
+}
+
+// Render simplificado pra transferências (CD ou entre lojas)
+function renderTransfSimples(nota, itens) {
+  document.getElementById('conferencia').style.display = 'none';
+  const el = document.getElementById('resultado');
+  el.style.display = 'block';
+  const isCd = nota.origem === 'cd';
+  const titulo = isCd ? `Transferência CD — MCP ${nota.cd_mov_codi}` : `Transferência entre lojas ${nota.numero_nota}`;
+  const isConferindo = nota.status === 'em_conferencia';
+
+  let acoes = '';
+  if (nota.status === 'em_transito') {
+    acoes = `<button class="btn-primary" onclick="marcarRecebida()" style="margin-right:8px">📦 Marcar Recebida (chegou na loja)</button>`;
+  } else if (isConferindo) {
+    acoes = `
+      <button class="btn-success" onclick="finalizarConferenciaAuto()" style="margin-right:8px">✓ Finalizar Conferência</button>
+      <span style="font-size:12px;color:#64748b">Sem divergência → conferida · Com divergência → auditagem</span>`;
+  }
+
+  // Estoque: # / Descrição / Cod_Barra CD / Qtd CD / Qtd Loja / Lotes
+  const norm0 = s => (s || '').replace(/\D/g, '').replace(/^0+/, '');
+  const linhas = itens.map(i => {
+    const semCod = !!i.sem_codigo_barras;
+    const eanCdLimpo = norm0(i.ean_nota);
+    const qtdCd = parseFloat(i.quantidade) || 0;
+    const emb = parseFloat(i.qtd_embalagem_loja) || 1;
+    const qtdLoja = qtdCd * emb;
+
+    const inputsLotes = isConferindo
+      ? `<div id="lotes-${i.id}" data-item="${i.id}">
+           ${loteRowTransf(i.id, 0)}
+         </div>
+         <button onclick="addLoteTransf(${i.id})" style="margin-top:4px;background:transparent;border:1px dashed #38bdf8;color:#38bdf8;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:10px">+ lote</button>`
+      : '—';
+
+    const linhaBg = semCod ? 'background:#451a03' : '';
+    return `<tr style="border-bottom:1px solid #1e293b;${linhaBg}">
+      <td style="padding:6px 8px" data-l="Item">${i.numero_item}</td>
+      <td style="padding:6px 8px;max-width:280px" data-l="Descrição">
+        <div style="font-size:13px">${i.descricao_nota || ''}</div>
+        ${semCod ? '<div style="font-size:11px;color:#fbbf24;font-weight:700;margin-top:4px">📋 SEM CÓDIGO — Levar 1 unidade ao Cadastro</div>' : ''}
+      </td>
+      <td style="padding:6px 8px;text-align:center" data-l="Qtd CD">${qtdCd % 1 === 0 ? qtdCd.toFixed(0) : qtdCd.toFixed(3)} <span style="color:#64748b;font-size:10px">×${emb}</span></td>
+      <td style="padding:6px 8px;text-align:center;font-weight:700" data-l="Qtd Loja (esperada)">${qtdLoja % 1 === 0 ? qtdLoja.toFixed(0) : qtdLoja.toFixed(3)}</td>
+      <td style="padding:6px 8px;text-align:center" data-l="Conferência — Cx · Un · Validade">${inputsLotes}</td>
+    </tr>`;
+  }).join('');
+
+  // Mapa pra buscar item por EAN (qualquer formato — limpa zeros)
+  itensIndex = {};
+  for (const i of itens) {
+    const k = norm0(i.ean_nota);
+    if (k) itensIndex[k] = i.id;
+  }
+
+  const bipador = isConferindo
+    ? `<div style="display:flex;gap:8px;align-items:center;margin-top:12px;padding-top:12px;border-top:1px solid #334155;flex-wrap:wrap">
+         <span style="font-size:12px;color:#64748b">📷 Bipar:</span>
+         <input id="bipEan" placeholder="Coletor ou digite + Enter" style="flex:1;min-width:140px;max-width:260px;padding:8px 10px;background:#0f172a;border:1px solid #38bdf8;border-radius:6px;color:#e2e8f0;font-size:13px;font-family:monospace" autofocus>
+         <button onclick="abrirCamera()" style="background:#7c3aed;color:#fff;border:none;padding:8px 12px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:700">📷 Câmera</button>
+         <span id="bipMsg" style="font-size:12px;color:#64748b">aguardando bipe...</span>
+       </div>`
+    : '';
+
+  el.innerHTML = `
+    <div style="background:#1e293b;border-radius:10px;padding:20px;margin-bottom:16px;position:sticky;top:0;z-index:10">
+      <h2 style="font-size:16px;color:#38bdf8;margin-bottom:8px">${titulo}</h2>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;font-size:13px">
+        <div><span style="color:#64748b">Loja</span><br><strong>${LOJAS_FULL[nota.loja_id] || nota.loja_id}</strong></div>
+        <div><span style="color:#64748b">Emissão</span><br><strong>${fmtData(nota.data_emissao)}</strong></div>
+        <div><span style="color:#64748b">Valor Total</span><br><strong>${fmtMoeda(nota.valor_total)}</strong></div>
+        <div><span style="color:#64748b">Itens</span><br><strong>${itens.length}</strong></div>
+        ${nota.recebida_em ? `<div style="grid-column:span 2"><span style="color:#64748b">Recebida</span><br><strong style="font-size:12px">${nota.recebida_por||'?'} em ${new Date(nota.recebida_em).toLocaleString('pt-BR')}</strong></div>` : ''}
+        ${nota.liberada_em ? `<div style="grid-column:span 2"><span style="color:#64748b">Liberada</span><br><strong style="font-size:12px">${nota.liberada_por||'?'} em ${new Date(nota.liberada_em).toLocaleString('pt-BR')}</strong></div>` : ''}
+      </div>
+      <div style="margin-top:16px">${acoes}</div>
+      ${bipador}
+    </div>
+    <div style="overflow-x:auto;max-height:calc(100vh - 280px);overflow-y:auto">
+      <table class="transf-conf" style="font-size:12px;width:100%;border-collapse:collapse">
+        <thead style="position:sticky;top:0;z-index:5">
+          <tr>
+            <th style="text-align:left;padding:8px;background:#1e293b">#</th>
+            <th style="text-align:left;padding:8px;background:#1e293b">Descrição</th>
+            <th style="text-align:center;padding:8px;background:#1e293b">Qtd CD</th>
+            <th style="text-align:center;padding:8px;background:#1e293b">Qtd Loja</th>
+            <th style="text-align:center;padding:8px;background:#1e293b">Conferência (lotes — cx · un · validade)</th>
+          </tr>
+        </thead>
+        <tbody>${linhas}</tbody>
+      </table>
+    </div>`;
+}
+
+// ── helpers de lote (multi-validade por item) — TRANSFERÊNCIA ──
+let itensIndex = {};   // { ean_normalizado: item.id }
+let lotesCountTransf = {};   // { item_id: nº de lotes adicionados }
+
+function loteRowTransf(itemId, idx) {
+  return `<div style="display:flex;gap:4px;align-items:center;justify-content:center;margin-bottom:3px" data-lote="${idx}">
+    <input type="number" min="0" step="1" id="cx-${itemId}-${idx}" placeholder="cx" style="width:48px;padding:3px;background:#0f172a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:11px;text-align:center">
+    <input type="number" min="0" step="1" id="un-${itemId}-${idx}" placeholder="un" style="width:48px;padding:3px;background:#0f172a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:11px;text-align:center">
+    <input type="date" id="val-${itemId}-${idx}" style="width:128px;padding:3px;background:#0f172a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:11px">
+    ${idx > 0 ? `<button onclick="removerLoteTransf(${itemId},${idx})" style="background:transparent;border:none;color:#f87171;cursor:pointer;font-size:14px" title="Remover lote">×</button>` : ''}
+  </div>`;
+}
+
+function addLoteTransf(itemId) {
+  lotesCountTransf[itemId] = (lotesCountTransf[itemId] || 1) + 1;
+  const wrap = document.getElementById('lotes-' + itemId);
+  if (!wrap) return;
+  wrap.insertAdjacentHTML('beforeend', loteRowTransf(itemId, lotesCountTransf[itemId] - 1));
+}
+
+function removerLoteTransf(itemId, idx) {
+  const wrap = document.getElementById('lotes-' + itemId);
+  if (!wrap) return;
+  const linha = wrap.querySelector(`[data-lote="${idx}"]`);
+  if (linha) linha.remove();
+}
+
+function lerLotesDoItem(itemId) {
+  const wrap = document.getElementById('lotes-' + itemId);
+  if (!wrap) return [];
+  const linhas = wrap.querySelectorAll('[data-lote]');
+  const out = [];
+  linhas.forEach(l => {
+    const idx = l.dataset.lote;
+    const cx = parseFloat(document.getElementById(`cx-${itemId}-${idx}`)?.value) || 0;
+    const un = parseFloat(document.getElementById(`un-${itemId}-${idx}`)?.value) || 0;
+    const validade = document.getElementById(`val-${itemId}-${idx}`)?.value || null;
+    if (cx || un || validade) out.push({ cx, un, validade });
+  });
+  return out;
+}
+
+// Bipador: ouve o input do EAN. Coletor envia código + Enter (ou só Enter no fim).
+// Captura no input direto (não no document) — funciona melhor mobile.
+function bipadorHandler(e) {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  const inp = e.target;
+  const v = (inp.value || '').replace(/\D/g, '').replace(/^0+/, '');
+  inp.value = '';
+  inp.focus(); // mantém foco pra próximo bipe
+  const msg = document.getElementById('bipMsg');
+  if (!v) { if (msg) msg.textContent = 'aguardando bipe...'; return; }
+  const itemId = itensIndex[v];
+  if (!itemId) {
+    if (msg) { msg.textContent = '✗ EAN ' + v + ' não encontrado nesta nota'; msg.style.color = '#f87171'; }
+    return;
+  }
+  const linha = document.querySelector(`#lotes-${itemId}`)?.closest('tr')
+             || document.getElementById(`card-item-${itemId}`);
+  if (linha) {
+    linha.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const bgOriginal = linha.style.background || '';
+    linha.style.transition = 'background .2s';
+    linha.style.background = '#14532d';
+    setTimeout(() => { linha.style.background = bgOriginal; inp.focus(); }, 700);
+  }
+  // Foca: transferência cx-${id}-0; fornecedor qty-${id}
+  setTimeout(() => {
+    const alvo = document.getElementById(`cx-${itemId}-0`) || document.getElementById(`qty-${itemId}`);
+    if (alvo) { alvo.focus(); alvo.select(); }
+  }, 300);
+  if (msg) { msg.textContent = '✓ ' + v + ' localizado'; msg.style.color = '#4ade80'; }
+}
+
+// Delegação no body (cobre re-renders): vincula keydown ao input bipEan se ele aparecer
+document.addEventListener('keydown', (e) => {
+  if (e.target && e.target.id === 'bipEan') bipadorHandler(e);
+});
+
+// ── Câmera como leitor de código de barras (html5-qrcode) ──
+let camScanner = null;
+function abrirCamera() {
+  if (typeof Html5Qrcode === 'undefined') {
+    alert('Lib do scanner ainda carregando, tente em 2 segundos.');
+    return;
+  }
+  // Cria modal
+  let modal = document.getElementById('camModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'camModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.95);z-index:200;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px';
+    modal.innerHTML = `
+      <div style="color:#e2e8f0;margin-bottom:8px;font-size:14px">📷 Aponte pra um código de barras</div>
+      <div id="camReader" style="width:100%;max-width:420px;background:#000;border-radius:10px;overflow:hidden"></div>
+      <div id="camStatus" style="color:#fbbf24;margin-top:12px;font-size:13px;font-family:monospace">aguardando leitura...</div>
+      <button onclick="fecharCamera()" style="margin-top:14px;background:#dc2626;color:#fff;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;font-weight:700">Fechar câmera</button>`;
+    document.body.appendChild(modal);
+  }
+  modal.style.display = 'flex';
+
+  camScanner = new Html5Qrcode('camReader');
+  const config = {
+    fps: 10,
+    qrbox: { width: 280, height: 140 },
+    formatsToSupport: [
+      Html5QrcodeSupportedFormats.EAN_13,
+      Html5QrcodeSupportedFormats.EAN_8,
+      Html5QrcodeSupportedFormats.UPC_A,
+      Html5QrcodeSupportedFormats.UPC_E,
+      Html5QrcodeSupportedFormats.CODE_128,
+      Html5QrcodeSupportedFormats.CODE_39,
+      Html5QrcodeSupportedFormats.ITF,
+    ],
+  };
+  camScanner.start(
+    { facingMode: 'environment' },
+    config,
+    (decodedText) => {
+      const inp = document.getElementById('bipEan');
+      if (inp) {
+        inp.value = decodedText;
+        // Dispara o handler simulando Enter
+        const evt = new KeyboardEvent('keydown', { key: 'Enter' });
+        Object.defineProperty(evt, 'target', { writable: false, value: inp });
+        bipadorHandler(evt);
+      }
+      const st = document.getElementById('camStatus');
+      if (st) { st.textContent = '✓ ' + decodedText; st.style.color = '#4ade80'; }
+      // Fecha auto após 600ms pra dar feedback visual
+      setTimeout(fecharCamera, 600);
+    },
+    () => {} // ignora erros de frame
+  ).catch(e => {
+    alert('Erro ao abrir câmera: ' + e.message + '\n\nDica: o site precisa estar em HTTPS e você precisa permitir acesso à câmera.');
+    fecharCamera();
+  });
+}
+
+function fecharCamera() {
+  if (camScanner) {
+    camScanner.stop().catch(() => {}).finally(() => {
+      camScanner.clear();
+      camScanner = null;
+    });
+  }
+  const modal = document.getElementById('camModal');
+  if (modal) modal.style.display = 'none';
+  // Volta foco pro input bipador
+  setTimeout(() => {
+    const inp = document.getElementById('bipEan');
+    if (inp) inp.focus();
+  }, 100);
+}
+
+async function finalizarConferenciaAuto() {
+  const { itens } = await fetchApi(`/api/notas/${notaAtualId}`);
+  // Monta payload por item com seus lotes lidos do DOM
+  const payload = itens.map(i => {
+    const lotes = lerLotesDoItem(i.id).map(l => ({
+      qtd_caixas: l.cx, qtd_unidades: l.un, validade: l.validade
+    }));
+    return { item_id: i.id, lotes };
+  });
+  // Pré-calcula divergência localmente pra prompt
+  const detalhes = [];
+  for (const i of itens) {
+    const lotes = lerLotesDoItem(i.id);
+    const emb = parseFloat(i.qtd_embalagem_loja) || 1;
+    const qtdEsperada = (parseFloat(i.quantidade) || 0) * emb;
+    const qtdContada = lotes.reduce((s, l) => s + (l.cx * emb + l.un), 0);
+    if (Math.abs(qtdContada - qtdEsperada) > 0.0001) {
+      detalhes.push(`${i.descricao_nota}: esperado ${qtdEsperada}, contado ${qtdContada}`);
+    }
+  }
+  const msg = detalhes.length
+    ? `Detectada(s) ${detalhes.length} divergência(s):\n${detalhes.slice(0,5).join('\n')}${detalhes.length > 5 ? '\n...' : ''}\n\nFinalizar e enviar pra AUDITAGEM (admin trata com CD)?`
+    : 'Conferência sem divergências. Finalizar e enviar pra cadastro validar?';
+  if (!confirm(msg)) return;
+  try {
+    const r = await fetchApi(`/api/notas/${notaAtualId}/finalizar-conferencia-transf`, 'PATCH', { itens: payload });
+    showMsg(r.com_divergencia ? 'Enviada pra auditagem' : 'Conferida — aguardando validação do cadastro', 'ok');
+    await carregarNotas();
+    voltarLista();
+  } catch (e) { showMsg(e.message, 'err'); }
+}
+
+async function marcarRecebida() {
+  if (!confirm('Marcar esta transferência como RECEBIDA fisicamente na loja?')) return;
+  try {
+    await fetchApi(`/api/notas/${notaAtualId}/marcar-recebida`, 'PATCH', {});
+    showMsg('Recebida — aguardando cadastro liberar pra conferência', 'ok');
+    await carregarNotas();
+    voltarLista();
+  } catch (e) { showMsg(e.message, 'err'); }
 }
 
 carregarNotas();

@@ -1,0 +1,14 @@
+{
+  "name": "ultrasyst-relay",
+  "version": "1.0.0",
+  "description": "Relay HTTP -> SQL Server local (UltraSyst). Roda na máquina do Power BI Gateway.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "mssql": "^11.0.1"
+  }
+}

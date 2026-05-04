@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const pool = require('../db');
+const { pool, query: dbQuery } = require('../db');
 const { JWT_SECRET } = require('../auth');
 const { enviarEmail, templateCredenciais } = require('../mailer');
 
@@ -15,7 +15,7 @@ function buildLojas(u) {
 router.post('/login', async (req, res) => {
   try {
     const { usuario, senha } = req.body;
-    const rows = await pool.query('SELECT * FROM rh_usuarios WHERE usuario = $1 AND ativo = TRUE', [usuario]);
+    const rows = await dbQuery('SELECT * FROM rh_usuarios WHERE usuario = $1 AND ativo = TRUE', [usuario]);
     if (!rows.length) return res.status(401).json({ erro: 'Usuário não encontrado' });
     const u = rows[0];
     const ok = await bcrypt.compare(senha, u.senha_hash);
@@ -35,7 +35,7 @@ router.get('/usuarios', async (req, res) => {
   try {
     const u = jwt.verify(token, JWT_SECRET);
     if (u.perfil !== 'admin') return res.status(403).json({ erro: 'Acesso negado' });
-    const rows = await pool.query('SELECT id, usuario, nome, email, perfil, loja_id, lojas_ids, ativo, criado_em FROM rh_usuarios ORDER BY nome');
+    const rows = await dbQuery('SELECT id, usuario, nome, email, perfil, loja_id, lojas_ids, ativo, criado_em FROM rh_usuarios ORDER BY nome');
     res.json(rows);
   } catch (err) { res.status(401).json({ erro: 'Token inválido' }); }
 });
@@ -58,7 +58,7 @@ router.post('/usuarios', async (req, res) => {
     const lojas_arr = ids.length > 1 ? ids : null;
 
     const hash = await bcrypt.hash(senha, 10);
-    const rows = await pool.query(
+    const rows = await dbQuery(
       'INSERT INTO rh_usuarios (usuario, nome, email, senha_hash, perfil, loja_id, lojas_ids) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, usuario, nome, email, perfil, loja_id, lojas_ids',
       [usuario.trim().toLowerCase(), nome.trim(), email?.trim() || null, hash, perfil, loja_id, lojas_arr]
     );
@@ -89,23 +89,23 @@ router.patch('/usuarios/:id', async (req, res) => {
 
     if (perfil !== undefined) {
       if (!perfisValidos.includes(perfil)) return res.status(400).json({ erro: 'Perfil inválido' });
-      await pool.query('UPDATE rh_usuarios SET perfil=$1 WHERE id=$2', [perfil, req.params.id]);
+      await dbQuery('UPDATE rh_usuarios SET perfil=$1 WHERE id=$2', [perfil, req.params.id]);
     }
     if (ativo !== undefined) {
-      await pool.query('UPDATE rh_usuarios SET ativo=$1 WHERE id=$2', [ativo, req.params.id]);
+      await dbQuery('UPDATE rh_usuarios SET ativo=$1 WHERE id=$2', [ativo, req.params.id]);
     }
     if (email !== undefined) {
-      await pool.query('UPDATE rh_usuarios SET email=$1 WHERE id=$2', [email?.trim() || null, req.params.id]);
+      await dbQuery('UPDATE rh_usuarios SET email=$1 WHERE id=$2', [email?.trim() || null, req.params.id]);
     }
     if (senha) {
       const hash = await bcrypt.hash(senha, 10);
-      await pool.query('UPDATE rh_usuarios SET senha_hash=$1 WHERE id=$2', [hash, req.params.id]);
+      await dbQuery('UPDATE rh_usuarios SET senha_hash=$1 WHERE id=$2', [hash, req.params.id]);
     }
     if (lojas_ids !== undefined) {
       const ids = Array.isArray(lojas_ids) ? lojas_ids.map(Number).filter(Boolean) : [];
       const loja_id = ids.length === 1 ? ids[0] : null;
       const lojas_arr = ids.length > 1 ? ids : null;
-      await pool.query('UPDATE rh_usuarios SET loja_id=$1, lojas_ids=$2 WHERE id=$3', [loja_id, lojas_arr, req.params.id]);
+      await dbQuery('UPDATE rh_usuarios SET loja_id=$1, lojas_ids=$2 WHERE id=$3', [loja_id, lojas_arr, req.params.id]);
     }
     res.json({ ok: true });
   } catch (err) {
@@ -121,7 +121,7 @@ router.delete('/usuarios/:id', async (req, res) => {
     const u = jwt.verify(token, JWT_SECRET);
     if (u.perfil !== 'admin') return res.status(403).json({ erro: 'Acesso negado' });
     if (u.id == req.params.id) return res.status(400).json({ erro: 'Não é possível excluir o próprio usuário' });
-    await pool.query('DELETE FROM rh_usuarios WHERE id = $1', [req.params.id]);
+    await dbQuery('DELETE FROM rh_usuarios WHERE id = $1', [req.params.id]);
     res.json({ ok: true });
   } catch (err) {
     res.status(err.name === 'JsonWebTokenError' ? 401 : 500).json({ erro: err.message });

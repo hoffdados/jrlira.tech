@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Histórico da Nota — JR Lira Tech</title>
+<link rel="stylesheet" href="/shared.css">
+<script src="/shared.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;background:#fff;color:#0f172a;padding:20px;max-width:1100px;margin:0 auto}
+.no-print{margin-bottom:16px;display:flex;gap:10px;justify-content:flex-end}
+.no-print button{padding:8px 16px;background:#0ea5e9;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:13px}
+.no-print button.ghost{background:transparent;color:#475569;border:1px solid #cbd5e1}
+.header{border-bottom:2px solid #0f172a;padding-bottom:14px;margin-bottom:18px}
+.header h1{font-size:20px;color:#0f172a;margin-bottom:4px}
+.header .sub{color:#475569;font-size:13px}
+.section{margin-bottom:22px}
+.section h2{font-size:14px;text-transform:uppercase;letter-spacing:.05em;color:#0f172a;border-bottom:1px solid #cbd5e1;padding-bottom:4px;margin-bottom:10px;background:#f1f5f9;padding:6px 10px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;font-size:12px}
+.field label{display:block;color:#64748b;font-size:10px;text-transform:uppercase;letter-spacing:.05em}
+.field span{color:#0f172a;font-weight:600}
+table{width:100%;border-collapse:collapse;font-size:11px;margin-top:8px}
+th,td{padding:6px 8px;text-align:left;border-bottom:1px solid #e2e8f0;vertical-align:top}
+th{background:#f1f5f9;color:#0f172a;font-size:10px;text-transform:uppercase;font-weight:700}
+.timeline{position:relative;padding-left:20px}
+.timeline:before{content:'';position:absolute;left:6px;top:8px;bottom:8px;width:2px;background:#cbd5e1}
+.evt{position:relative;padding:8px 0 8px 14px;font-size:12px}
+.evt:before{content:'';position:absolute;left:-17px;top:12px;width:10px;height:10px;border-radius:50%;background:#0ea5e9;border:2px solid #fff;box-shadow:0 0 0 2px #cbd5e1}
+.evt.ok:before{background:#16a34a}
+.evt.warn:before{background:#fbbf24}
+.evt.err:before{background:#dc2626}
+.evt strong{color:#0f172a}
+.evt small{color:#64748b}
+.lote{display:inline-block;background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:10px;margin-right:4px;margin-bottom:2px;color:#0f172a}
+.diff{color:#dc2626;font-weight:700}.sobra{color:#16a34a;font-weight:700}
+.badge{display:inline-block;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700;text-transform:uppercase;background:#e2e8f0;color:#0f172a}
+@media print{
+  .no-print{display:none}
+  body{padding:8px}
+  .section{page-break-inside:avoid}
+}
+</style>
+</head>
+<body>
+
+<div class="no-print">
+  <button class="ghost" onclick="history.back()">← Voltar</button>
+  <button onclick="window.print()">🖨 Imprimir</button>
+</div>
+
+<div id="root">Carregando...</div>
+
+<script>
+function fmtData(d){if(!d)return'—';return new Date(d).toLocaleDateString('pt-BR',{timeZone:'UTC'})}
+function fmtDH(d){if(!d)return'—';return new Date(d).toLocaleString('pt-BR')}
+function fmtMoeda(v){return'R$ '+(parseFloat(v||0)).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}
+const LOJAS={1:'L1 ECONOMICO',2:'L2 BR',3:'L3 JOÃO PESSOA',4:'L4 FLORESTA',5:'L5 SÃO JOSÉ',6:'L6 SANTARÉM'};
+
+const notaId = new URL(location.href).searchParams.get('id');
+
+async function carregar(){
+  if (!notaId) { document.getElementById('root').innerHTML='ID não informado'; return; }
+  try{
+    const r = await apiFetch('/api/notas/'+notaId+'/historico');
+    if (!r.ok) throw new Error((await r.json()).erro);
+    const d = await r.json();
+    render(d);
+  }catch(e){document.getElementById('root').innerHTML='Erro: '+e.message}
+}
+
+function render(d){
+  const n = d.nota;
+  const isCD = n.origem === 'cd' || n.origem === 'transferencia_loja';
+  const titulo = isCD
+    ? `Transferência CD — MCP ${n.cd_mov_codi}`
+    : `NF ${n.numero_nota}/${n.serie||''} — ${n.fornecedor_nome||''}`;
+
+  let html = `
+    <div class="header">
+      <h1>${titulo}</h1>
+      <div class="sub">Loja ${LOJAS[n.loja_id]||n.loja_id} · Status: <span class="badge">${n.status}</span> · Gerado em ${fmtDH(new Date())}</div>
+    </div>
+
+    <div class="section">
+      <h2>Dados da Nota</h2>
+      <div class="grid">
+        <div class="field"><label>Origem</label><span>${n.origem||'nfe'}</span></div>
+        <div class="field"><label>Fornecedor</label><span>${n.fornecedor_nome||'—'}</span></div>
+        <div class="field"><label>CNPJ</label><span>${n.fornecedor_cnpj||'—'}</span></div>
+        <div class="field"><label>Data Emissão</label><span>${fmtData(n.data_emissao)}</span></div>
+        <div class="field"><label>Data Recebimento</label><span>${fmtData(n.data_recebimento)}</span></div>
+        <div class="field"><label>Valor Total</label><span>${fmtMoeda(n.valor_total)}</span></div>
+        <div class="field"><label>Importado por</label><span>${n.importado_por||'—'}</span></div>
+        <div class="field"><label>Importado em</label><span>${fmtDH(n.importado_em)}</span></div>
+      </div>
+    </div>`;
+
+  // Pedido B2B (se houver)
+  if (d.pedido) {
+    const p = d.pedido;
+    html += `
+      <div class="section">
+        <h2>Pedido B2B (Comprador)</h2>
+        <div class="grid">
+          <div class="field"><label>Nº Pedido</label><span>${p.numero_pedido||'—'}</span></div>
+          <div class="field"><label>Vendedor</label><span>${p.vendedor_nome||'—'}</span></div>
+          <div class="field"><label>Fornecedor</label><span>${p.fornecedor_nome||'—'}</span></div>
+          <div class="field"><label>Status</label><span>${p.status}</span></div>
+          <div class="field"><label>Validado por</label><span>${p.validado_por||'—'}</span></div>
+          <div class="field"><label>Validado em</label><span>${fmtDH(p.validado_em)}</span></div>
+          <div class="field"><label>Editado na auditoria</label><span>${p.editado_na_auditoria?'Sim':'Não'}</span></div>
+          <div class="field"><label>NF Faturada</label><span>${p.numero_nf_faturada||'—'}</span></div>
+        </div>
+        ${d.itensPedido && d.itensPedido.length ? `
+        <table>
+          <thead><tr><th>Item</th><th>EAN</th><th>Qtd Pedida</th><th>Qtd Validada</th><th>Preço Unit</th><th>Preço Validado</th><th>Justificativa</th></tr></thead>
+          <tbody>${d.itensPedido.map(i=>`<tr>
+            <td>${i.descricao||'—'}</td>
+            <td>${i.codigobarra||'—'}</td>
+            <td>${i.qtd||0}</td>
+            <td>${i.qtd_validada||0}</td>
+            <td>${fmtMoeda(i.preco_unit||0)}</td>
+            <td>${fmtMoeda(i.preco_validado||0)}</td>
+            <td>${i.justificativa_excesso||'—'}</td>
+          </tr>`).join('')}</tbody>
+        </table>` : ''}
+      </div>`;
+  }
+
+  // Timeline
+  html += `<div class="section"><h2>Timeline</h2><div class="timeline">`;
+  if (n.cd_synced_em) html += `<div class="evt ok"><strong>Sincronizada do CD</strong> <small>(${fmtDH(n.cd_synced_em)})</small></div>`;
+  if (n.recebida_em) html += `<div class="evt ok"><strong>Estoque marcou recebida</strong> por ${n.recebida_por||'?'} <small>(${fmtDH(n.recebida_em)})</small></div>`;
+  if (n.liberada_em) html += `<div class="evt ok"><strong>Cadastro liberou pro estoque</strong> por ${n.liberada_por||'?'} <small>(${fmtDH(n.liberada_em)})</small></div>`;
+  if (n.conferida_em) html += `<div class="evt ${n.conferida_com_divergencia?'warn':'ok'}"><strong>Estoque finalizou conferência</strong> por ${n.conferida_por||'?'} <small>(${fmtDH(n.conferida_em)})</small> — ${n.conferida_com_divergencia?'COM divergência':'sem divergência'}</div>`;
+  if (n.validada_em) html += `<div class="evt ok"><strong>Cadastro validou a nota</strong> por ${n.validada_por||'?'} <small>(${fmtDH(n.validada_em)})</small></div>`;
+  html += `</div></div>`;
+
+  // Devoluções (se houver)
+  if (d.devolucoes && d.devolucoes.length) {
+    html += `<div class="section"><h2>Devoluções Vinculadas</h2>`;
+    for (const dv of d.devolucoes) {
+      html += `<div style="border:1px solid #cbd5e1;border-radius:6px;padding:10px;margin-bottom:8px;background:#fafafa">
+        <div style="font-weight:700">Devolução #${dv.id} — ${dv.destinatario_nome} <span class="badge">${dv.status}</span></div>
+        <div style="font-size:11px;color:#475569;margin-top:2px">Motivo: ${dv.motivo} · Valor: ${fmtMoeda(dv.valor_total)}${dv.xml_numero_nf?` · NF dev <strong>${dv.xml_numero_nf}</strong> emitida ${fmtData(dv.xml_data_emissao)}`:''}</div>
+        ${dv.itens && dv.itens.length?`<div style="margin-top:6px;font-size:11px">${dv.itens.map(i=>`<div>• ${(i.descricao||'').trim()} — ${i.qtd_caixas>0?i.qtd_caixas+' cx':parseFloat(i.qtd_unidades).toFixed(0)+' un'} (${fmtMoeda(i.valor_total)})</div>`).join('')}</div>`:''}
+        ${dv.enviada_em?`<div style="font-size:10px;color:#475569;margin-top:4px">Enviada por ${dv.enviada_por} em ${fmtDH(dv.enviada_em)}</div>`:''}
+      </div>`;
+    }
+    html += `</div>`;
+  }
+
+  // Itens com detalhes
+  html += `<div class="section"><h2>Itens da Nota — Detalhamento</h2>`;
+  for (const i of d.itens) {
+    const lotes = i.lotes || [];
+    const divs = i.divergencias || [];
+    const vals = i.validades_risco || [];
+    html += `<div style="border:1px solid #e2e8f0;border-radius:6px;padding:10px;margin-bottom:8px;background:#fafafa">
+      <div style="font-weight:700;color:#0f172a;font-size:13px">${i.numero_item}. ${i.descricao_nota||''}</div>
+      <div style="font-size:11px;color:#475569;margin-top:2px">EAN ${i.ean_nota||'—'} · MAT ${i.cd_pro_codi||'—'} · Qtd ${parseFloat(i.quantidade).toFixed(0)} ${i.qtd_embalagem_loja?'×'+i.qtd_embalagem_loja+' = '+(parseFloat(i.quantidade)*parseFloat(i.qtd_embalagem_loja)).toFixed(0)+' un':''} · ${fmtMoeda(i.preco_total_nota)}</div>
+      ${lotes.length?`<div style="margin-top:6px"><strong style="font-size:11px">Lotes contados pelo estoque:</strong><br>
+        ${lotes.map(l=>`<span class="lote">${parseFloat(l.qtd_caixas).toFixed(0)} cx · ${parseFloat(l.qtd_unidades).toFixed(0)} un · val ${fmtData(l.validade)} · tot ${parseFloat(l.qtd_total).toFixed(0)}</span>`).join('')}
+      </div>`:''}
+      ${divs.length?`<div style="margin-top:6px"><strong style="font-size:11px;color:#dc2626">⚠ Divergências:</strong><br>
+        ${divs.map(dd=>{
+          const dif=parseFloat(dd.diferenca);
+          return `<div style="font-size:11px;margin-top:2px"><span class="${dif<0?'diff':'sobra'}">${dif>0?'+':''}${dif.toFixed(0)}</span> (esperado ${parseFloat(dd.qtd_esperada).toFixed(0)}, contado ${parseFloat(dd.qtd_contada).toFixed(0)}) — ${fmtMoeda(dd.valor_total_diferenca)} <span class="badge">${dd.status}</span> ${dd.observacao?' — '+dd.observacao:''} ${dd.numero_nf_devolucao?' (NF dev '+dd.numero_nf_devolucao+')':''} ${dd.resolvido_por?' por '+dd.resolvido_por+' '+fmtDH(dd.resolvido_em):''}</div>`;
+        }).join('')}
+      </div>`:''}
+      ${vals.length?`<div style="margin-top:6px"><strong style="font-size:11px;color:#fbbf24">⏰ Validades em risco:</strong><br>
+        ${vals.map(v=>`<div style="font-size:11px;margin-top:2px">val ${fmtData(v.validade)} (${v.dias_ate_vencer}d) — risco ${v.qtd_em_risco_caixas||0} cx (${parseFloat(v.qtd_em_risco).toFixed(0)} un) — ${fmtMoeda(v.valor_em_risco)} <span class="badge">${v.motivo_risco}</span> <span class="badge">${v.status}</span> ${v.observacao?' — '+v.observacao:''} ${v.decidido_por?' por '+v.decidido_por+' '+fmtDH(v.decidido_em):''}</div>`).join('')}
+      </div>`:''}
+    </div>`;
+  }
+  html += `</div>`;
+
+  document.getElementById('root').innerHTML = html;
+}
+
+if(!localStorage.getItem('jrlira_token'))location.href='/';
+else carregar();
+</script>
+</body>
+</html>

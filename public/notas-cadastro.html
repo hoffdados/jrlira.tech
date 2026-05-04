@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Notas de Entrada - Cadastro</title>
+<title>Notas Fornecedores — Cadastro</title>
 <link rel="stylesheet" href="/shared.css">
 <script src="/shared.js"></script>
 <style>
@@ -56,6 +56,8 @@ td{padding:9px 12px;vertical-align:middle}
 .b-em_auditoria{background:#451a03;color:#fbbf24}
 .b-fechada{background:#1e293b;color:#64748b}
 .b-em_validacao_comercial{background:#312e81;color:#a5b4fc}
+.b-aguardando_estoque{background:#1a4731;color:#34d399}
+.b-cd{background:#0c4a6e;color:#7dd3fc}
 .ean-remap{display:flex;gap:6px;align-items:center}
 .ean-remap input{background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;padding:5px 8px;font-size:12px;width:140px}
 .ean-remap input:focus{outline:none;border-color:#38bdf8}
@@ -94,7 +96,7 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 1
 <nav>
   <span class="brand">JR Lira Tech</span>
   <span class="sep">/</span>
-  <span class="page">Notas de Entrada — Cadastro</span>
+  <span class="page">Notas Fornecedores — Cadastro</span>
   <span class="user" id="nomeUsuario"></span>
   <button class="btn-nav" onclick="location.href='/'">← Início</button>
 </nav>
@@ -210,21 +212,28 @@ function showMsg(txt, tipo = 'ok') {
 
 async function carregarNotas() {
   try {
-    const notas = await fetchApi('/api/notas');
+    // Tela de Notas Fornecedores: só NF-e que comprador já tratou (com pedido vinculado ou emergencial aprovada)
+    const notas = await fetchApi('/api/notas?origem=nfe&tratado_comprador=1');
     const el = document.getElementById('listaNota');
     if (!notas.length) { el.innerHTML = '<p class="empty" style="padding:24px 0">Nenhuma nota importada</p>'; return; }
-    el.innerHTML = notas.map(n => `
+    el.innerHTML = notas.map(n => {
+      const isCd = n.origem === 'cd';
+      const titulo = isCd
+        ? `📦 Transf. CD ${n.cd_mov_codi || n.numero_nota}`
+        : `NF ${n.numero_nota}/${n.serie || ''}`;
+      return `
       <div class="nota-card" id="card-${n.id}" onclick="abrirNota(${n.id})">
-        <div class="nc-num">NF ${n.numero_nota}/${n.serie}</div>
+        <div class="nc-num">${titulo}</div>
         <div class="nc-forn">${n.fornecedor_nome}</div>
         <div class="nc-info">${fmtData(n.data_emissao)} · ${fmtMoeda(n.valor_total)}</div>
         <div class="nc-tags">
+          ${isCd ? '<span class="badge b-cd">CD</span>' : ''}
           <span class="badge b-${n.status}">${labelStatus(n.status)}</span>
           ${n.total_novos > 0 ? `<span class="badge b-novo">★ ${n.total_novos} novo(s)</span>` : ''}
           ${n.total_divergentes > 0 ? `<span class="badge b-divergente">⚠ ${n.total_divergentes} div.</span>` : ''}
         </div>
-      </div>
-    `).join('');
+      </div>`;
+    }).join('');
   } catch (e) { showMsg(e.message, 'err'); }
 }
 
@@ -232,7 +241,8 @@ function labelStatus(s) {
   return {
     importada: 'Importada', em_validacao_cadastro: 'Validação Cadastro',
     em_conferencia: 'Em Conferência', em_auditoria: 'Em Auditoria',
-    fechada: 'Fechada', em_validacao_comercial: 'Validação Comercial'
+    fechada: 'Fechada', em_validacao_comercial: 'Validação Comercial',
+    aguardando_estoque: 'Aguardando Estoque'
   }[s] || s;
 }
 
@@ -255,8 +265,8 @@ async function abrirNota(id) {
     document.getElementById('nhValor').textContent = fmtMoeda(nota.valor_total);
     document.getElementById('nhStatus').innerHTML = `<span class="badge b-${nota.status}">${labelStatus(nota.status)}</span>`;
     document.getElementById('nhImportado').textContent = `${nota.importado_por || '—'} em ${fmtData(nota.importado_em)}`;
-    const LOJAS = {1:'SUPERASA ECONOMICO',2:'SUPERASA BR',3:'SUPERASA JOAO PESSOA',4:'SUPERASA FLORESTA',5:'SUPERASA SAO JOSE',6:'SUPERASA SANTAREM'};
-    document.getElementById('nhLoja').textContent = nota.loja_id ? LOJAS[nota.loja_id] || nota.loja_id : '—';
+    // LOJAS / LOJAS_FULL vêm do shared.js
+    document.getElementById('nhLoja').textContent = nota.loja_id ? LOJAS_FULL[nota.loja_id] || nota.loja_id : '—';
 
     const temNovos = itens.some(i => i.produto_novo);
     document.getElementById('legendaNovos').style.display = temNovos ? 'block' : 'none';

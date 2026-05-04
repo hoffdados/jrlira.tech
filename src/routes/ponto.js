@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const cheerio = require('cheerio');
-const pool = require('../db');
+const { pool, query: dbQuery } = require('../db');
 const { autenticar } = require('../auth');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
@@ -129,6 +129,60 @@ function parsePontoHTM(html, prefixo) {
   return funcionarios;
 }
 
+// Período do ponto: dia 26 do mês N até dia 25 do mês N+1
+function periodoPontoFromData(isoDate) {
+  const d = new Date(isoDate + 'T00:00:00Z');
+  const dia = d.getUTCDate();
+  let mesIni, anoIni;
+  if (dia >= 26) { mesIni = d.getUTCMonth(); anoIni = d.getUTCFullYear(); }
+  else { mesIni = d.getUTCMonth() - 1; anoIni = d.getUTCFullYear(); if (mesIni < 0) { mesIni = 11; anoIni--; } }
+  const inicio = new Date(Date.UTC(anoIni, mesIni, 26)).toISOString().substring(0,10);
+  const fimDate = new Date(Date.UTC(anoIni, mesIni + 1, 25));
+  const fim = fimDate.toISOString().substring(0,10);
+  return { inicio, fim };
+}
+
+// Cruza registros sem_marcacao com atestados → cria evento de falta
+async function gerarFaltasFromPonto(funcionario_id, registros, criadoPor) {
+  if (!funcionario_id) return { justificadas: 0, injustificadas: 0 };
+
+  // Busca atestados/afastamentos do funcionário que cobrem essas datas
+  const { rows: atestados } = await pool.query(
+    `SELECT data_inicio, COALESCE(data_fim, data_inicio) AS data_fim
+     FROM funcionario_eventos
+     WHERE funcionario_id = $1
+       AND tipo IN ('atestado_medico','licenca_maternidade','afastamento_inss','acidente_trabalho','ferias','folga_compensatoria')`,
+    [funcionario_id]
+  );
+  const cobre = (data) => atestados.some(a => {
+    const di = a.data_inicio.toISOString().substring(0,10);
+    const df = a.data_fim.toISOString().substring(0,10);
+    return data >= di && data <= df;
+  });
+
+  // Busca eventos de falta já registrados para evitar duplicar
+  const { rows: jaFaltas } = await pool.query(
+    `SELECT data_inicio FROM funcionario_eventos
+     WHERE funcionario_id = $1 AND tipo IN ('falta_justificada','falta_injustificada')`,
+    [funcionario_id]
+  );
+  const jaTem = new Set(jaFaltas.map(f => f.data_inicio.toISOString().substring(0,10)));
+
+  let just = 0, injust = 0;
+  for (const r of registros) {
+    if (!r.sem_marcacao || r.is_dsr || r.is_folga) continue;
+    if (jaTem.has(r.data)) continue;
+    const tipo = cobre(r.data) ? 'falta_justificada' : 'falta_injustificada';
+    await pool.query(
+      `INSERT INTO funcionario_eventos (funcionario_id, tipo, data_inicio, descricao, criado_por)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [funcionario_id, tipo, r.data, 'Gerado automaticamente do ponto', criadoPor]
+    );
+    if (tipo === 'falta_justificada') just++; else injust++;
+  }
+  return { justificadas: just, injustificadas: injust };
+}
+
 // ── IMPORTAR HTM ──────────────────────────────────────────────────
 router.post('/importar', autenticar, upload.single('arquivo'), async (req, res) => {
   try {
@@ -144,6 +198,17 @@ router.post('/importar', autenticar, upload.single('arquivo'), async (req, res) 
     const periodo_fim    = periodoArquivo.periodo_fim    || req.body.periodo_fim;
     if (!periodo_inicio || !periodo_fim) return res.status(400).json({ erro: 'Período não encontrado no arquivo e não informado' });
 
+    // Bloqueia se período já fechado
+    const { rows: per } = await pool.query(
+      `SELECT id, fechado FROM ponto_periodos
+       WHERE data_inicio <= $1::date AND data_fim >= $2::date AND fechado = TRUE
+       LIMIT 1`,
+      [periodo_inicio, periodo_fim]
+    );
+    if (per.length) {
+      return res.status(409).json({ erro: 'Período já fechado pelo RH. Não é possível subir mais ponto.' });
+    }
+
     const funcionarios = parsePontoHTM(html, prefixo);
 
     if (funcionarios.length === 0) {
@@ -155,7 +220,7 @@ router.post('/importar', autenticar, upload.single('arquivo'), async (req, res) 
 
     // Cria importação
     const loja_id_imp = req.usuario.lojas?.length === 1 ? req.usuario.lojas[0] : null;
-    const impRows = await pool.query(`
+    const impRows = await dbQuery(`
       INSERT INTO ponto_importacoes (nome_arquivo, prefixo_loja, periodo_inicio, periodo_fim, total_funcionarios, importado_por, loja_id)
       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id
     `, [req.file.originalname, prefixo, periodo_inicio, periodo_fim, funcionarios.length, req.usuario.nome, loja_id_imp]);
@@ -163,16 +228,18 @@ router.post('/importar', autenticar, upload.single('arquivo'), async (req, res) 
 
     let total_registros = 0;
     const nao_encontrados = [];
+    let total_faltas_just = 0, total_faltas_injust = 0;
 
     for (const func of funcionarios) {
       // Tenta vincular ao funcionário cadastrado
-      const fRows = await pool.query('SELECT id FROM funcionarios WHERE matricula = $1', [func.matricula]);
+      const fRows = await dbQuery('SELECT id FROM funcionarios WHERE matricula = $1', [func.matricula]);
       const funcionario_id = fRows.length ? fRows[0].id : null;
       if (!funcionario_id) nao_encontrados.push(func.matricula);
 
+      const registrosComData = [];
       for (const r of func.registros) {
         const data = `${ano}-${r.mes.padStart(2,'0')}-${r.dia.padStart(2,'0')}`;
-        await pool.query(`
+        await dbQuery(`
           INSERT INTO ponto_registros
             (importacao_id, matricula, funcionario_id, data, tab,
              ent1, sai1, ent2, sai2, ent3, sai3, ent4, sai4, ent5, sai5,
@@ -183,22 +250,71 @@ router.post('/importar', autenticar, upload.single('arquivo'), async (req, res) 
             r.ent1, r.sai1, r.ent2, r.sai2, r.ent3, r.sai3, r.ent4, r.sai4, r.ent5, r.sai5,
             r.h_trab, r.h_extra, r.is_dsr, r.is_folga, r.sem_marcacao]);
         total_registros++;
+        registrosComData.push({ ...r, data });
+      }
+
+      // Cruza com atestados → gera evento de falta
+      if (funcionario_id) {
+        const stats = await gerarFaltasFromPonto(funcionario_id, registrosComData, req.usuario.nome);
+        total_faltas_just += stats.justificadas;
+        total_faltas_injust += stats.injustificadas;
       }
     }
 
-    await pool.query('UPDATE ponto_importacoes SET total_registros = $1 WHERE id = $2', [total_registros, importacao_id]);
+    await dbQuery('UPDATE ponto_importacoes SET total_registros = $1 WHERE id = $2', [total_registros, importacao_id]);
+
+    // Garante que o período exista (criado como aberto)
+    await pool.query(
+      `INSERT INTO ponto_periodos (data_inicio, data_fim) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+      [periodo_inicio, periodo_fim]
+    );
 
     res.json({
       ok: true,
       importacao_id,
       total_funcionarios: funcionarios.length,
       total_registros,
-      nao_encontrados
+      nao_encontrados,
+      faltas_justificadas: total_faltas_just,
+      faltas_injustificadas: total_faltas_injust,
     });
   } catch (err) {
-    console.error('Ponto importar error:', err);
-    res.status(500).json({ erro: err.message });
+    console.error('[ponto importar]', err);
+    res.status(500).json({ erro: 'Erro ao importar ponto' });
   }
+});
+
+// ── PERÍODOS DE PONTO (fechamento mensal) ─────────────────────────
+router.get('/periodos', autenticar, async (req, res) => {
+  try {
+    const rows = await dbQuery(
+      `SELECT id, data_inicio, data_fim, fechado, fechado_por, fechado_em
+       FROM ponto_periodos ORDER BY data_inicio DESC LIMIT 24`
+    );
+    res.json(rows);
+  } catch (err) { console.error('[ponto]', err.message); res.status(500).json({ erro: 'Erro interno' }); }
+});
+
+router.post('/periodos/:id/fechar', autenticar, async (req, res) => {
+  try {
+    if (!['admin','rh'].includes(req.usuario.perfil)) return res.status(403).json({ erro: 'Acesso restrito' });
+    await dbQuery(
+      `UPDATE ponto_periodos SET fechado = TRUE, fechado_por = $1, fechado_em = NOW() WHERE id = $2`,
+      [req.usuario.nome, req.params.id]
+    );
+    res.json({ ok: true });
+  } catch (err) { console.error('[ponto]', err.message); res.status(500).json({ erro: 'Erro interno' }); }
+});
+
+router.post('/periodos/:id/reabrir', autenticar, async (req, res) => {
+  try {
+    if (req.usuario.perfil !== 'admin') return res.status(403).json({ erro: 'Apenas admin pode reabrir período' });
+    await dbQuery(
+      `UPDATE ponto_periodos SET fechado = FALSE, fechado_por = NULL, fechado_em = NULL WHERE id = $1`,
+      [req.params.id]
+    );
+    res.json({ ok: true });
+  } catch (err) { console.error('[ponto]', err.message); res.status(500).json({ erro: 'Erro interno' }); }
 });
 
 // ── LISTAR IMPORTAÇÕES ────────────────────────────────────────────
@@ -212,9 +328,9 @@ router.get('/importacoes', autenticar, async (req, res) => {
       q += ` WHERE loja_id = ANY($1)`;
     }
     q += ' ORDER BY importado_em DESC LIMIT 50';
-    const rows = await pool.query(q, params);
+    const rows = await dbQuery(q, params);
     res.json(rows);
-  } catch (err) { res.status(500).json({ erro: err.message }); }
+  } catch (err) { console.error('[ponto]', err.message); res.status(500).json({ erro: 'Erro interno' }); }
 });
 
 // ── REGISTROS POR MATRÍCULA ───────────────────────────────────────
@@ -224,18 +340,18 @@ router.get('/registros/:matricula', autenticar, async (req, res) => {
     const params = [req.params.matricula];
     let extra = '';
     if (importacao_id) { params.push(importacao_id); extra = ` AND importacao_id = $${params.length}`; }
-    const rows = await pool.query(
+    const rows = await dbQuery(
       `SELECT * FROM ponto_registros WHERE matricula = $1${extra} ORDER BY data`,
       params
     );
     res.json(rows);
-  } catch (err) { res.status(500).json({ erro: err.message }); }
+  } catch (err) { console.error('[ponto]', err.message); res.status(500).json({ erro: 'Erro interno' }); }
 });
 
 // ── RESUMO POR IMPORTAÇÃO ─────────────────────────────────────────
 router.get('/resumo/:importacao_id', autenticar, async (req, res) => {
   try {
-    const rows = await pool.query(`
+    const rows = await dbQuery(`
       SELECT
         pr.matricula,
         f.nome,
@@ -250,7 +366,7 @@ router.get('/resumo/:importacao_id', autenticar, async (req, res) => {
       ORDER BY f.nome NULLS LAST
     `, [req.params.importacao_id]);
     res.json(rows);
-  } catch (err) { res.status(500).json({ erro: err.message }); }
+  } catch (err) { console.error('[ponto]', err.message); res.status(500).json({ erro: 'Erro interno' }); }
 });
 
 module.exports = router;

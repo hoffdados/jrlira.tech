@@ -12,7 +12,7 @@ railway up --detach  # deploy no Railway (executar após qualquer alteração no
 
 Não há build, transpilação, lint ou test runner configurados. Alterações no código exigem reiniciar o servidor manualmente.
 
-**Deploy:** após qualquer alteração de código, sempre executar `railway up --detach`.
+**Deploy:** após qualquer alteração de código, executar `railway up --detach` imediatamente — sem esperar confirmação do usuário.
 
 ## Stack
 

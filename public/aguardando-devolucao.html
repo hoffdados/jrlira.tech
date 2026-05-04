@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aguardando Devolução — JR Lira Tech</title>
+<link rel="stylesheet" href="/shared.css">
+<script src="/shared.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+nav{background:#1e293b;padding:14px 24px;display:flex;align-items:center;gap:16px;border-bottom:1px solid #334155}
+nav .brand{font-size:16px;font-weight:700;color:#38bdf8}
+nav .sep{color:#475569}
+nav .page{font-size:14px;color:#94a3b8}
+nav .user{margin-left:auto;font-size:13px;color:#64748b}
+nav .btn-nav{background:#0ea5e9;color:#fff;border:none;padding:7px 14px;border-radius:6px;font-size:13px;cursor:pointer}
+.wrap{padding:20px;max-width:1500px;margin:0 auto}
+.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:20px}
+.stat{background:#1e293b;border-radius:10px;padding:14px}
+.stat-label{font-size:11px;color:#64748b;text-transform:uppercase}
+.stat-value{font-size:22px;font-weight:700;margin-top:4px}
+.stat-value.warn{color:#fbbf24}
+.toolbar{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.toolbar select{padding:8px 12px;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:13px}
+.devs{display:grid;gap:12px}
+.dev{background:#1e293b;border-radius:10px;padding:16px;border:1px solid #334155}
+.dev-head{display:flex;justify-content:space-between;align-items:start;margin-bottom:10px;gap:12px;flex-wrap:wrap}
+.dev-tit{font-size:14px;color:#38bdf8;font-weight:700}
+.dev-sub{font-size:12px;color:#94a3b8;margin-top:2px}
+.badge{display:inline-block;padding:2px 8px;border-radius:5px;font-size:10px;font-weight:700;text-transform:uppercase}
+.b-aguardando{background:#451a03;color:#fbbf24}
+.b-enviada{background:#14532d;color:#4ade80}
+.b-cancelada{background:#1e293b;color:#64748b}
+.dev-itens{margin-top:8px;font-size:12px}
+.dev-itens .it{padding:6px;background:#0f172a;border-radius:5px;margin-bottom:4px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.acoes{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
+.acoes button,.acoes label{padding:7px 14px;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:12px}
+.btn-anexar{background:#0ea5e9;color:#fff}
+.btn-cancelar{background:transparent;border:1px solid #dc2626!important;color:#f87171}
+.empty{padding:40px;text-align:center;color:#64748b}
+</style>
+</head>
+<body>
+<nav>
+  <span class="brand">JR Lira Tech</span><span class="sep">/</span>
+  <span class="page">Aguardando Devolução</span>
+  <span class="user" id="nomeUsuario"></span>
+  <button class="btn-nav" onclick="location.href='/'">← Início</button>
+</nav>
+
+<div class="wrap">
+  <div class="stats" id="stats"></div>
+  <div class="toolbar">
+    <select id="fStatus" onchange="carregar()">
+      <option value="aguardando" selected>Aguardando XML</option>
+      <option value="">Todas</option>
+      <option value="enviada">Enviadas</option>
+      <option value="cancelada">Canceladas</option>
+    </select>
+    <select id="fLoja" onchange="carregar()">
+      <option value="">Todas as lojas</option>
+      <option value="1">L1 ECON</option><option value="2">L2 BR</option><option value="3">L3 JP</option>
+      <option value="4">L4 FLO</option><option value="5">L5 SJ</option><option value="6">L6 SAN</option>
+    </select>
+  </div>
+  <div id="lista" class="devs"></div>
+</div>
+
+<script>
+// LOJAS já vem do shared.js (mapa id → nome curto)
+function fmtMoeda(v){return'R$ '+(parseFloat(v||0)).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}
+function fmtDH(d){return d?new Date(d).toLocaleString('pt-BR'):'—'}
+document.getElementById('nomeUsuario').textContent=localStorage.getItem('jrlira_nome')||'';
+
+async function carregar(){
+  const params=new URLSearchParams();
+  ['fStatus','fLoja'].forEach(id=>{const v=document.getElementById(id).value;if(v){const k={fStatus:'status',fLoja:'loja_id'}[id];params.set(k,v)}});
+  try{
+    const r=await apiFetch('/api/devolucoes?'+params);
+    const d=await r.json();
+    document.getElementById('stats').innerHTML=`
+      <div class="stat"><div class="stat-label">Devoluções</div><div class="stat-value">${d.total}</div></div>
+      <div class="stat"><div class="stat-label">Aguardando XML</div><div class="stat-value warn">${d.aguardando}</div></div>
+      <div class="stat"><div class="stat-label">Valor total</div><div class="stat-value">${fmtMoeda(d.total_valor)}</div></div>
+    `;
+    const el=document.getElementById('lista');
+    if(!d.rows.length){el.innerHTML='<div class="empty">Nenhuma devolução</div>';return}
+    el.innerHTML=await Promise.all(d.rows.map(renderDev)).then(arr=>arr.join(''));
+    // Mostra nome dos arquivos selecionados
+    d.rows.forEach(dv=>{
+      const xml=document.getElementById('xml-'+dv.id);
+      const pdf=document.getElementById('pdf-'+dv.id);
+      const info=document.getElementById('info-'+dv.id);
+      if(xml)xml.addEventListener('change',()=>info&&(info.textContent=(xml.files[0]?'XML: '+xml.files[0].name:'')+(pdf&&pdf.files[0]?' · PDF: '+pdf.files[0].name:'')));
+      if(pdf)pdf.addEventListener('change',()=>info&&(info.textContent=(xml&&xml.files[0]?'XML: '+xml.files[0].name:'')+(pdf.files[0]?' · PDF: '+pdf.files[0].name:'')));
+    });
+  }catch(e){alert('Erro: '+e.message)}
+}
+
+async function enviarDev(id){
+  const xml=document.getElementById('xml-'+id).files[0];
+  const pdf=document.getElementById('pdf-'+id).files[0];
+  if(!xml){alert('Anexe o XML obrigatoriamente');return}
+  const fd=new FormData();
+  fd.append('xml',xml);
+  if(pdf)fd.append('pdf',pdf);
+  try{
+    const r=await apiFetch('/api/devolucoes/'+id+'/upload-xml',{method:'POST',body:fd});
+    const data=await r.json();
+    if(!r.ok)throw new Error(data.erro);
+    let msg='Devolução enviada — NF '+data.numero_nf+' ('+data.pdf_origem.replace('_',' ')+')';
+    if(data.notificacao&&data.notificacao.canais)msg+='\nVendedor notificado por: '+data.notificacao.canais.join(', ');
+    else if(data.notificacao&&data.notificacao.skipped==='sem_pedido')msg+='\nNota não vinda de pedido — vendedor não notificado';
+    else if(data.notificacao&&data.notificacao.skipped==='sem_contato_vendedor')msg+='\nVendedor sem email/telefone cadastrados';
+    alert(msg);
+    carregar();
+  }catch(e){alert('Erro: '+e.message)}
+}
+
+async function reenviar(id){
+  if(!confirm('Re-enviar notificação ao vendedor?'))return;
+  try{
+    const r=await apiFetch('/api/devolucoes/'+id+'/notificar',{method:'POST'});
+    const data=await r.json();
+    if(!r.ok)throw new Error(data.erro);
+    alert('Resultado: '+JSON.stringify(data));
+    carregar();
+  }catch(e){alert('Erro: '+e.message)}
+}
+
+async function renderDev(dv){
+  // busca itens detalhados
+  const r=await apiFetch('/api/devolucoes/'+dv.id);
+  const det=await r.json();
+  const itens=det.itens||[];
+  return `<div class="dev">
+    <div class="dev-head">
+      <div>
+        <div class="dev-tit">Devolução #${dv.id} — ${LOJAS[dv.loja_id]||'L'+dv.loja_id}</div>
+        <div class="dev-sub">Da nota CD <strong>${dv.cd_mov_codi||dv.nota_origem_numero}</strong> · destinatário <strong>${dv.destinatario_nome}</strong> · motivo: ${dv.motivo}</div>
+        <div class="dev-sub">Criada em ${fmtDH(dv.criado_em)} por ${dv.criado_por||'—'}</div>
+        ${dv.xml_numero_nf?`<div class="dev-sub" style="color:#4ade80">✓ NF de devolução ${dv.xml_numero_nf} anexada por ${dv.xml_anexado_por} em ${fmtDH(dv.xml_anexado_em)}</div>`:''}
+      </div>
+      <div style="text-align:right">
+        <span class="badge b-${dv.status}">${dv.status}</span>
+        <div style="font-size:14px;font-weight:700;color:#fbbf24;margin-top:4px">${fmtMoeda(dv.valor_total)}</div>
+      </div>
+    </div>
+    <div class="dev-itens">
+      ${itens.map(i=>`<div class="it">
+        <div>
+          <strong>${(i.descricao||'').trim()}</strong>
+          <div style="font-size:10px;color:#64748b">MAT ${i.cd_pro_codi||'—'} · EAN ${i.ean||'—'}</div>
+        </div>
+        <div style="text-align:right">
+          <strong>${i.qtd_caixas>0?i.qtd_caixas+' cx':parseFloat(i.qtd_unidades).toFixed(0)+' un'}</strong>
+          <div style="font-size:10px;color:#94a3b8">${parseFloat(i.qtd_total).toFixed(0)} unidades · ${fmtMoeda(i.valor_total)}</div>
+        </div>
+      </div>`).join('')}
+    </div>
+    ${dv.status==='aguardando'?`
+      <div class="acoes">
+        <label class="btn-anexar" for="xml-${dv.id}" style="background:#0ea5e9">📎 XML (obrig.)</label>
+        <input id="xml-${dv.id}" type="file" accept=".xml" style="display:none">
+        <label class="btn-anexar" for="pdf-${dv.id}" style="background:#7c3aed">📄 PDF DANFE (opcional)</label>
+        <input id="pdf-${dv.id}" type="file" accept=".pdf" style="display:none">
+        <button class="btn-anexar" id="enviar-${dv.id}" onclick="enviarDev(${dv.id})" style="background:#16a34a">✓ Enviar</button>
+        <button class="btn-cancelar" onclick="cancelar(${dv.id})">Cancelar</button>
+        <span id="info-${dv.id}" style="font-size:11px;color:#94a3b8"></span>
+      </div>
+    `:`
+      <div class="acoes">
+        ${dv.status==='enviada'?`<a href="/api/devolucoes/${dv.id}/pdf" target="_blank" class="btn-anexar" style="background:#7c3aed;text-decoration:none">📄 Ver PDF</a>`:''}
+        ${dv.status==='enviada'?`<button class="btn-anexar" onclick="reenviar(${dv.id})" style="background:#0ea5e9">📨 Reenviar ao vendedor</button>`:''}
+      </div>
+      ${dv.vendedor_notificado_em?`<div style="font-size:11px;color:#4ade80;margin-top:6px">📨 Vendedor notificado por <strong>${dv.vendedor_notificacao_canais||'—'}</strong> em ${fmtDH(dv.vendedor_notificado_em)} — status: <strong>${dv.vendedor_notificacao_status||'—'}</strong></div>`:''}
+    `}
+  </div>`;
+}
+
+async function uploadXml(id){
+  const inp=document.getElementById('xml-'+id);
+  const file=inp.files[0];
+  if(!file)return;
+  const fd=new FormData();
+  fd.append('arquivo',file);
+  try{
+    const r=await apiFetch('/api/devolucoes/'+id+'/upload-xml',{method:'POST',body:fd});
+    const data=await r.json();
+    if(!r.ok)throw new Error(data.erro);
+    alert('XML anexado: NF '+data.numero_nf);
+    carregar();
+  }catch(e){alert('Erro: '+e.message);inp.value=''}
+}
+
+async function cancelar(id){
+  const obs=prompt('Motivo do cancelamento (opcional):');
+  if(obs===null)return;
+  try{
+    const r=await apiFetch('/api/devolucoes/'+id+'/cancelar',{method:'POST',body:JSON.stringify({observacao:obs})});
+    if(!r.ok)throw new Error((await r.json()).erro);
+    carregar();
+  }catch(e){alert('Erro: '+e.message)}
+}
+
+if(!localStorage.getItem('jrlira_token'))location.href='/';
+else carregar();
+</script>
+</body>
+</html>

@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Auditoria de Pedidos — JR Lira</title>
+<link rel="stylesheet" href="/shared.css">
+<script src="/shared.js"></script>
+<style>
+.layout{display:grid;grid-template-columns:380px 1fr;min-height:calc(100vh - 57px)}
+.panel-left{border-right:1px solid #334155;overflow-y:auto}
+.panel-right{padding:20px;overflow-y:auto}
+.pedido-row{padding:14px 16px;border-bottom:1px solid #334155;cursor:pointer;border-left:4px solid #f97316}
+.pedido-row:hover,.pedido-row.selected{background:#1e3a5f}
+.p-num{font-size:12px;font-family:monospace;color:#38bdf8;font-weight:700}
+.p-forn{font-size:13px;font-weight:600;margin:2px 0}
+.p-info{font-size:11px;color:#64748b}
+.section-title{font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px}
+.card{background:#1e293b;border-radius:10px;padding:16px;margin-bottom:16px}
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.info-item label{font-size:11px;color:#64748b;display:block}
+.info-item span{font-size:13px;color:#e2e8f0}
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead th{background:#0f172a;padding:8px 10px;text-align:center;color:#64748b;font-weight:600;border-bottom:1px solid #334155}
+thead th.al-left{text-align:left}
+tbody td{padding:8px 10px;border-bottom:1px solid #334155;text-align:center}
+tbody td.al-left{text-align:left}
+.input-val{width:90px;padding:4px 8px;font-size:12px;text-align:center;background:#0f172a;border:1px solid #334155;color:#e2e8f0;border-radius:4px}
+.justificativa{background:#1c1300;border-left:3px solid #fbbf24;padding:8px 12px;font-size:12px;color:#fbbf24;border-radius:6px;margin-top:6px}
+.metric{display:flex;gap:14px;font-size:12px}
+.metric strong{color:#f97316}
+</style>
+</head>
+<body>
+<nav>
+  <span class="brand">JR Lira Tech</span>
+  <span style="color:#475569">/</span>
+  <span style="font-size:14px;color:#94a3b8">Auditoria de Pedidos</span>
+  <span class="nav-user" id="nomeUsuario"></span>
+  <button class="btn-nav" onclick="location.href='/pedidos-comprador'">📋 Validação normal</button>
+  <button class="btn-nav btn-ghost" onclick="location.href='/'">← Início</button>
+</nav>
+
+<div class="layout">
+  <div class="panel-left">
+    <div style="padding:14px;border-bottom:1px solid #334155;display:flex;align-items:center;gap:10px">
+      <strong>Aguardando auditoria</strong>
+      <span id="contador" style="background:#431407;color:#f97316;padding:2px 10px;border-radius:10px;font-size:11px;font-weight:700">0</span>
+    </div>
+    <div id="listaPedidos"><div style="color:#475569;text-align:center;padding:24px">Carregando...</div></div>
+  </div>
+
+  <div class="panel-right">
+    <div id="painelVazio" style="color:#475569;padding:60px;text-align:center;font-size:14px">← Selecione um pedido</div>
+    <div id="painelPedido" style="display:none">
+      <div id="msgPedido" class="msg" style="display:none"></div>
+
+      <div class="card">
+        <div class="info-grid">
+          <div class="info-item"><label>Pedido</label><span id="d-num" style="font-family:monospace;color:#38bdf8"></span></div>
+          <div class="info-item"><label>Status</label><span><span class="badge s-aguardando_auditoria" style="padding:2px 10px;border-radius:6px;font-size:11px;font-weight:700;background:#431407;color:#f97316">AGUARDANDO AUDITORIA</span></span></div>
+          <div class="info-item"><label>Fornecedor</label><span id="d-forn"></span></div>
+          <div class="info-item"><label>Vendedor</label><span id="d-vend"></span></div>
+          <div class="info-item"><label>Loja</label><span id="d-loja"></span></div>
+          <div class="info-item"><label>Total</label><span id="d-total" style="font-weight:700;color:#fbbf24"></span></div>
+        </div>
+        <div id="d-obs-bloco" style="font-size:12px;color:#94a3b8;margin-top:8px"></div>
+      </div>
+
+      <div class="card">
+        <div class="section-title" style="display:flex;align-items:center;gap:10px">
+          Itens do pedido
+          <span style="margin-left:auto" class="metric"><span id="m-total">0 itens</span> · <strong id="m-excesso">0 com excesso</strong></span>
+        </div>
+        <div style="overflow-x:auto">
+        <table style="min-width:980px">
+          <thead><tr>
+            <th class="al-left">Código</th>
+            <th class="al-left">Descrição</th>
+            <th>Sugestão</th>
+            <th>Qtd Validada</th>
+            <th>% acima</th>
+            <th>Preço</th>
+            <th>Total</th>
+            <th>Ajustar qtd</th>
+          </tr></thead>
+          <tbody id="tbodyItens"></tbody>
+        </table>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn-ghost" onclick="location.reload()">↻ Atualizar</button>
+        <button class="btn-ok" id="btnAprovar" onclick="aprovarAuditoria(this)" style="flex:1">✓ Aprovar e enviar PDF ao fornecedor</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){ const p = localStorage.getItem('jrlira_perfil'); if (!localStorage.getItem('jrlira_token') || p !== 'admin') { alert('Apenas admin pode acessar essa tela'); location.href='/'; } })();
+document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
+
+let pedidoAtual = null;
+
+function showMsg(txt, tipo='ok') {
+  const el = document.getElementById('msgPedido');
+  el.className = `msg msg-${tipo}`;
+  el.textContent = txt;
+  el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', 4000);
+}
+
+async function carregarLista() {
+  const r = await apiFetch('/api/pedidos/aguardando-auditoria');
+  if (!r.ok) return;
+  const lista = await r.json();
+  document.getElementById('contador').textContent = lista.length;
+  const el = document.getElementById('listaPedidos');
+  if (!lista.length) { el.innerHTML = '<div style="color:#475569;text-align:center;padding:40px">Nenhum pedido aguardando auditoria 🎉</div>'; return; }
+  el.innerHTML = lista.map(p => `
+    <div class="pedido-row${pedidoAtual?.id===p.id?' selected':''}" onclick="abrirPedido(${p.id})">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
+        <span class="p-num">${escapeHtml(p.numero_pedido || '#'+p.id)}</span>
+        <span style="background:#431407;color:#f97316;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700">${p.qtd_excessos} ${p.qtd_excessos==1?'item':'itens'} acima</span>
+      </div>
+      <div class="p-forn">${escapeHtml(p.fornecedor_fantasia || p.fornecedor_nome || '—')}</div>
+      <div class="p-info">${escapeHtml(p.loja_nome||'—')} · ${escapeHtml(p.vendedor_nome||'—')}</div>
+      <div class="p-info">R$ ${parseFloat(p.valor_total||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+    </div>
+  `).join('');
+}
+
+async function abrirPedido(id) {
+  const [rPed, rAna] = await Promise.all([
+    apiFetch(`/api/pedidos/${id}`),
+    apiFetch(`/api/pedidos/${id}/analise`).catch(() => null),
+  ]);
+  pedidoAtual = await rPed.json();
+  if (rAna && rAna.ok) {
+    const ana = await rAna.json();
+    pedidoAtual.analise_map = {};
+    (ana.analise || []).forEach(a => { pedidoAtual.analise_map[a.item_id] = a; });
+  } else { pedidoAtual.analise_map = {}; }
+  renderDetalhe();
+  document.getElementById('painelVazio').style.display = 'none';
+  document.getElementById('painelPedido').style.display = 'block';
+  carregarLista();
+}
+
+function renderDetalhe() {
+  const p = pedidoAtual;
+  document.getElementById('d-num').textContent = p.numero_pedido || '#' + p.id;
+  document.getElementById('d-forn').textContent = p.fantasia || p.razao_social || '—';
+  document.getElementById('d-vend').textContent = `${p.vendedor_nome||'—'} — ${p.vendedor_email||''}`;
+  document.getElementById('d-loja').textContent = p.loja_nome || '—';
+  document.getElementById('d-total').textContent = `R$ ${parseFloat(p.valor_total||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+  document.getElementById('d-obs-bloco').textContent = p.observacoes ? `Observações: ${p.observacoes}` : '';
+
+  const ana = p.analise_map || {};
+  let excessos = 0;
+  document.getElementById('tbodyItens').innerHTML = (p.itens || []).map(it => {
+    const a = ana[it.id] || {};
+    const mediaDia = a.media_dia || 0;
+    const sug = mediaDia > 0 ? Math.max(0, 30 * mediaDia - (a.estdisponivel || 0) - (a.em_transito || 0)) : null;
+    const qtdVal = parseFloat(it.qtd_validada ?? it.quantidade);
+    const precoVal = parseFloat(it.preco_validado ?? it.preco_unitario);
+    const fator = sug != null && sug > 0 ? qtdVal / sug : null;
+    const excesso30 = fator != null && fator > 1.30;
+    const semHist = !it.produto_novo && a.estdisponivel != null && mediaDia <= 0 && qtdVal > 0;
+    const flag = excesso30 || semHist;
+    if (flag) excessos++;
+    const sugStr = sug != null ? sug.toFixed(0) : (semHist ? '<span style="color:#fbbf24">sem hist</span>' : '—');
+    const fatorStr = excesso30 ? `+${Math.round((fator-1)*100)}%` : (semHist ? '⚠ s/ vendas' : '—');
+    const corLinha = flag ? 'background:#1a0c00' : '';
+    return `<tr style="${corLinha}">
+      <td class="al-left" style="font-family:monospace;font-size:11px">${escapeHtml(it.codigo_barras||'—')}</td>
+      <td class="al-left">${escapeHtml(it.descricao)}${it.justificativa_excesso ? `<div class="justificativa">📝 ${escapeHtml(it.justificativa_excesso)}</div>` : ''}</td>
+      <td>${sugStr}</td>
+      <td style="${flag?'color:#f87171;font-weight:700':''}">${qtdVal.toFixed(2)}</td>
+      <td style="${flag?'color:#f87171;font-weight:700':''}">${fatorStr}</td>
+      <td>R$ ${precoVal.toFixed(4).replace('.',',')}</td>
+      <td>R$ ${(qtdVal*precoVal).toFixed(2).replace('.',',')}</td>
+      <td><input class="input-val" type="number" step="0.001" value="${qtdVal.toFixed(3)}" data-item="${it.id}"></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('m-total').textContent = `${(p.itens||[]).length} ${(p.itens||[]).length===1?'item':'itens'}`;
+  document.getElementById('m-excesso').textContent = `${excessos} com excesso`;
+}
+
+async function aprovarAuditoria(btn) {
+  if (!pedidoAtual) return;
+  if (!confirm('Aprovar este pedido? Quaisquer ajustes de qtd serão aplicados e o PDF será enviado ao vendedor.')) return;
+  // Coleta ajustes (apenas itens com qtd alterada)
+  const ajustes = {};
+  document.querySelectorAll('.input-val[data-item]').forEach(inp => {
+    const itemId = parseInt(inp.dataset.item);
+    const novaQtd = parseFloat(inp.value);
+    const original = pedidoAtual.itens.find(i => i.id === itemId);
+    const qtdAtual = parseFloat(original?.qtd_validada ?? original?.quantidade);
+    if (Number.isFinite(novaQtd) && Math.abs(novaQtd - qtdAtual) > 0.001) {
+      ajustes[itemId] = novaQtd;
+    }
+  });
+  await withLoading(btn, async () => {
+    const r = await apiFetch(`/api/pedidos/${pedidoAtual.id}/auditar/aprovar`, {
+      method: 'POST', body: JSON.stringify({ ajustes })
+    });
+    const d = await r.json();
+    if (!r.ok) return showMsg(d.erro, 'err');
+    showMsg('Pedido aprovado e PDF enviado!', 'ok');
+    pedidoAtual = null;
+    document.getElementById('painelVazio').style.display = 'block';
+    document.getElementById('painelPedido').style.display = 'none';
+    carregarLista();
+  }, 'Aprovando...');
+}
+
+carregarLista();
+setInterval(carregarLista, 30000); // refresh a cada 30s
+</script>
+</body>
+</html>

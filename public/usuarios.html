@@ -125,7 +125,7 @@ select[multiple]{height:72px;font-size:11px}
       <div class="lojas-grid" id="checkNovasLojas">
         <label><input type="checkbox" value="1"> ECONOMICO</label>
         <label><input type="checkbox" value="2"> BR</label>
-        <label><input type="checkbox" value="3"> JOAO PAULO</label>
+        <label><input type="checkbox" value="3"> JOAO PESSOA</label>
         <label><input type="checkbox" value="4"> FLORESTA</label>
         <label><input type="checkbox" value="5"> SAO JOSE</label>
         <label><input type="checkbox" value="6"> SANTAREM</label>
@@ -163,8 +163,7 @@ const token = () => localStorage.getItem('jrlira_token');
 document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
 
 const PERFIL_LABEL = { admin: 'Admin', rh: 'RH', cadastro: 'Cadastro', estoque: 'Estoque', auditor: 'Auditor', comprador: 'Comprador' };
-const LOJAS = {1:'ECONOMICO',2:'BR',3:'JOAO PAULO',4:'FLORESTA',5:'SAO JOSE',6:'SANTAREM'};
-const LOJAS_FULL = {1:'SUPERASA ECONOMICO',2:'SUPERASA BR',3:'SUPERASA JOAO PAULO',4:'SUPERASA FLORESTA',5:'SUPERASA SAO JOSE',6:'SUPERASA SANTAREM'};
+// LOJAS / LOJAS_FULL vêm do shared.js
 const PERFIS_COM_LOJA = ['rh', 'cadastro', 'estoque', 'auditor'];
 const PERFIS_LOJA_OBRIGATORIO = ['cadastro', 'estoque', 'auditor'];
 
@@ -323,10 +322,11 @@ acInput.addEventListener('blur', () => setTimeout(() => { acList.style.display =
 
 async function acFetch(q) {
   try {
-    const r = await apiFetch(`${API}/api/funcionarios?q=${encodeURIComponent(q)}`);
+    const r = await apiFetch(`${API}/api/funcionarios?q=${encodeURIComponent(q)}&limit=20`);
     const data = await r.json();
-    if (!r.ok || !Array.isArray(data) || !data.length) { acList.style.display = 'none'; return; }
-    acList.innerHTML = data.slice(0, 10).map(f => {
+    const lista = Array.isArray(data) ? data : (data.rows || []);
+    if (!r.ok || !lista.length) { acList.style.display = 'none'; return; }
+    acList.innerHTML = lista.slice(0, 10).map(f => {
       const nome = f.nome.replace(/"/g, '&quot;');
       const email = (f.email || '').replace(/"/g, '&quot;');
       return `<div class="ac-item" data-nome="${nome}" data-email="${email}" onmousedown="acSelecionarEl(this)">

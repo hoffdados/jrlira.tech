@@ -89,16 +89,23 @@ async function fazerLogin() {
 
 const TODOS_CARDS = [
   { href: '/rh',                icon: 'users',           title: 'Quadro de Lotação',   desc: 'Funcionários e histórico',        perfis: ['rh'] },
+  { href: '/rh-painel',         icon: 'gauge',           title: 'Painel RH',           desc: 'Indicadores e absenteísmo',       perfis: ['rh'] },
   { href: '/ponto',             icon: 'clock',           title: 'Controle de Ponto',   desc: 'Importação iPonto',               perfis: ['rh'] },
-  { href: '/notas-cadastro',    icon: 'file-text',       title: 'Notas — Cadastro',    desc: 'Validação e formação de preço',   perfis: ['cadastro'] },
+  { href: '/notas-cadastro',    icon: 'file-text',       title: 'Notas Fornecedores',  desc: 'Cadastro de NF-e dos fornecedores', perfis: ['cadastro'] },
+  { href: '/notas-transferencias-cadastro', icon: 'truck', title: 'Notas Transferências', desc: 'Cadastro de transferências CD e entre lojas', perfis: ['cadastro'] },
   { href: '/notas-estoque',     icon: 'package',         title: 'Notas — Estoque',     desc: 'Conferência às cegas',            perfis: ['estoque'] },
   { href: '/notas-auditoria',   icon: 'clipboard-check', title: 'Notas — Auditoria',   desc: 'Fechamento de notas',             perfis: ['auditor'] },
   { href: '/fornecedores',      icon: 'building-2',      title: 'Fornecedores',        desc: 'Cadastro e aprovações',           perfis: ['comprador'] },
   { href: '/pedidos-comprador', icon: 'shopping-cart',   title: 'Pedidos',             desc: 'Validação e PDF',                 perfis: ['comprador'] },
+  { href: '/auditoria-pedidos', icon: 'shield-check',    title: 'Auditoria de Pedidos',desc: 'Liberar pedidos acima da sugestão', perfis: [] },
   { href: '/notas-comprador',   icon: 'file-check',      title: 'NF-e',                desc: 'Importar XMLs e vincular pedidos',perfis: ['comprador'] },
   { href: '/sugestao-compras',  icon: 'trending-up',     title: 'Sugestão de Compras', desc: 'Reposição proativa por fornecedor', perfis: ['comprador'] },
   { href: '/contas-receber',    icon: 'receipt',         title: 'Contas a Receber',    desc: 'Devoluções e bonificações',       perfis: ['comprador'] },
   { href: '/usuarios',          icon: 'shield',          title: 'Usuários',            desc: 'Perfis de acesso',                perfis: [] },
+  { href: '/produtos-embalagem',icon: 'box',             title: 'Cadastro CD',         desc: 'Auditoria de quantidade por embalagem e Códigos de Barra', perfis: [] },
+  { href: '/auditagem-divergencias',icon:'alert-triangle',title:'Divergências CD',     desc:'Faltas/sobras na conferência — tratar com CD ou devolução', perfis: [] },
+  { href: '/validades-em-risco', icon: 'calendar-clock',  title: 'Validades em Risco',  desc: 'Análise por giro — liberar ou devolução', perfis: [] },
+  { href: '/aguardando-devolucao', icon: 'undo-2',         title: 'Aguardando Devolução', desc: 'Anexar XML de devolução pro CD ou fornecedor', perfis: ['cadastro'] },
 ];
 
 function renderCards(perfil) {

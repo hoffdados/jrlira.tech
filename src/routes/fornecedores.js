@@ -3,9 +3,27 @@ const router = express.Router();
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const multer = require('multer');
-const pool = require('../db');
+const fs = require('fs');
+const path = require('path');
+const { pool, query: dbQuery } = require('../db');
 const { autenticar, apenasAdmin, compradorOuAdmin } = require('../auth');
 const { enviarEmail } = require('../mailer');
+
+// Carrega manual do vendedor uma vez (se existir) — anexado nos emails de credenciais
+const MANUAL_VENDEDOR_PATH = path.join(__dirname, '..', '..', 'docs', 'manual-vendedor.pdf');
+let MANUAL_VENDEDOR = null;
+try {
+  if (fs.existsSync(MANUAL_VENDEDOR_PATH)) {
+    MANUAL_VENDEDOR = {
+      filename: 'manual-vendedor.pdf',
+      content: fs.readFileSync(MANUAL_VENDEDOR_PATH),
+    };
+    console.log('[manual] anexo carregado:', MANUAL_VENDEDOR.content.length, 'bytes');
+  } else {
+    console.warn('[manual] docs/manual-vendedor.pdf não encontrado — emails serão enviados sem anexo');
+  }
+} catch (e) { console.error('[manual] erro:', e.message); }
+const anexosVendedor = () => MANUAL_VENDEDOR ? [MANUAL_VENDEDOR] : [];
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
@@ -13,7 +31,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 *
 
 router.get('/lojas', autenticar, async (req, res) => {
   try {
-    const rows = await pool.query('SELECT id, nome, cnpj, ativo FROM lojas ORDER BY id');
+    const rows = await dbQuery('SELECT id, nome, cnpj, ativo FROM lojas ORDER BY id');
     res.json(rows);
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
@@ -21,7 +39,7 @@ router.get('/lojas', autenticar, async (req, res) => {
 router.put('/lojas/:id', apenasAdmin, async (req, res) => {
   try {
     const { cnpj } = req.body;
-    await pool.query('UPDATE lojas SET cnpj = $1 WHERE id = $2', [cnpj || null, req.params.id]);
+    await dbQuery('UPDATE lojas SET cnpj = $1 WHERE id = $2', [cnpj || null, req.params.id]);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
@@ -33,7 +51,7 @@ router.get('/', autenticar, async (req, res) => {
     const { q } = req.query;
     const params = q ? [`%${q}%`] : [];
     const where = q ? `WHERE razao_social ILIKE $1 OR fantasia ILIKE $1 OR cnpj ILIKE $1` : '';
-    const rows = await pool.query(
+    const rows = await dbQuery(
       `SELECT id, razao_social, fantasia, cnpj, ativo FROM (
          SELECT DISTINCT ON (cnpj) id, razao_social, fantasia, cnpj, ativo
          FROM fornecedores ${where} ORDER BY cnpj, razao_social, id
@@ -48,7 +66,7 @@ router.post('/', apenasAdmin, upload.single('foto'), async (req, res) => {
   try {
     const { razao_social, fantasia, cnpj } = req.body;
     if (!razao_social) return res.status(400).json({ erro: 'razao_social obrigatória' });
-    const rows = await pool.query(
+    const rows = await dbQuery(
       `INSERT INTO fornecedores (razao_social, fantasia, cnpj, foto_data, foto_mime)
        VALUES ($1,$2,$3,$4,$5) RETURNING id`,
       [razao_social, fantasia || null, cnpj || null,
@@ -65,7 +83,7 @@ router.put('/:id', apenasAdmin, upload.single('foto'), async (req, res) => {
     const params = [razao_social, fantasia || null, cnpj || null, ativo !== 'false', req.params.id];
     if (req.file) params.splice(params.length - 1, 0, req.file.buffer, req.file.mimetype);
     const idPos = req.file ? 7 : 5;
-    await pool.query(
+    await dbQuery(
       `UPDATE fornecedores SET razao_social=$1, fantasia=$2, cnpj=$3, ativo=$4${fotoClause} WHERE id=$${idPos}`,
       params
     );
@@ -75,7 +93,7 @@ router.put('/:id', apenasAdmin, upload.single('foto'), async (req, res) => {
 
 router.get('/:id/foto', async (req, res) => {
   try {
-    const rows = await pool.query('SELECT foto_data, foto_mime FROM fornecedores WHERE id=$1', [req.params.id]);
+    const rows = await dbQuery('SELECT foto_data, foto_mime FROM fornecedores WHERE id=$1', [req.params.id]);
     if (!rows.length || !rows[0].foto_data) return res.status(404).end();
     res.setHeader('Content-Type', rows[0].foto_mime || 'image/jpeg');
     res.setHeader('Cache-Control', 'public, max-age=86400');
@@ -85,13 +103,48 @@ router.get('/:id/foto', async (req, res) => {
 
 // ── VENDEDORES ────────────────────────────────────────────────────
 
+// Lista TODOS os vendedores (todos os estados) com info do fornecedor
+router.get('/vendedores/todos', compradorOuAdmin, async (req, res) => {
+  try {
+    const rows = await dbQuery(
+      `SELECT v.id, v.nome, v.email, v.telefone, v.cpf, v.nome_gerente, v.telefone_gerente,
+              v.status, v.acesso_expira_em, v.criado_em,
+              COALESCE(v.fornecedor_id, f2.id) AS fornecedor_id,
+              COALESCE(f.fantasia, f2.fantasia) AS fantasia,
+              COALESCE(f.razao_social, f2.razao_social, '(fornecedor não encontrado)') AS razao_social,
+              COALESCE(f.cnpj, v.fornecedor_cnpj, f2.cnpj) AS cnpj,
+              CASE WHEN v.foto_data IS NOT NULL THEN '/api/fornecedores/vendedor-foto/' || v.id::text ELSE NULL END as foto_url
+       FROM vendedores v
+       LEFT JOIN fornecedores f ON f.id = v.fornecedor_id
+       LEFT JOIN LATERAL (
+         SELECT id, fantasia, razao_social, cnpj FROM fornecedores
+         WHERE v.fornecedor_id IS NULL AND v.fornecedor_cnpj IS NOT NULL
+           AND REGEXP_REPLACE(cnpj,'\\D','','g') = REGEXP_REPLACE(v.fornecedor_cnpj,'\\D','','g')
+         LIMIT 1
+       ) f2 ON TRUE
+       ORDER BY v.criado_em DESC`
+    );
+    res.json(rows);
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
 router.get('/vendedores/pendentes', compradorOuAdmin, async (req, res) => {
   try {
-    const rows = await pool.query(
+    // LEFT JOIN + fallback por CNPJ — vendedores sobrevivem a deleções de fornecedor
+    const rows = await dbQuery(
       `SELECT v.id, v.nome, v.email, v.telefone, v.status, v.criado_em,
-              f.id as fornecedor_id, f.fantasia, f.razao_social,
+              COALESCE(v.fornecedor_id, f2.id) AS fornecedor_id,
+              COALESCE(f.fantasia, f2.fantasia) AS fantasia,
+              COALESCE(f.razao_social, f2.razao_social, '(fornecedor não encontrado)') AS razao_social,
               CASE WHEN v.foto_data IS NOT NULL THEN '/api/fornecedores/vendedor-foto/' || v.id::text ELSE NULL END as foto_url
-       FROM vendedores v JOIN fornecedores f ON f.id = v.fornecedor_id
+       FROM vendedores v
+       LEFT JOIN fornecedores f ON f.id = v.fornecedor_id
+       LEFT JOIN LATERAL (
+         SELECT id, fantasia, razao_social FROM fornecedores
+         WHERE v.fornecedor_id IS NULL AND v.fornecedor_cnpj IS NOT NULL
+           AND REGEXP_REPLACE(cnpj,'\\D','','g') = REGEXP_REPLACE(v.fornecedor_cnpj,'\\D','','g')
+         LIMIT 1
+       ) f2 ON TRUE
        WHERE v.status = 'pendente'
        ORDER BY v.criado_em ASC`
     );
@@ -101,11 +154,17 @@ router.get('/vendedores/pendentes', compradorOuAdmin, async (req, res) => {
 
 router.get('/:id/vendedores', compradorOuAdmin, async (req, res) => {
   try {
-    const rows = await pool.query(
-      `SELECT id, nome, cpf, email, telefone, nome_gerente, telefone_gerente,
-              status, acesso_expira_em, criado_em,
-              CASE WHEN foto_data IS NOT NULL THEN '/api/fornecedores/vendedor-foto/' || id::text ELSE NULL END as foto_url
-       FROM vendedores WHERE fornecedor_id=$1 ORDER BY nome`,
+    // Busca vendedores por id direto OU por CNPJ (caso fornecedor_id esteja NULL após deleção)
+    const rows = await dbQuery(
+      `SELECT v.id, v.nome, v.cpf, v.email, v.telefone, v.nome_gerente, v.telefone_gerente,
+              v.status, v.acesso_expira_em, v.criado_em,
+              CASE WHEN v.foto_data IS NOT NULL THEN '/api/fornecedores/vendedor-foto/' || v.id::text ELSE NULL END as foto_url
+       FROM vendedores v
+       JOIN fornecedores f ON f.id = $1
+       WHERE v.fornecedor_id = $1
+          OR REGEXP_REPLACE(COALESCE(v.fornecedor_cnpj, ''),'\\D','','g')
+             = REGEXP_REPLACE(COALESCE(f.cnpj, ''),'\\D','','g')
+       ORDER BY v.nome`,
       [req.params.id]
     );
     res.json(rows);
@@ -114,7 +173,7 @@ router.get('/:id/vendedores', compradorOuAdmin, async (req, res) => {
 
 router.get('/vendedor-foto/:id', async (req, res) => {
   try {
-    const rows = await pool.query('SELECT foto_data, foto_mime FROM vendedores WHERE id=$1', [req.params.id]);
+    const rows = await dbQuery('SELECT foto_data, foto_mime FROM vendedores WHERE id=$1', [req.params.id]);
     if (!rows.length || !rows[0].foto_data) return res.status(404).end();
     res.setHeader('Content-Type', rows[0].foto_mime || 'image/jpeg');
     res.setHeader('Cache-Control', 'public, max-age=86400');
@@ -125,10 +184,10 @@ router.get('/vendedor-foto/:id', async (req, res) => {
 // Gerar token de cadastro para vendedor
 router.post('/:id/gerar-token', compradorOuAdmin, async (req, res) => {
   try {
-    const rows = await pool.query('SELECT id FROM fornecedores WHERE id=$1', [req.params.id]);
+    const rows = await dbQuery('SELECT id FROM fornecedores WHERE id=$1', [req.params.id]);
     if (!rows.length) return res.status(404).json({ erro: 'Fornecedor não encontrado' });
     const token = crypto.randomBytes(32).toString('hex');
-    await pool.query(
+    await dbQuery(
       `INSERT INTO vendedores (fornecedor_id, nome, status, token_cadastro)
        VALUES ($1, 'Aguardando cadastro', 'aguardando_cadastro', $2)`,
       [req.params.id, token]
@@ -141,27 +200,27 @@ router.post('/:id/gerar-token', compradorOuAdmin, async (req, res) => {
 // Aprovar vendedor
 router.post('/vendedores/:vid/aprovar', compradorOuAdmin, async (req, res) => {
   try {
-    const rows = await pool.query('SELECT * FROM vendedores WHERE id=$1', [req.params.vid]);
+    const rows = await dbQuery('SELECT * FROM vendedores WHERE id=$1', [req.params.vid]);
     if (!rows.length) return res.status(404).json({ erro: 'Vendedor não encontrado' });
     const v = rows[0];
 
-    const cfgRows = await pool.query("SELECT valor FROM configuracoes WHERE chave='validade_acesso_vendedor_dias'");
+    const cfgRows = await dbQuery("SELECT valor FROM configuracoes WHERE chave='validade_acesso_vendedor_dias'");
     const dias = parseInt(cfgRows[0]?.valor || '90');
 
     const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
     const senha = Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
     const hash = await bcrypt.hash(senha, 10);
 
-    await pool.query(
+    await dbQuery(
       `UPDATE vendedores SET status='aprovado', senha_hash=$1,
        acesso_expira_em=NOW() + ($2 || ' days')::interval WHERE id=$3`,
       [hash, dias, v.id]
     );
 
     if (v.email) {
-      const forn = await pool.query('SELECT fantasia, razao_social FROM fornecedores WHERE id=$1', [v.fornecedor_id]);
+      const forn = await dbQuery('SELECT fantasia, razao_social FROM fornecedores WHERE id=$1', [v.fornecedor_id]);
       const empresa = forn[0]?.fantasia || forn[0]?.razao_social || '';
-      await enviarEmail(v.email, 'Acesso liberado — JR Lira Pedidos', templateAcesso({ nome: v.nome, email: v.email, senha, empresa }));
+      await enviarEmail(v.email, 'Acesso liberado — JR Lira Pedidos', templateAcesso({ nome: v.nome, email: v.email, senha, empresa }), anexosVendedor());
     }
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ erro: e.message }); }
@@ -170,7 +229,7 @@ router.post('/vendedores/:vid/aprovar', compradorOuAdmin, async (req, res) => {
 // Rejeitar vendedor
 router.post('/vendedores/:vid/rejeitar', compradorOuAdmin, async (req, res) => {
   try {
-    await pool.query(`UPDATE vendedores SET status='rejeitado' WHERE id=$1`, [req.params.vid]);
+    await dbQuery(`UPDATE vendedores SET status='rejeitado' WHERE id=$1`, [req.params.vid]);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
@@ -178,27 +237,27 @@ router.post('/vendedores/:vid/rejeitar', compradorOuAdmin, async (req, res) => {
 // Revalidar acesso do vendedor
 router.post('/vendedores/:vid/revalidar', compradorOuAdmin, async (req, res) => {
   try {
-    const rows = await pool.query('SELECT * FROM vendedores WHERE id=$1', [req.params.vid]);
+    const rows = await dbQuery('SELECT * FROM vendedores WHERE id=$1', [req.params.vid]);
     if (!rows.length) return res.status(404).json({ erro: 'Vendedor não encontrado' });
     const v = rows[0];
 
-    const cfgRows = await pool.query("SELECT valor FROM configuracoes WHERE chave='validade_acesso_vendedor_dias'");
+    const cfgRows = await dbQuery("SELECT valor FROM configuracoes WHERE chave='validade_acesso_vendedor_dias'");
     const dias = parseInt(cfgRows[0]?.valor || '90');
 
     const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
     const senha = Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
     const hash = await bcrypt.hash(senha, 10);
 
-    await pool.query(
+    await dbQuery(
       `UPDATE vendedores SET status='aprovado', senha_hash=$1,
        acesso_expira_em=NOW() + ($2 || ' days')::interval WHERE id=$3`,
       [hash, dias, v.id]
     );
 
     if (v.email) {
-      const forn = await pool.query('SELECT fantasia, razao_social FROM fornecedores WHERE id=$1', [v.fornecedor_id]);
+      const forn = await dbQuery('SELECT fantasia, razao_social FROM fornecedores WHERE id=$1', [v.fornecedor_id]);
       const empresa = forn[0]?.fantasia || forn[0]?.razao_social || '';
-      await enviarEmail(v.email, 'Nova senha — JR Lira Pedidos', templateAcesso({ nome: v.nome, email: v.email, senha, empresa }));
+      await enviarEmail(v.email, 'Nova senha — JR Lira Pedidos', templateAcesso({ nome: v.nome, email: v.email, senha, empresa }), anexosVendedor());
     }
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ erro: e.message }); }
@@ -209,7 +268,7 @@ router.patch('/vendedores/:vid/ativo', compradorOuAdmin, async (req, res) => {
   try {
     const { ativo } = req.body;
     const status = ativo ? 'aprovado' : 'inativo';
-    await pool.query(`UPDATE vendedores SET status=$1 WHERE id=$2`, [status, req.params.vid]);
+    await dbQuery(`UPDATE vendedores SET status=$1 WHERE id=$2`, [status, req.params.vid]);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });

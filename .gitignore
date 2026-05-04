@@ -2,3 +2,7 @@ node_modules/
 .env
 uploads/fotos/*
 !uploads/fotos/.gitkeep
+ultrasyst-relay/.env
+ultrasyst-relay/node_modules/
+ultrasyst-relay/logs/
+.claude/

@@ -82,6 +82,16 @@ tr:hover td { background: #1a2638; }
     <div id="resultadoImport" style="display:none;"></div>
   </div>
 
+  <!-- PERÍODOS DE PONTO -->
+  <div class="section">
+    <h2>Períodos do ponto (fechamento mensal)</h2>
+    <p style="color:#64748b;font-size:12px;margin-bottom:12px">Período: dia 26 do mês atual até dia 25 do mês seguinte. Quando fechado, novos uploads são bloqueados.</p>
+    <table>
+      <thead><tr><th>Início</th><th>Fim</th><th>Status</th><th>Fechado por</th><th>Em</th><th>Ações</th></tr></thead>
+      <tbody id="tbodyPeriodos"><tr><td colspan="6" style="text-align:center;color:#64748b;padding:16px">Carregando...</td></tr></tbody>
+    </table>
+  </div>
+
   <!-- HISTÓRICO -->
   <div class="section">
     <h2>Importações anteriores</h2>
@@ -282,7 +292,53 @@ async function verRegistros(matricula, importacao_id, nome) {
 
 function fecharDetalhe() { document.getElementById('overlayDetalhe').style.display = 'none'; }
 
+const isAdmin = localStorage.getItem('jrlira_perfil') === 'admin';
+
+async function carregarPeriodos() {
+  try {
+    const r = await apiFetch('/api/ponto/periodos');
+    if (!r.ok) return;
+    const lista = await r.json();
+    document.getElementById('tbodyPeriodos').innerHTML = lista.length
+      ? lista.map(p => {
+          const di = p.data_inicio?.substring(0,10).split('-').reverse().join('/');
+          const df = p.data_fim?.substring(0,10).split('-').reverse().join('/');
+          const fechadoEm = p.fechado_em ? new Date(p.fechado_em).toLocaleString('pt-BR') : '—';
+          const acao = p.fechado
+            ? (isAdmin ? `<button class="btn btn-sm btn-ghost" onclick="reabrirPeriodo(${p.id}, this)">↻ Reabrir</button>` : '<span style="color:#64748b;font-size:11px">só admin</span>')
+            : `<button class="btn btn-sm btn-primary" onclick="fecharPeriodo(${p.id}, this)">🔒 Fechar</button>`;
+          return `<tr>
+            <td>${di}</td><td>${df}</td>
+            <td><span class="badge ${p.fechado ? 'b-fechado' : 'b-aberto'}" style="padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;background:${p.fechado ? '#450a0a' : '#14532d'};color:${p.fechado ? '#f87171' : '#4ade80'}">${p.fechado ? 'FECHADO' : 'ABERTO'}</span></td>
+            <td style="font-size:12px">${p.fechado_por || '—'}</td>
+            <td style="font-size:11px;color:#94a3b8">${fechadoEm}</td>
+            <td>${acao}</td>
+          </tr>`;
+        }).join('')
+      : '<tr><td colspan="6" style="text-align:center;color:#64748b;padding:16px">Nenhum período cadastrado. Períodos são criados automaticamente ao subir um ponto.</td></tr>';
+  } catch {}
+}
+
+async function fecharPeriodo(id, btn) {
+  if (!confirm('Fechar este período? Após fechar, novos uploads do ponto neste período serão bloqueados.')) return;
+  await withLoading(btn, async () => {
+    const r = await apiFetch(`/api/ponto/periodos/${id}/fechar`, { method: 'POST' });
+    if (r.ok) carregarPeriodos();
+    else { const d = await r.json(); alert(d.erro); }
+  }, 'Fechando...');
+}
+
+async function reabrirPeriodo(id, btn) {
+  if (!confirm('Reabrir este período?')) return;
+  await withLoading(btn, async () => {
+    const r = await apiFetch(`/api/ponto/periodos/${id}/reabrir`, { method: 'POST' });
+    if (r.ok) carregarPeriodos();
+    else { const d = await r.json(); alert(d.erro); }
+  }, 'Reabrindo...');
+}
+
 carregarImportacoes();
+carregarPeriodos();
 </script>
 </body>
 </html>

@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Notas Transferências — Cadastro</title>
+<link rel="stylesheet" href="/shared.css">
+<script src="/shared.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+a{color:inherit;text-decoration:none}
+nav{background:#1e293b;padding:14px 24px;display:flex;align-items:center;gap:16px;border-bottom:1px solid #334155}
+nav .brand{font-size:16px;font-weight:700;color:#38bdf8}
+nav .sep{color:#475569}
+nav .page{font-size:14px;color:#94a3b8}
+nav .user{margin-left:auto;font-size:13px;color:#64748b}
+nav .btn-nav{background:#0ea5e9;color:#fff;border:none;padding:7px 14px;border-radius:6px;font-size:13px;cursor:pointer}
+nav .btn-nav:hover{background:#0284c7}
+.layout{display:grid;grid-template-columns:320px 1fr;height:calc(100vh - 53px)}
+.btn-voltar-lista{display:none;position:fixed;top:62px;left:8px;z-index:100;background:#0ea5e9;color:#fff;border:none;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.4)}
+@media (max-width:768px){
+  .layout{grid-template-columns:1fr;height:auto}
+  .sidebar{display:block;border-right:none;height:auto}
+  .main{display:none;padding:12px!important}
+  body.nota-aberta .sidebar{display:none}
+  body.nota-aberta .main{display:block}
+  body.nota-aberta .btn-voltar-lista{display:block}
+  table{font-size:11px!important;min-width:0!important}
+  thead th,tbody td{padding:4px 6px!important}
+  .nota-card{padding:14px}
+  nav{padding:10px 14px;gap:8px}
+  nav .brand{font-size:14px}
+  nav .page{font-size:13px}
+  nav .user{display:none}
+}
+.sidebar{background:#1e293b;border-right:1px solid #334155;overflow-y:auto;padding:16px}
+.sidebar h3{font-size:13px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px}
+.filtros{display:flex;flex-direction:column;gap:8px;margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid #334155}
+.filtros select,.filtros input{padding:7px 10px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:12px;width:100%}
+.filtros label{font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px}
+.nota-card{background:#0f172a;border:1px solid #334155;border-radius:8px;padding:12px;margin-bottom:8px;cursor:pointer;transition:.15s}
+.nota-card:hover{border-color:#38bdf8}
+.nota-card.ativo{border-color:#38bdf8;background:#0c2340}
+.nota-card .nc-num{font-size:13px;font-weight:700;color:#e2e8f0}
+.nota-card .nc-forn{font-size:12px;color:#94a3b8;margin:2px 0}
+.nota-card .nc-info{font-size:11px;color:#64748b}
+.nota-card .nc-tags{display:flex;gap:4px;margin-top:6px;flex-wrap:wrap}
+.main{padding:24px;overflow-y:auto}
+.empty-area{padding:48px;text-align:center;color:#475569;font-size:14px}
+.nota-header{background:#1e293b;border-radius:10px;padding:20px;margin-bottom:20px}
+.nota-header h2{font-size:16px;color:#38bdf8;margin-bottom:12px}
+.nh-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.nh-field label{font-size:11px;color:#64748b;display:block;margin-bottom:2px}
+.nh-field span{font-size:14px;color:#e2e8f0}
+.nh-actions{margin-top:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead th{background:#1e293b;padding:10px 12px;text-align:left;color:#94a3b8;font-weight:600;border-bottom:1px solid #334155;white-space:nowrap}
+tbody tr{border-bottom:1px solid #1e293b}
+tbody tr:hover{background:#1a2744}
+td{padding:9px 12px;vertical-align:middle}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700}
+.b-cd{background:#0c4a6e;color:#7dd3fc}
+.b-loja{background:#3b0a4a;color:#e9d5ff}
+.b-em_transito{background:#451a03;color:#fbbf24}
+.b-recebida{background:#0c2340;color:#7dd3fc}
+.b-em_conferencia{background:#1a4731;color:#34d399}
+.b-auditagem{background:#431407;color:#f97316}
+.b-conferida{background:#14532d;color:#4ade80}
+.b-validada{background:#1e293b;color:#94a3b8}
+.b-fechada{background:#1e293b;color:#64748b}
+button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 16px;font-weight:600}
+.btn-primary{background:#0ea5e9;color:#fff}
+.btn-primary:hover{background:#0284c7}
+.btn-success{background:#16a34a;color:#fff}
+.btn-success:hover{background:#15803d}
+.btn-outline{background:transparent;border:1px solid #334155;color:#94a3b8}
+.btn-outline:hover{border-color:#94a3b8;color:#e2e8f0}
+.msg{padding:12px 16px;border-radius:8px;margin-bottom:16px;font-size:14px}
+.msg-ok{background:#14532d;color:#4ade80}
+.msg-err{background:#450a0a;color:#f87171}
+.empty{text-align:center;color:#475569;padding:48px;font-size:14px}
+</style>
+</head>
+<body>
+<nav>
+  <span class="brand">JR Lira Tech</span>
+  <span class="sep">/</span>
+  <span class="page">Notas Transferências — Cadastro</span>
+  <span class="user" id="nomeUsuario"></span>
+  <button class="btn-nav" onclick="location.href='/'">← Início</button>
+</nav>
+
+<div class="layout">
+  <div class="sidebar">
+    <div class="filtros">
+      <div>
+        <label>Origem</label>
+        <select id="fOrigem" onchange="carregarNotas()">
+          <option value="cd">CD (Distribuidora)</option>
+          <option value="transferencia_loja">Entre Lojas</option>
+          <option value="cd,transferencia_loja">Todas transferências</option>
+        </select>
+      </div>
+      <div>
+        <label>Status</label>
+        <select id="fStatus" onchange="carregarNotas()">
+          <option value="pendentes" selected>Pendentes (sem validadas)</option>
+          <option value="em_transito">Em trânsito</option>
+          <option value="recebida">Recebida</option>
+          <option value="em_conferencia">Em conferência</option>
+          <option value="auditagem">Auditagem</option>
+          <option value="conferida">Conferida</option>
+          <option value="aguardando_admin_validade">Aguard. admin (validade)</option>
+          <option value="aguardando_devolucao">Aguard. devolução</option>
+          <option value="validada">Validada</option>
+          <option value="todas-incl-validadas">Todas (incl. validadas)</option>
+        </select>
+      </div>
+      <div>
+        <label>Loja</label>
+        <select id="fLoja" onchange="carregarNotas()">
+          <option value="">Todas</option>
+          <option value="1">Loja 1 — ECONOMICO</option>
+          <option value="2">Loja 2 — BR</option>
+          <option value="3">Loja 3 — JOAO PESSOA</option>
+          <option value="4">Loja 4 — FLORESTA</option>
+          <option value="5">Loja 5 — SAO JOSE</option>
+          <option value="6">Loja 6 — SANTAREM</option>
+        </select>
+      </div>
+    </div>
+    <h3>Notas <span id="totalNotas" style="color:#475569;font-weight:400"></span></h3>
+    <div id="listaNota"><p class="empty">Carregando...</p></div>
+  </div>
+
+  <button class="btn-voltar-lista" onclick="voltarLista()">← Lista</button>
+
+  <div class="main">
+    <div id="msg" style="display:none"></div>
+
+    <div id="emptyArea" class="empty-area">
+      Selecione uma transferência da lista para visualizar.
+    </div>
+
+    <div id="notaDetalhe" style="display:none">
+      <div class="nota-header">
+        <h2 id="nhTitulo">Transferência</h2>
+        <div class="nh-grid">
+          <div class="nh-field"><label>Origem</label><span id="nhOrigem"></span></div>
+          <div class="nh-field"><label>Identificador</label><span id="nhId"></span></div>
+          <div class="nh-field"><label>Loja Destino</label><span id="nhLoja"></span></div>
+          <div class="nh-field"><label>Data Emissão</label><span id="nhData"></span></div>
+          <div class="nh-field"><label>Data Recebimento</label><span id="nhRecebida"></span></div>
+          <div class="nh-field"><label>Valor Total</label><span id="nhValor"></span></div>
+          <div class="nh-field"><label>Status</label><span id="nhStatus"></span></div>
+          <div class="nh-field"><label>Sincronizado em</label><span id="nhSync"></span></div>
+        </div>
+        <div class="nh-actions" id="acoes"></div>
+      </div>
+
+      <div style="overflow-x:auto;max-height:calc(100vh - 320px);overflow-y:auto">
+      <table style="min-width:1300px">
+        <thead style="position:sticky;top:0;z-index:5">
+          <tr>
+            <th style="background:#1e293b;text-align:left">#</th>
+            <th style="background:#1e293b;text-align:left">Descrição</th>
+            <th style="background:#1e293b;text-align:center">Cod_Barra CD</th>
+            <th style="background:#1e293b;text-align:center">Cod_Barra Loja</th>
+            <th style="background:#1e293b;text-align:center">Qtd CD</th>
+            <th style="background:#1e293b;text-align:center">Qtd Loja</th>
+            <th style="background:#1e293b;text-align:center">Ult_Preco (un)</th>
+            <th style="background:#1e293b;text-align:center">P.Unit Atual (un)</th>
+            <th style="background:#1e293b;text-align:center">Ação</th>
+          </tr>
+        </thead>
+        <tbody id="tbodyItens"></tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '';
+const token = () => localStorage.getItem('jrlira_token');
+(function(){ const p = localStorage.getItem('jrlira_perfil'); if (!token() || (p !== 'admin' && p !== 'cadastro')) location.href = '/'; })();
+document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
+
+let notaAtualId = null;
+
+async function fetchApi(url, method = 'GET', body = null) {
+  const opts = { method };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await apiFetch(API + url, opts);
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.erro || 'Erro desconhecido');
+  return data;
+}
+
+function fmtMoeda(v) { return 'R$ ' + parseFloat(v || 0).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.'); }
+function fmtData(d) { if (!d) return '—'; return d.substring(0, 10).split('-').reverse().join('/'); }
+function showMsg(txt, tipo = 'ok') {
+  const el = document.getElementById('msg');
+  el.className = `msg msg-${tipo}`;
+  el.textContent = txt;
+  el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', 5000);
+}
+
+function labelStatus(s) {
+  return {
+    em_transito: 'Em Trânsito',
+    recebida: 'Recebida',
+    em_conferencia: 'Em Conferência',
+    auditagem: 'Auditagem',
+    conferida: 'Conferida',
+    validada: 'Validada',
+    fechada: 'Fechada (legacy)',
+  }[s] || s;
+}
+
+async function carregarNotas() {
+  try {
+    const origem = document.getElementById('fOrigem').value;
+    const status = document.getElementById('fStatus').value;
+    const loja = document.getElementById('fLoja').value;
+    const params = new URLSearchParams();
+    if (origem) params.set('origem', origem);
+    // 'pendentes' e 'todas-incl-validadas' = filtros fake — não vão como status
+    if (status && status !== 'pendentes' && status !== 'todas-incl-validadas') params.set('status', status);
+    if (status === 'todas-incl-validadas') params.set('incluir_validadas_cd', '1');
+    const notas = await fetchApi('/api/notas?' + params.toString());
+    let filtradas = loja ? notas.filter(n => String(n.loja_id) === loja) : notas;
+    if (status === 'pendentes') filtradas = filtradas.filter(n => n.status !== 'validada' && n.status !== 'fechada');
+    document.getElementById('totalNotas').textContent = `(${filtradas.length})`;
+    const el = document.getElementById('listaNota');
+    if (!filtradas.length) { el.innerHTML = '<p class="empty" style="padding:24px 0">Nenhuma transferência</p>'; return; }
+    el.innerHTML = filtradas.map(n => {
+      const titulo = n.origem === 'cd'
+        ? `📦 CD ${n.cd_mov_codi || n.numero_nota}`
+        : `🏪 ${n.numero_nota}`;
+      const origBadge = n.origem === 'cd' ? '<span class="badge b-cd">CD</span>' : '<span class="badge b-loja">Loja</span>';
+      return `
+      <div class="nota-card" id="card-${n.id}" onclick="abrirNota(${n.id})">
+        <div class="nc-num">${titulo}</div>
+        <div class="nc-forn">${LOJAS_FULL[n.loja_id] || ('Loja ' + n.loja_id)}</div>
+        <div class="nc-info">${fmtData(n.data_emissao)} · ${fmtMoeda(n.valor_total)}</div>
+        <div class="nc-tags">
+          ${origBadge}
+          <span class="badge b-${n.status}">${labelStatus(n.status)}</span>
+        </div>
+      </div>`;
+    }).join('');
+  } catch (e) { showMsg(e.message, 'err'); }
+}
+
+async function abrirNota(id) {
+  notaAtualId = id;
+  document.querySelectorAll('.nota-card').forEach(c => c.classList.remove('ativo'));
+  const card = document.getElementById(`card-${id}`);
+  if (card) card.classList.add('ativo');
+  document.getElementById('emptyArea').style.display = 'none';
+  document.getElementById('notaDetalhe').style.display = 'block';
+  document.body.classList.add('nota-aberta');
+
+  try {
+    const { nota, itens } = await fetchApi(`/api/notas/${id}`);
+    const isCd = nota.origem === 'cd';
+    document.getElementById('nhTitulo').textContent = isCd
+      ? `Transferência CD — MCP ${nota.cd_mov_codi}`
+      : `Transferência entre lojas — ${nota.numero_nota}`;
+    document.getElementById('nhOrigem').textContent = isCd ? 'CD (Distribuidora)' : 'Entre Lojas';
+    document.getElementById('nhId').textContent = nota.cd_mov_codi || nota.numero_nota || '—';
+    document.getElementById('nhLoja').textContent = nota.loja_id ? (LOJAS_FULL[nota.loja_id] || nota.loja_id) : '—';
+    document.getElementById('nhData').textContent = fmtData(nota.data_emissao);
+    document.getElementById('nhRecebida').textContent = fmtData(nota.data_recebimento);
+    document.getElementById('nhValor').textContent = fmtMoeda(nota.valor_total);
+    document.getElementById('nhStatus').innerHTML = `<span class="badge b-${nota.status}">${labelStatus(nota.status)}</span>`;
+    document.getElementById('nhSync').textContent = nota.cd_synced_em ? new Date(nota.cd_synced_em).toLocaleString('pt-BR') : '—';
+
+    // Ações por status do cadastro
+    const acoes = document.getElementById('acoes');
+    let html = '';
+    if (nota.status === 'recebida') {
+      html += `<button class="btn-primary" onclick="liberarEstoque()">▶ Liberar para Estoque</button>`;
+    }
+    if (nota.status === 'conferida') {
+      html += `<button class="btn-success" onclick="validar()">✓ Validar Nota</button>`;
+    }
+    if (nota.status === 'auditagem') {
+      html += `<button class="btn-success" onclick="validar()" style="background:#f97316">⚠ Validar com Divergências</button>`;
+      html += `<span style="font-size:12px;color:#fbbf24;margin-left:8px">Estoque finalizou com divergência — admin gerou relatório pro CD</span>`;
+    }
+    if (nota.status === 'em_transito') {
+      html += `<span style="font-size:12px;color:#64748b">Aguardando estoque marcar recebida fisicamente</span>`;
+    }
+    if (nota.status === 'em_conferencia') {
+      html += `<span style="font-size:12px;color:#64748b">Estoque está conferindo</span>`;
+    }
+    if (nota.status === 'validada') {
+      const por = nota.validada_por ? ` por ${nota.validada_por}` : '';
+      const dt = nota.validada_em ? ` em ${new Date(nota.validada_em).toLocaleString('pt-BR')}` : '';
+      html += `<span style="font-size:12px;color:#4ade80">✓ Validada${por}${dt}</span>`;
+    }
+    // Botão imprimir histórico — disponível em qualquer status
+    html += `<button onclick="window.open('/nota-historico?id=${notaAtualId}','_blank')" style="background:#7c3aed;color:#fff;border:none;padding:8px 12px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:700;margin-left:auto">🖨 Imprimir Histórico</button>`;
+    acoes.innerHTML = html;
+
+    renderItensCompleto(itens, nota.status);
+  } catch (e) { showMsg(e.message, 'err'); }
+}
+
+function renderLotes(lotes) {
+  if (!lotes || !lotes.length) return '<span style="color:#64748b;font-size:11px">— sem lotes —</span>';
+  return lotes.map(l => {
+    const cx = parseFloat(l.qtd_caixas) || 0;
+    const un = parseFloat(l.qtd_unidades) || 0;
+    const tot = parseFloat(l.qtd_total) || 0;
+    const val = l.validade ? fmtData(l.validade) : '—';
+    return `<div style="font-size:11px;display:flex;gap:8px;justify-content:center;background:#0f172a;padding:3px 6px;border-radius:4px;margin-bottom:2px">
+      <span><strong>${cx}</strong> cx</span>
+      <span>·</span>
+      <span><strong>${un}</strong> un</span>
+      <span>·</span>
+      <span style="color:#94a3b8">val ${val}</span>
+      <span>·</span>
+      <span style="color:#4ade80">tot ${tot}</span>
+    </div>`;
+  }).join('');
+}
+function renderItensCompleto(itens, statusNota) {
+  const podeCadastrarEan = ['conferida', 'auditagem', 'em_conferencia', 'recebida'].includes(statusNota);
+  const tbody = document.getElementById('tbodyItens');
+  tbody.innerHTML = itens.map(i => {
+    const semCod = !!i.sem_codigo_barras;
+    const eanCd = i.ean_nota || '';
+    const eanLoja = i.cod_barra_loja || '';
+    const qtdCd = parseFloat(i.quantidade) || 0;
+    const emb = parseFloat(i.qtd_embalagem_loja) || 1;
+    const qtdLoja = qtdCd * emb;
+    const precoNota = parseFloat(i.preco_unitario_nota) || 0;
+    const precoUnitLoja = emb > 0 ? precoNota / emb : precoNota;
+    // Ult_Preco = último preço CD em unidade (divide pela embalagem atual)
+    const precoUltCx = i.preco_unitario_ultima_entrada_cd != null ? parseFloat(i.preco_unitario_ultima_entrada_cd) : null;
+    const precoUlt = precoUltCx != null ? (emb > 0 ? precoUltCx / emb : precoUltCx) : null;
+
+    const norm = s => (s || '').replace(/\D/g, '').replace(/^0+/, '');
+    let eanDiff = '';
+    if (eanCd && eanLoja && norm(eanCd) !== norm(eanLoja)) {
+      eanDiff = '<div style="font-size:10px;color:#f97316">⚠ CD ≠ Loja</div>';
+    } else if (!eanLoja && eanCd) {
+      eanDiff = '<div style="font-size:10px;color:#64748b">— sem mapeamento JR Lira —</div>';
+    }
+
+    let precoCelStyle = '';
+    let precoIcone = '';
+    if (precoUlt != null && Math.abs(precoUlt - precoUnitLoja) > 0.005) {
+      const subiu = precoUnitLoja > precoUlt;
+      const cor = subiu ? '#f87171' : '#4ade80';
+      const bg  = subiu ? '#450a0a' : '#14532d';
+      const variacao = ((precoUnitLoja - precoUlt) / precoUlt * 100);
+      precoCelStyle = `background:${bg};border-left:3px solid ${cor}`;
+      precoIcone = ` <span style="color:${cor};font-size:11px">${subiu?'↑':'↓'} ${variacao.toFixed(1)}%</span>`;
+    }
+
+    const eanCdCol = eanCd
+      ? `<span style="font-family:monospace;font-size:11px">${eanCd}</span>`
+      : '<span style="color:#fbbf24;font-size:11px;font-weight:700">SEM EAN</span>';
+
+    let acaoCol = '—';
+    if (semCod && podeCadastrarEan) {
+      acaoCol = `<input id="ean-item-${i.id}" placeholder="EAN" style="width:130px;padding:4px;background:#0f172a;border:1px solid #fbbf24;border-radius:4px;color:#e2e8f0;font-size:11px;font-family:monospace">
+                 <button onclick="cadastrarEan(${i.id})" style="background:#0ea5e9;color:#fff;border:none;border-radius:4px;padding:4px 8px;font-size:11px;cursor:pointer;margin-left:4px">Cadastrar</button>`;
+    }
+
+    const linhaBg = semCod ? 'background:#451a0344' : '';
+    return `<tr style="border-bottom:1px solid #1e293b;${linhaBg}">
+      <td style="padding:6px 8px">${i.numero_item}</td>
+      <td style="padding:6px 8px;max-width:240px">
+        <div style="font-size:12px">${i.descricao_nota || ''}</div>
+        ${semCod ? '<div style="font-size:10px;color:#fbbf24;font-weight:700">📋 SEM CÓDIGO no CD — cadastrar no ato</div>' : ''}
+        ${i.descricao_cadastro_cd && i.descricao_cadastro_cd !== i.descricao_nota ? `<div style="font-size:10px;color:#64748b">${i.descricao_cadastro_cd}</div>` : ''}
+      </td>
+      <td style="padding:6px 8px;text-align:center">${eanCdCol}</td>
+      <td style="padding:6px 8px;font-family:monospace;font-size:11px;text-align:center">
+        ${eanLoja || '<span style="color:#64748b">—</span>'}
+        ${eanDiff}
+      </td>
+      <td style="padding:6px 8px;text-align:center">${qtdCd % 1 === 0 ? qtdCd.toFixed(0) : qtdCd.toFixed(3)} <span style="color:#64748b;font-size:10px">×${emb}</span></td>
+      <td style="padding:6px 8px;text-align:center;font-weight:700">${qtdLoja % 1 === 0 ? qtdLoja.toFixed(0) : qtdLoja.toFixed(3)}</td>
+      <td style="padding:6px 8px;text-align:center">${precoUlt != null ? fmtMoeda(precoUlt) : '<span style="color:#64748b">—</span>'}</td>
+      <td style="padding:6px 8px;text-align:center;font-weight:700;${precoCelStyle}">${fmtMoeda(precoUnitLoja)}${precoIcone}</td>
+      <td style="padding:6px 8px;text-align:center">${acaoCol}</td>
+    </tr>
+    ${i.lotes_contados && i.lotes_contados.length ? `<tr style="border-bottom:1px solid #1e293b;${linhaBg}">
+      <td colspan="9" style="padding:4px 16px 10px 16px">
+        <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Lotes conferidos pelo estoque</div>
+        ${renderLotes(i.lotes_contados)}
+      </td>
+    </tr>` : ''}`;
+  }).join('');
+}
+
+function voltarLista() {
+  document.getElementById('notaDetalhe').style.display = 'none';
+  document.getElementById('emptyArea').style.display = 'block';
+  notaAtualId = null;
+  document.querySelectorAll('.nota-card').forEach(c => c.classList.remove('ativo'));
+  document.body.classList.remove('nota-aberta');
+}
+
+async function cadastrarEan(itemId) {
+  const input = document.getElementById('ean-item-' + itemId);
+  const ean = (input.value || '').trim();
+  if (!ean) { showMsg('Informe o EAN', 'err'); return; }
+  try {
+    await fetchApi(`/api/notas/${notaAtualId}/itens/${itemId}/cadastrar-ean`, 'PATCH', { ean });
+    showMsg('EAN cadastrado e vinculado ao produto', 'ok');
+    abrirNota(notaAtualId);
+  } catch (e) { showMsg(e.message, 'err'); }
+}
+
+async function liberarEstoque() {
+  if (!confirm('Liberar esta transferência pra conferência do estoque?')) return;
+  try {
+    await fetchApi(`/api/notas/${notaAtualId}/liberar-estoque-transf`, 'PATCH', {});
+    showMsg('Liberada pro estoque', 'ok');
+    await carregarNotas();
+    abrirNota(notaAtualId);
+  } catch (e) { showMsg(e.message, 'err'); }
+}
+
+async function validar() {
+  if (!confirm('Validar a transferência? Esta ação finaliza o fluxo.')) return;
+  try {
+    await fetchApi(`/api/notas/${notaAtualId}/validar-transf`, 'PATCH', {});
+    showMsg('Transferência validada', 'ok');
+    await carregarNotas();
+    abrirNota(notaAtualId);
+  } catch (e) { showMsg(e.message, 'err'); }
+}
+
+carregarNotas();
+</script>
+</body>
+</html>

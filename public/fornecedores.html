@@ -64,6 +64,11 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 1
 .modal-title{font-size:15px;font-weight:700;margin-bottom:16px}
 .config-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
 .config-row label{font-size:12px;color:#64748b;width:180px;flex-shrink:0}
+.aba-vend{background:#0f172a;border:1px solid #334155;color:#94a3b8;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px}
+.aba-vend:hover{background:#1e293b}
+.aba-vend.ativa{background:#0ea5e9;color:#fff;border-color:#0ea5e9}
+.aba-cnt{background:rgba(255,255,255,.15);padding:1px 7px;border-radius:8px;font-size:11px;font-weight:700}
+.aba-vend:not(.ativa) .aba-cnt{background:#334155;color:#94a3b8}
 @media(max-width:700px){.layout{grid-template-columns:1fr}.panel-right{display:none}}
 </style>
 </head>
@@ -92,14 +97,30 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 1
   <!-- PAINEL DIREITO: detalhe -->
   <div class="panel-right">
 
-    <!-- Solicitações pendentes (sempre visível) -->
+    <!-- Vendedores — todos os estados -->
     <div style="margin-bottom:20px">
       <div class="section-title" style="display:flex;align-items:center;gap:8px">
-        Solicitações pendentes
-        <span id="countPendentes" style="background:#1e3a5f;color:#60a5fa;padding:1px 8px;border-radius:10px;font-size:11px">0</span>
+        Vendedores
         <button class="btn-ghost btn-sm" style="margin-left:auto" onclick="copiarLinkCadastro()">📋 Link cadastro</button>
       </div>
-      <div id="listaPendentes"><div style="color:#475569;text-align:center;padding:16px;font-size:13px">Nenhuma solicitação pendente.</div></div>
+      <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
+        <button class="aba-vend ativa" data-aba="pendente" onclick="setAba('pendente')">
+          Pendentes <span class="aba-cnt" id="cntPendente">0</span>
+        </button>
+        <button class="aba-vend" data-aba="aprovado" onclick="setAba('aprovado')">
+          Aprovados <span class="aba-cnt" id="cntAprovado">0</span>
+        </button>
+        <button class="aba-vend" data-aba="expirado" onclick="setAba('expirado')">
+          Expirados <span class="aba-cnt" id="cntExpirado">0</span>
+        </button>
+        <button class="aba-vend" data-aba="rejeitado" onclick="setAba('rejeitado')">
+          Rejeitados <span class="aba-cnt" id="cntRejeitado">0</span>
+        </button>
+        <button class="aba-vend" data-aba="inativo" onclick="setAba('inativo')">
+          Inativos <span class="aba-cnt" id="cntInativo">0</span>
+        </button>
+      </div>
+      <div id="listaVendedoresGlobal"><div style="color:#475569;text-align:center;padding:16px;font-size:13px">Carregando...</div></div>
     </div>
 
     <!-- Detalhe do fornecedor selecionado -->
@@ -220,31 +241,85 @@ async function selecionarForn(id) {
   carregarVendedores(id);
 }
 
-async function carregarPendentes() {
-  const el = document.getElementById('listaPendentes');
-  try {
-    const r = await apiFetch(`${API}/api/fornecedores/vendedores/pendentes`);
-    const lista = await r.json();
-    document.getElementById('countPendentes').textContent = lista.length;
-    if (!lista.length) { el.innerHTML = '<div style="color:#475569;text-align:center;padding:16px;font-size:13px">Nenhuma solicitação pendente.</div>'; return; }
-    el.innerHTML = lista.map(v => `
-      <div class="vend-row" style="border-left:3px solid #3b82f6">
+let vendedoresTodos = [];
+let abaAtual = 'pendente';
+
+function classificar(v) {
+  if (v.status === 'pendente' || v.status === 'aguardando_cadastro') return 'pendente';
+  if (v.status === 'aprovado') {
+    const exp = v.acesso_expira_em && new Date(v.acesso_expira_em) < new Date();
+    return exp ? 'expirado' : 'aprovado';
+  }
+  return v.status; // rejeitado, inativo
+}
+
+function setAba(aba) {
+  abaAtual = aba;
+  document.querySelectorAll('.aba-vend').forEach(b => b.classList.toggle('ativa', b.dataset.aba === aba));
+  renderVendedoresGlobal();
+}
+
+const COR_ABA = {
+  pendente:  '#3b82f6',
+  aprovado:  '#22c55e',
+  expirado:  '#f59e0b',
+  rejeitado: '#ef4444',
+  inativo:   '#64748b',
+};
+
+function renderVendedoresGlobal() {
+  const el = document.getElementById('listaVendedoresGlobal');
+  const lista = vendedoresTodos.filter(v => classificar(v) === abaAtual);
+  if (!lista.length) {
+    el.innerHTML = `<div style="color:#475569;text-align:center;padding:16px;font-size:13px">Nenhum vendedor neste estado.</div>`;
+    return;
+  }
+  const cor = COR_ABA[abaAtual];
+  el.innerHTML = lista.map(v => {
+    const cl = classificar(v);
+    return `
+      <div class="vend-row" style="border-left:3px solid ${cor};margin-bottom:8px">
         <div class="vend-topo">
           ${v.foto_url ? `<img src="${encodeURI(v.foto_url)}" class="vend-foto" onerror="this.style.display='none'">` : '<div class="vend-foto" style="display:flex;align-items:center;justify-content:center;font-size:18px">👤</div>'}
-          <div>
+          <div style="flex:1">
             <div class="vend-nome">${escapeHtml(v.nome)}</div>
-            <div class="vend-info" style="color:#60a5fa;font-size:11px">${escapeHtml(v.fantasia || v.razao_social)}</div>
-            <div class="vend-info">${escapeHtml(v.email || '—')} ${v.telefone ? '| ' + escapeHtml(v.telefone) : ''}</div>
+            <div class="vend-info" style="color:#60a5fa;font-size:11px">${escapeHtml(v.fantasia || v.razao_social)}${v.cnpj ? ' · ' + escapeHtml(v.cnpj) : ''}</div>
+            <div class="vend-info">${escapeHtml(v.email || '—')}${v.telefone ? ' | ' + escapeHtml(v.telefone) : ''}</div>
+            ${v.acesso_expira_em ? `<div class="expira ${cl==='expirado'?'expirado-txt':''}">Acesso ${cl==='expirado'?'expirou':'expira'} em ${new Date(v.acesso_expira_em).toLocaleDateString('pt-BR')}</div>` : ''}
           </div>
-          <div style="margin-left:auto;font-size:11px;color:#64748b">${new Date(v.criado_em).toLocaleDateString('pt-BR')}</div>
+          <div style="font-size:11px;color:#64748b">${new Date(v.criado_em).toLocaleDateString('pt-BR')}</div>
         </div>
         <div class="vend-acoes">
-          <button class="btn-ok btn-sm" onclick="aprovarVendedor(${v.id}, this)">✓ Aprovar</button>
-          <button class="btn-danger btn-sm" onclick="rejeitarVendedor(${v.id}, this)">✕ Rejeitar</button>
+          ${cl === 'pendente' ? `<button class="btn-ok btn-sm" onclick="aprovarVendedor(${v.id}, this)">✓ Aprovar</button><button class="btn-danger btn-sm" onclick="rejeitarVendedor(${v.id}, this)">✕ Rejeitar</button>` : ''}
+          ${(cl === 'aprovado' || cl === 'expirado') ? `<button class="btn-warn btn-sm" onclick="revalidarVendedor(${v.id}, this)">🔄 Revalidar</button>` : ''}
+          ${cl === 'aprovado' ? `<button class="btn-danger btn-sm" onclick="toggleVendador(${v.id}, false, this)">Desativar</button>` : ''}
+          ${cl === 'inativo' ? `<button class="btn-ok btn-sm" onclick="toggleVendador(${v.id}, true, this)">Ativar</button>` : ''}
         </div>
-      </div>`).join('');
-  } catch { el.innerHTML = '<div style="color:#f87171;padding:12px;font-size:13px">Erro ao carregar.</div>'; }
+      </div>`;
+  }).join('');
 }
+
+async function carregarVendedoresGlobal() {
+  const el = document.getElementById('listaVendedoresGlobal');
+  try {
+    const r = await apiFetch(`${API}/api/fornecedores/vendedores/todos`);
+    if (!r.ok) throw new Error('falha');
+    vendedoresTodos = await r.json();
+    // Atualiza contadores
+    const cnt = { pendente: 0, aprovado: 0, expirado: 0, rejeitado: 0, inativo: 0 };
+    vendedoresTodos.forEach(v => { const c = classificar(v); if (cnt[c] !== undefined) cnt[c]++; });
+    Object.entries(cnt).forEach(([k, n]) => {
+      const e = document.getElementById('cnt' + k.charAt(0).toUpperCase() + k.slice(1));
+      if (e) e.textContent = n;
+    });
+    renderVendedoresGlobal();
+  } catch {
+    el.innerHTML = '<div style="color:#f87171;padding:12px;font-size:13px">Erro ao carregar.</div>';
+  }
+}
+
+// Compat: chamadas antigas
+const carregarPendentes = carregarVendedoresGlobal;
 
 async function carregarVendedores(fornId) {
   const el = document.getElementById('listaVendedores');

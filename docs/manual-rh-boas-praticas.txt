@@ -1,0 +1,409 @@
+================================================================
+   MANUAL DE BOAS PRÁTICAS — FERRAMENTA DE RH JR LIRA TECH
+================================================================
+
+Período de folha do grupo: dia 26 do mês N até dia 25 do mês N+1.
+Sempre que este manual disser "mês", é esse período — não o mês civil.
+
+================================================================
+1. EM UMA FRASE
+================================================================
+
+Cadastro completo de funcionários + timeline de eventos como fonte
+da verdade + ponto eletrônico cruzado com atestados (período 26→25)
++ painel de KPIs e alertas (INSS, risco, aniversários).
+
+
+================================================================
+2. PÁGINAS E ROTAS
+================================================================
+
+ROTA                       PARA QUEM      FUNÇÃO
+─────────────────────────  ─────────────  ─────────────────────────
+/rh                        RH, admin      CRUD de funcionários +
+                                          lançar eventos
+/rh-painel                 RH, admin      KPIs, alertas, aniversários
+/ponto                     RH, admin      Importar HTM iPonto + análise
+/importar-qlp              RH, admin      Importação em massa (Excel)
+/foto-upload?token=…       funcionário    Selfie pública (link 72h)
+
+
+================================================================
+3. CADASTRO DE FUNCIONÁRIOS  (/rh)
+================================================================
+
+COMO LANÇAR
+  Botão "+ Novo Funcionário". 30+ campos divididos em:
+
+  • Identificação: matrícula (única, formato loja-cracha),
+    nome, CPF, PIS, nascimento, sexo, raça, estado civil,
+    escolaridade
+  • Trabalho: cargo, grupo, nível, loja, terceirizada,
+    salário, status, data de admissão
+  • Endereço: CEP, logradouro, número, bairro, cidade, UF
+  • Contato: telefone, e-mail, foto
+
+IMPACTO DOS CAMPOS-CHAVE
+  • loja_id    → quem enxerga o funcionário (gerente vê só
+                  sua loja; admin vê tudo)
+  • email      → habilita o botão "Foto" (link de selfie 72h)
+  • telefone   → habilita notificações automáticas via
+                  WhatsApp (advertências, atestados, promoções)
+
+FOTO
+  • Upload direto pelo RH no formulário, OU
+  • Botão "Foto" ao lado do funcionário → gera link único,
+    e-mail é enviado, expira em 72h, uso único
+
+
+================================================================
+4. EVENTOS — O CORAÇÃO DO SISTEMA  (/rh → editar funcionário)
+================================================================
+
+A timeline de eventos é FONTE DA VERDADE. O cadastro
+(status, cargo, salário, loja_id, data de admissão) é
+RECALCULADO AUTOMATICAMENTE a partir dos eventos a cada
+lançamento. Não edite o cadastro à mão para "consertar"
+status — lance o evento certo.
+
+────────────────────────────────────────────────────────────────
+4.1 CATEGORIAS DE EVENTO
+────────────────────────────────────────────────────────────────
+
+CADASTRO  (alteram o cadastro principal)
+  Tipo                       Impacto
+  ─────────────────────────  ──────────────────────────────────
+  Admissão                   data_admissao, status=ATIVO (1× só)
+  Demissão                   data_demissao, status=DESLIGADO
+  Transferência              troca loja_id
+  Mudança de cargo /         troca cargo (e salário se informado)
+    Promoção
+  Aumento salarial           troca salario
+
+SAÚDE / AFASTAMENTO  (mudam status temporariamente)
+  Tipo                              Status enquanto vigente   Anexo
+  ────────────────────────────────  ───────────────────────  ──────────
+  Atestado médico (≤15d)            ATESTADO                 PDF obrig.
+  Afastamento INSS (16d+)           INSS                     Doc INSS
+  Acidente de trabalho (B91)        INSS                     CAT
+  Licença doença na família         AFASTADO                 atestado
+  Retorno                           volta para ATIVO         —
+
+LICENÇAS LEGAIS — CLT  (auto-preenchem data_fim)
+  Tipo                Dias              Base legal
+  ──────────────────  ────────────────  ──────────────────────────────
+  Maternidade         120 (até 180)     CLT 392 / Lei 11.770
+  Paternidade         5 (até 20)        CF 7º XIX / Lei 13.257
+  Casamento (gala)    3                 CLT 473 II
+  Luto (nojo)         2                 CLT 473 I
+  Doação de sangue    1 / ano           CLT 473 IV
+  Eleitoral / júri    variável          CLT 473 VI / Lei 9.504
+
+  Ao escolher tipo + data início, o sistema preenche data fim
+  sozinho e mostra a base legal numa caixa azul.
+
+  ATENÇÃO: se a licença atravessar o dia 25, ela cai em DOIS
+  períodos de folha — lance assim mesmo, o sistema acerta os
+  dias em cada mês.
+
+DISCIPLINA  (alimentam o score de risco)
+  Tipo                Anexo         Observação
+  ──────────────────  ────────────  ────────────────────
+  Advertência verbal  opcional      gravidade 1-3
+  Advertência escrita obrigatório   gravidade 1-3
+  Suspensão           obrigatório   dias 1-3
+
+FREQUÊNCIA  (geradas automaticamente do ponto)
+  • Falta justificada    (atestado cobre a data)
+  • Falta injustificada  (sem cobertura)
+  • Atraso               (em minutos)
+
+RECONHECIMENTO  (gerados pelo cron diário)
+  • Aniversário          (data civil — independe da folha)
+  • Tempo de casa        (1, 5, 10, 15, 20, 25 anos)
+  • Feedback positivo    (manual)
+
+────────────────────────────────────────────────────────────────
+4.2 NOTIFICAÇÃO WHATSAPP AUTOMÁTICA
+────────────────────────────────────────────────────────────────
+
+Se o funcionário tem telefone cadastrado, recebe WhatsApp ao
+registrar:
+
+  AVISOS:
+  • Atestado médico
+  • Advertência verbal
+  • Advertência escrita
+  • Suspensão
+
+  PARABENIZAÇÕES:
+  • Promoção
+  • Aumento salarial
+  • Feedback positivo
+
+
+================================================================
+5. IMPORTAÇÃO QLP  (/importar-qlp)
+================================================================
+
+QUANDO USAR
+  Após o fechamento do período (dia 25), quando o DP gera a
+  planilha mensal da QLP. Importa em massa, SEM APAGAR NADA —
+  faz upsert por matrícula.
+
+COMO
+  1. Anexar o arquivo .xlsx
+  2. "Preview" mostra quantos funcionários serão inseridos
+     ou atualizados
+  3. "Importar" roda o bulk upsert (milhares de linhas em
+     segundos)
+
+IMPACTO
+  • Atualiza dados cadastrais (cargo, salário, status,
+    endereço…) sem tocar nos eventos
+  • Coluna "Empresa" mapeada para loja_id:
+        SUPERASA ECONOMICO    → 1
+        SUPERASA BR           → 2
+        SUPERASA JOAO PESSOA  → 3
+        SUPERASA FLORESTA     → 4
+        SUPERASA SAO JOSE     → 5
+        SUPERASA SANTAREM     → 6
+  • Se a planilha trouxer data_demissao, o status muda para
+    DESLIGADO
+
+  Use a QLP para reconciliar com o sistema oficial após o
+  fechamento. Para alterações no meio do período, lance evento.
+
+
+================================================================
+6. PONTO ELETRÔNICO  (/ponto)
+================================================================
+
+PERÍODO  (igual ao da folha)
+  Dia 26 → dia 25. O sistema extrai o período direto do
+  cabeçalho do HTM, então não precisa informar à mão.
+
+COMO IMPORTAR
+  1. No fim do período (dia 25/26), baixar o HTM do iPonto,
+     UMA LOJA POR VEZ
+  2. Selecionar o prefixo da loja:
+        1 → Econômico
+        2 → BR
+        3 → João Pessoa
+        4 → Floresta
+        5 → São José
+        6 → Santarém
+  3. Subir o arquivo
+  4. Sistema lê 5 pares de entrada/saída, horas trabalhadas,
+     hora extra, DSR, folga, dia sem marcação
+
+FECHAMENTO
+  Quando o período está auditado, FECHAR em /ponto (RH ou
+  admin). Bloqueia novas importações no mesmo período. Só
+  admin reabre.
+
+CRUZAMENTO AUTOMÁTICO
+  Ao importar, para cada dia SEM MARCAÇÃO o sistema busca
+  atestado/licença/férias do funcionário que cubra a data:
+    • Coberto    → cria evento "falta_justificada"
+    • Não coberto → cria evento "falta_injustificada"
+
+  POR ISSO: lance os atestados ANTES de subir o ponto. Se
+  subir primeiro e atestar depois, a falta vai ficar como
+  injustificada — apague o evento errado e relance.
+
+O QUE ANALISAR (após importar)
+  • Resumo da importação: dias trabalhados, folgas, DSRs,
+    sem marcação por funcionário
+  • Sem marcação ≥ 3: indício de funcionário sumindo
+  • Hora extra alta: carga indevida ou má escala
+  • Faltas injustificadas do período: aparecem direto no
+    card da loja no painel
+
+
+================================================================
+7. PAINEL RH  (/rh-painel)
+================================================================
+
+O painel é onde você toma decisão. Atualiza a cada visita.
+O cabeçalho mostra o período de folha atual em datas.
+
+────────────────────────────────────────────────────────────────
+7.1 BLOCOS DO PAINEL
+────────────────────────────────────────────────────────────────
+
+INDICADORES POR LOJA  (cards)
+  • Funcionários ativos
+  • Atestados ativos hoje
+  • Faltas injustificadas no período (26→25)
+  • Desligados (histórico)
+
+ALERTA INSS — ENCAMINHAMENTO RECOMENDADO
+  Funcionários com ≥14 DIAS de atestado/afastamento nos
+  últimos 60 dias corridos (janela rolante, NÃO respeita
+  26→25). Esses casos legalmente vão para o INSS no 16º dia
+  consecutivo. Se aparece, encaminha — clique na linha vai
+  direto para o cadastro.
+
+FUNCIONÁRIOS EM RISCO  (top 10)
+  Score ponderado em janelas rolantes:
+    • Suspensão (90d)             × 50
+    • Atestado (60d)              × 30
+    • Advertência (90d)           × 25
+    • Falta injustificada (90d)   × 20
+    • Atraso (30d)                ×  5
+
+  Score ≥80 vermelho · 40-79 amarelo · <40 verde.
+  Use para feedback ANTES de virar problema. As janelas são
+  corridas (não 26→25) — propósito é acompanhar comportamento,
+  não folha.
+
+ANIVERSARIANTES DA SEMANA
+  Data civil. Independe da folha.
+
+TEMPO DE CASA
+  Quem completa 1, 5, 10, 15, 20 ou 25 anos no mês civil
+  da admissão.
+
+────────────────────────────────────────────────────────────────
+7.2 FILTRO POR LOJA
+────────────────────────────────────────────────────────────────
+
+  • Admin → filtra qualquer loja
+  • Gerente RH → só vê as próprias (filtro escondido)
+
+
+================================================================
+8. AUTOMATIZAÇÕES QUE RODAM SOZINHAS
+================================================================
+
+JOB                          FREQUÊNCIA           O QUE FAZ
+───────────────────────────  ───────────────────  ──────────────────────
+Aniversário / tempo de casa  diário               Cria evento na timeline
+Limpeza de anexos            diário               Apaga anexo 30 dias
+                                                   após demissão (LGPD)
+Alerta INSS por e-mail       semanal              E-mail para admin/RH
+                                                   com lista em risco
+                                                   INSS, anti-spam de
+                                                   7 dias
+Notificação WhatsApp         em tempo real        A cada evento de
+                                                   advertência / atestado
+                                                   / promoção
+
+
+================================================================
+9. FLUXO DO MÊS DE FOLHA  (26 → 25)
+================================================================
+
+DIA   AÇÃO
+────  ─────────────────────────────────────────────────────────
+26    Início do novo período. Subir os pontos do mês anterior
+      é prioridade — cruzamento de atestados gera faltas.
+
+27-28 Auditar o ponto importado (sem marcação, hora extra).
+      Lançar atestados/licenças que faltarem. REIMPORTAR se
+      necessário.
+
+29-30 DP envia QLP do mês fechado. Importar em /importar-qlp
+      → cadastros atualizados.
+
+Diário (todo o mês)
+      Lançar eventos do dia: atestados, advertências,
+      transferências, licenças.
+
+Semanal
+      Abrir /rh-painel:
+      • resolver alertas INSS
+      • tratar top 3 do score de risco
+      • reconhecer aniversariantes / tempo de casa
+
+25    Último dia do período. Avisar gerentes para liberar
+      marcação pendente.
+
+26    FECHAR o período em /ponto. Bloqueia novas importações.
+      Ciclo recomeça.
+
+
+================================================================
+10. REGRAS DE OURO
+================================================================
+
+  • NUNCA edite o cadastro para corrigir status — lance o
+    evento, ele recalcula.
+
+  • LANCE ATESTADOS ANTES DO PONTO — senão vira falta
+    injustificada.
+
+  • Atestado sem PDF NÃO ENTRA.
+
+  • Advertência escrita sem documento assinado NÃO ENTRA.
+
+  • Demissão é EVENTO, não delete — preserva histórico.
+
+  • Licenças que cruzam o dia 25 — lance um único evento, o
+    sistema distribui os dias entre os dois períodos
+    automaticamente no ponto.
+
+  • Para múltiplos meses de afastamento, lance UM EVENTO POR
+    PERÍODO MÉDICO (atestado de 30d → INSS de 60d → retorno),
+    não um único evento gigante.
+
+
+================================================================
+11. SEGURANÇA E LGPD
+================================================================
+
+  • Tokens JWT com 32+ caracteres no servidor
+  • Foto exige autenticação (token JWT no header ou ?token=)
+  • Anexos de eventos (atestados, advertências) são apagados
+    automaticamente 30 DIAS após a data de demissão
+  • Selfies via link mágico de uso único e expiração 72h
+  • Login mínimo, com bcrypt nas senhas
+
+PERFIS DE ACESSO
+  • admin     → tudo, gestão de usuários
+  • rh        → quadro de lotação, ponto, painel — só das
+                lojas autorizadas
+  • cadastro  → importar e validar NF-e
+  • estoque   → conferência cega de itens
+  • auditor   → auditoria e fechamento de NF-e
+  • comprador → pedidos e fornecedores
+
+
+================================================================
+12. RESOLUÇÃO DE PROBLEMAS COMUNS
+================================================================
+
+PROBLEMA: Funcionário aparece com status errado.
+  → Não edite o cadastro. Verifique a timeline de eventos
+    e lance o evento correto (retorno, demissão, etc.). O
+    status recalcula sozinho.
+
+PROBLEMA: Faltas injustificadas aparecem para alguém que
+          tinha atestado.
+  → O atestado foi lançado depois do ponto. Apague os
+    eventos de "falta_injustificada" da pessoa, lance o
+    atestado, reimporte o ponto OU re-rode manualmente o
+    cruzamento.
+
+PROBLEMA: Funcionário sumiu da listagem.
+  → Verifique o filtro "Status" (DESLIGADO esconde).
+  → Verifique a loja se você é gerente RH.
+
+PROBLEMA: QLP importou, mas funcionário não apareceu.
+  → Verifique se a coluna Crachá / Matrícula tem valor.
+    Linhas sem matrícula são ignoradas (contadas em
+    "ignorados" na resposta).
+
+PROBLEMA: Período de ponto bloqueado.
+  → O período está fechado. Só admin pode reabrir em
+    /ponto → "Reabrir período".
+
+PROBLEMA: Foto não aparece nas listagens.
+  → A foto exige token JWT. Faça logout e login de novo
+    para renovar o token no localStorage do navegador.
+
+
+================================================================
+ÚLTIMA ATUALIZAÇÃO: 02/05/2026
+================================================================

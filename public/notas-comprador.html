@@ -165,7 +165,7 @@ const perfil = () => localStorage.getItem('jrlira_perfil');
 (function(){ if (!token() || !['admin','comprador'].includes(perfil())) location.href='/'; })();
 document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
 
-const LOJAS = {1:'ECONOMICO',2:'BR',3:'JOAO PAULO',4:'FLORESTA',5:'SAO JOSE',6:'SANTAREM'};
+// LOJAS / LOJAS_FULL vêm do shared.js
 const STATUS_LABEL = {
   importada:'Importada', emergencial_pendente:'Emergencial — Pendente',
   em_validacao_cadastro:'Validação Cadastro', em_conferencia:'Em Conferência',
@@ -295,10 +295,12 @@ async function renderAcoes(nota, itens) {
   const el = document.getElementById('acoesNota');
 
   const isAdmin = perfil() === 'admin';
+  const podeExcluirSimples = nota.status === 'importada';
   const botoesBase = `
-    <div style="display:flex;gap:8px;margin-bottom:12px">
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
       <button class="btn-ghost btn-sm" onclick="reprocessarEANs(this)" title="Reprocessa o comparativo de EANs com o cadastro atual">↺ Reprocessar EANs</button>
-      ${isAdmin ? `<button class="btn-ghost btn-sm" style="color:#f87171;border-color:#7f1d1d" onclick="excluirNota(this)">✕ Excluir XML</button>` : ''}
+      ${isAdmin && podeExcluirSimples ? `<button class="btn-ghost btn-sm" style="color:#f87171;border-color:#7f1d1d" onclick="excluirNota(this, false)">✕ Excluir XML</button>` : ''}
+      ${isAdmin && !podeExcluirSimples ? `<button class="btn-ghost btn-sm" style="color:#fbbf24;border-color:#854d0e" onclick="excluirNota(this, true)" title="Força exclusão mesmo com status avançado — pra reimportar XML">⚠ Forçar exclusão (reimportar)</button>` : ''}
     </div>`;
 
   if (nota.status === 'importada' && !nota.pedido_id) {
@@ -348,8 +350,7 @@ async function renderAcoes(nota, itens) {
       </div>`;
 
   } else if (nota.status === 'emergencial_pendente') {
-    const isAdmin = perfil() === 'admin';
-    el.innerHTML = `
+    el.innerHTML = botoesBase + `
       <div class="card" style="border:1px solid #78350f">
         <div class="card-title" style="color:#fbbf24">⚠ Nota Emergencial — Aguardando Aprovação</div>
         <p style="font-size:13px;color:#94a3b8;margin-bottom:${isAdmin?'12px':'0'}">
@@ -365,7 +366,7 @@ async function renderAcoes(nota, itens) {
       em_auditoria: '🔍 Em auditoria pelo auditor.',
       fechada: '✓ Nota finalizada.'
     };
-    el.innerHTML = `<div class="card"><p style="font-size:13px;color:#94a3b8">${msgs[nota.status]||''}</p></div>`;
+    el.innerHTML = botoesBase + `<div class="card"><p style="font-size:13px;color:#94a3b8">${msgs[nota.status]||''}</p></div>`;
   }
 }
 
@@ -527,19 +528,31 @@ async function reprocessarEANs(btn) {
   }, 'Reprocessando...');
 }
 
-async function excluirNota(btn) {
-  if (!confirm(`Excluir XML — NF ${notaAtual.numero_nota}?\n\nEsta ação é irreversível e só pode ser feita pelo administrador.`)) return;
+async function excluirNota(btn, force) {
+  const aviso = force
+    ? `⚠ FORÇAR EXCLUSÃO — NF ${notaAtual.numero_nota}?\n\nStatus atual: ${notaAtual.status}\n\nUse essa opção pra reimportar o XML (capturar qtd por caixa, preço por UN etc.).\n\nIrreversível.`
+    : `Excluir XML — NF ${notaAtual.numero_nota}?\n\nEsta ação é irreversível e só pode ser feita pelo administrador.`;
+  if (!confirm(aviso)) return;
   await withLoading(btn, async () => {
     try {
-      const r = await apiFetch(`${API}/api/notas/${notaAtual.id}`, { method:'DELETE' });
-      const d = await r.json();
-      if (!r.ok) return showMsg(d.erro, 'err');
-      showMsg('Nota excluída.', 'ok');
+      let url = `${API}/api/notas/${notaAtual.id}`;
+      if (force) url += '?force=true';
+      let r = await apiFetch(url, { method:'DELETE' });
+      let d = await r.json();
+      // Se o backend pedir confirm extra (havia conferência/auditoria/devolução), pergunta.
+      if (r.status === 409 && d.dica) {
+        const det = `Esta nota tem trabalho registrado:\n• ${d.confs} conferência(s)\n• ${d.audits} auditoria(s)\n• ${d.devs} devolução(ões)\n\nForçar mesmo assim? (irreversível)`;
+        if (!confirm(det)) return showMsg('Cancelado.', 'err');
+        r = await apiFetch(`${url}&confirm=true`, { method:'DELETE' });
+        d = await r.json();
+      }
+      if (!r.ok) return showMsg(d.erro || 'Erro', 'err');
+      showMsg(`Nota excluída${d.pedido_liberado ? ' (pedido liberado)' : ''}.`, 'ok');
       notaAtual = null;
       document.getElementById('painelNota').style.display = 'none';
       document.getElementById('painelVazio').style.display = 'block';
       carregarNotas();
-    } catch { showMsg('Erro ao excluir', 'err'); }
+    } catch (e) { showMsg('Erro ao excluir: ' + (e.message || ''), 'err'); }
   }, 'Excluindo...');
 }
 

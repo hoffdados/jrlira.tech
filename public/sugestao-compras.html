@@ -8,7 +8,8 @@
 <script src="/shared.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh;display:flex;flex-direction:column}
+html,body{height:100%}
+body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;display:flex;flex-direction:column;overflow:hidden}
 nav{background:#1e293b;padding:14px 24px;display:flex;align-items:center;gap:16px;border-bottom:1px solid #334155;flex-shrink:0}
 .brand{font-size:16px;font-weight:700;color:#38bdf8}
 .nav-user{margin-left:auto;font-size:13px;color:#64748b}
@@ -24,7 +25,7 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 1
 .btn-sm{padding:4px 10px;font-size:12px}
 
 /* FILTROS */
-.filtros{padding:16px 24px;background:#1e293b;border-bottom:1px solid #334155;display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap}
+.filtros{padding:16px 24px;background:#1e293b;border-bottom:1px solid #334155;display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;flex-shrink:0}
 .filtro-group{display:flex;flex-direction:column;gap:4px}
 .filtro-group label{font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em}
 .filtro-group select{min-width:220px}
@@ -34,12 +35,12 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 1
 .dias-btn.active{background:#0ea5e9;color:#fff;border-color:#0ea5e9}
 
 /* CONTEÚDO */
-.content{flex:1;overflow:auto;padding:20px 24px 120px}
+.content-outer{flex:1;display:flex;flex-direction:column;overflow:hidden;padding:12px 24px 0;gap:8px}
 .empty-state{text-align:center;color:#475569;padding:60px 20px;font-size:14px}
 .loading{text-align:center;color:#64748b;padding:40px;font-size:13px}
 
 /* RESUMO */
-.resumo-bar{display:flex;gap:24px;margin-bottom:16px;padding:12px 16px;background:#1e293b;border-radius:8px;font-size:13px;flex-wrap:wrap}
+.resumo-bar{display:flex;gap:24px;padding:12px 16px;background:#1e293b;border-radius:8px;font-size:13px;flex-wrap:wrap}
 .resumo-item label{font-size:10px;color:#64748b;text-transform:uppercase;display:block;margin-bottom:2px}
 .resumo-item span{font-weight:700}
 .r-total{color:#fbbf24}
@@ -48,7 +49,7 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 1
 .r-sel{color:#4ade80}
 
 /* FILTROS TABELA */
-.tbl-controls{display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
+.tbl-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .tbl-controls input{width:220px}
 .badge-filtro{padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;cursor:pointer;border:1px solid transparent}
 .badge-filtro.f-todos{background:#1e293b;color:#94a3b8;border-color:#334155}
@@ -59,9 +60,10 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 1
 .badge-filtro.ativo{outline:2px solid #38bdf8}
 
 /* TABELA */
-.tbl-wrap{overflow-x:auto}
+.tbl-wrap{overflow:auto;flex:1;min-height:0;padding-bottom:120px}
 table{width:100%;border-collapse:collapse;font-size:12px}
-thead th{background:#0f172a;padding:8px 10px;text-align:left;color:#64748b;font-weight:600;border-bottom:1px solid #334155;white-space:nowrap;position:sticky;top:0}
+thead{position:sticky;top:0;z-index:2}
+thead th{background:#0f172a;padding:8px 10px;text-align:left;color:#64748b;font-weight:600;border-bottom:1px solid #334155;white-space:nowrap}
 tbody td{padding:7px 10px;border-bottom:1px solid #1e293b;vertical-align:middle}
 tbody tr:hover{background:#1a2744}
 tbody tr.selecionado{background:#0c2040}
@@ -120,17 +122,32 @@ tbody tr.selecionado{background:#0c2040}
   <div class="filtro-group">
     <label>Lead time (entrega)</label>
     <select id="selLeadtime" style="min-width:110px">
-      <option value="7">7 dias</option>
-      <option value="14">14 dias</option>
-      <option value="21">21 dias</option>
-      <option value="28" selected>28 dias</option>
+      <option value="2">2 dias</option>
+      <option value="3">3 dias</option>
+      <option value="4">4 dias</option>
+      <option value="5">5 dias</option>
+      <option value="7" selected>7 dias</option>
+      <option value="10">10 dias</option>
+      <option value="12">12 dias</option>
+      <option value="15">15 dias</option>
+      <option value="20">20 dias</option>
+      <option value="25">25 dias</option>
+      <option value="30">30 dias</option>
+      <option value="35">35 dias</option>
+      <option value="40">40 dias</option>
+      <option value="50">50 dias</option>
+      <option value="60">60 dias</option>
     </select>
   </div>
   <button class="btn-primary" onclick="buscar()" style="align-self:flex-end;padding:9px 20px">Buscar</button>
 </div>
 
-<div class="content" id="content">
-  <div class="empty-state">Selecione a loja e o fornecedor para gerar sugestões</div>
+<div class="content-outer">
+  <div id="resumoBar" style="display:none"></div>
+  <div id="tblControls" style="display:none"></div>
+  <div class="tbl-wrap" id="content">
+    <div class="empty-state">Selecione a loja e o fornecedor para gerar sugestões</div>
+  </div>
 </div>
 
 <div class="footer-bar" id="footerBar" style="display:none">
@@ -296,26 +313,29 @@ function renderTabela() {
   const semaforoIcon = { red: '🔴', yellow: '🟡', green: '🟢', white: '⚪' };
   const semaforoCor  = { red: 'red', yellow: 'yellow', green: 'green', white: 'white' };
 
+  document.getElementById('resumoBar').style.display = 'flex';
+  document.getElementById('resumoBar').className = 'resumo-bar';
+  document.getElementById('resumoBar').innerHTML = `
+    <div class="resumo-item"><label>Total produtos</label><span>${dados.length}</span></div>
+    <div class="resumo-item"><label>🔴 Crítico</label><span class="r-red">${counts.red}</span></div>
+    <div class="resumo-item"><label>🟡 Atenção</label><span class="r-yellow">${counts.yellow}</span></div>
+    <div class="resumo-item"><label>🟢 OK</label><span>${counts.green}</span></div>
+    <div class="resumo-item"><label>⚪ Sem venda</label><span style="color:#475569">${counts.white}</span></div>
+    <div class="resumo-item" style="margin-left:auto"><label>Valor sugerido total</label><span class="r-total">${fmtR(totalSugerido)}</span></div>`;
+
+  document.getElementById('tblControls').style.display = 'flex';
+  document.getElementById('tblControls').className = 'tbl-controls';
+  document.getElementById('tblControls').innerHTML = `
+    <input type="text" placeholder="Buscar produto ou EAN..." oninput="buscaTexto=this.value;renderTabela()" value="${buscaTexto}">
+    <span class="badge-filtro f-todos ${filtroSemaforo==='todos'?'ativo':''}" onclick="filtroSemaforo='todos';renderTabela()">Todos (${dados.length})</span>
+    <span class="badge-filtro f-red ${filtroSemaforo==='red'?'ativo':''}" onclick="filtroSemaforo='red';renderTabela()">🔴 ${counts.red}</span>
+    <span class="badge-filtro f-yellow ${filtroSemaforo==='yellow'?'ativo':''}" onclick="filtroSemaforo='yellow';renderTabela()">🟡 ${counts.yellow}</span>
+    <span class="badge-filtro f-green ${filtroSemaforo==='green'?'ativo':''}" onclick="filtroSemaforo='green';renderTabela()">🟢 ${counts.green}</span>
+    <span class="badge-filtro f-white ${filtroSemaforo==='white'?'ativo':''}" onclick="filtroSemaforo='white';renderTabela()">⚪ ${counts.white}</span>
+    <button class="btn-ghost btn-sm" onclick="selecionarTodos()">Sel. visíveis</button>
+    <button class="btn-ghost btn-sm" onclick="deselecionarTodos()">Limpar seleção</button>`;
+
   const html = `
-    <div class="resumo-bar">
-      <div class="resumo-item"><label>Total produtos</label><span>${dados.length}</span></div>
-      <div class="resumo-item"><label>🔴 Crítico</label><span class="r-red">${counts.red}</span></div>
-      <div class="resumo-item"><label>🟡 Atenção</label><span class="r-yellow">${counts.yellow}</span></div>
-      <div class="resumo-item"><label>🟢 OK</label><span>${counts.green}</span></div>
-      <div class="resumo-item"><label>⚪ Sem venda</label><span style="color:#475569">${counts.white}</span></div>
-      <div class="resumo-item" style="margin-left:auto"><label>Valor sugerido total</label><span class="r-total">${fmtR(totalSugerido)}</span></div>
-    </div>
-    <div class="tbl-controls">
-      <input type="text" placeholder="Buscar produto ou EAN..." oninput="buscaTexto=this.value;renderTabela()" value="${buscaTexto}">
-      <span class="badge-filtro f-todos ${filtroSemaforo==='todos'?'ativo':''}" onclick="filtroSemaforo='todos';renderTabela()">Todos (${dados.length})</span>
-      <span class="badge-filtro f-red ${filtroSemaforo==='red'?'ativo':''}" onclick="filtroSemaforo='red';renderTabela()">🔴 ${counts.red}</span>
-      <span class="badge-filtro f-yellow ${filtroSemaforo==='yellow'?'ativo':''}" onclick="filtroSemaforo='yellow';renderTabela()">🟡 ${counts.yellow}</span>
-      <span class="badge-filtro f-green ${filtroSemaforo==='green'?'ativo':''}" onclick="filtroSemaforo='green';renderTabela()">🟢 ${counts.green}</span>
-      <span class="badge-filtro f-white ${filtroSemaforo==='white'?'ativo':''}" onclick="filtroSemaforo='white';renderTabela()">⚪ ${counts.white}</span>
-      <button class="btn-ghost btn-sm" onclick="selecionarTodos()">Sel. visíveis</button>
-      <button class="btn-ghost btn-sm" onclick="deselecionarTodos()">Limpar seleção</button>
-    </div>
-    <div class="tbl-wrap">
     <table>
       <thead>
         <tr>
@@ -369,8 +389,7 @@ function renderTabela() {
           }).join('')
         }
       </tbody>
-    </table>
-    </div>`;
+    </table>`;
 
   document.getElementById('content').innerHTML = html;
   atualizarFooter();

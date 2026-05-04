@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
 const multer = require('multer');
-const pool = require('../db');
+const { pool, query: dbQuery } = require('../db');
 const { autenticar } = require('../auth');
 const { enviarEmail } = require('../mailer');
 
@@ -14,14 +14,14 @@ const upload = multer({
 // POST /api/foto-upload/gerar/:funcId  (RH/admin)
 router.post('/gerar/:funcId', autenticar, async (req, res) => {
   try {
-    const rows = await pool.query('SELECT id, nome, email FROM funcionarios WHERE id = $1', [req.params.funcId]);
+    const rows = await dbQuery('SELECT id, nome, email FROM funcionarios WHERE id = $1', [req.params.funcId]);
     if (!rows.length) return res.status(404).json({ erro: 'Funcionário não encontrado' });
     const func = rows[0];
     if (!func.email) return res.status(400).json({ erro: 'Funcionário sem e-mail cadastrado' });
 
-    await pool.query('DELETE FROM foto_tokens WHERE funcionario_id = $1', [func.id]);
+    await dbQuery('DELETE FROM foto_tokens WHERE funcionario_id = $1', [func.id]);
     const token = crypto.randomBytes(32).toString('hex');
-    await pool.query(
+    await dbQuery(
       "INSERT INTO foto_tokens (token, funcionario_id, expira_em) VALUES ($1, $2, NOW() + INTERVAL '72 hours')",
       [token, func.id]
     );
@@ -30,14 +30,15 @@ router.post('/gerar/:funcId', autenticar, async (req, res) => {
     await enviarEmail(func.email, 'Envio de foto — JR Lira Tech', templateFotoLink({ nome: func.nome, link }));
     res.json({ ok: true });
   } catch (err) {
-    res.status(500).json({ erro: err.message });
+    console.error('[foto-upload]', err.message);
+    res.status(500).json({ erro: 'Erro ao processar requisição' });
   }
 });
 
 // GET /api/foto-upload/:token  (público)
 router.get('/:token', async (req, res) => {
   try {
-    const rows = await pool.query(
+    const rows = await dbQuery(
       `SELECT ft.usado, ft.expira_em, f.nome
        FROM foto_tokens ft
        JOIN funcionarios f ON f.id = ft.funcionario_id
@@ -50,7 +51,8 @@ router.get('/:token', async (req, res) => {
     if (new Date(t.expira_em) < new Date()) return res.status(400).json({ erro: 'Link expirado' });
     res.json({ valido: true, nome: t.nome });
   } catch (err) {
-    res.status(500).json({ erro: err.message });
+    console.error('[foto-upload]', err.message);
+    res.status(500).json({ erro: 'Erro ao processar requisição' });
   }
 });
 
@@ -58,7 +60,7 @@ router.get('/:token', async (req, res) => {
 router.post('/:token', upload.single('foto'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ erro: 'Foto obrigatória' });
-    const rows = await pool.query(
+    const rows = await dbQuery(
       'SELECT funcionario_id, usado, expira_em FROM foto_tokens WHERE token = $1',
       [req.params.token]
     );
@@ -67,14 +69,15 @@ router.post('/:token', upload.single('foto'), async (req, res) => {
     if (t.usado) return res.status(400).json({ erro: 'Este link já foi utilizado' });
     if (new Date(t.expira_em) < new Date()) return res.status(400).json({ erro: 'Link expirado' });
 
-    await pool.query(
+    await dbQuery(
       'UPDATE funcionarios SET foto_data = $1, foto_mime = $2, foto_path = NULL, atualizado_em = NOW() WHERE id = $3',
       [req.file.buffer, req.file.mimetype, t.funcionario_id]
     );
-    await pool.query('UPDATE foto_tokens SET usado = TRUE WHERE token = $1', [req.params.token]);
+    await dbQuery('UPDATE foto_tokens SET usado = TRUE WHERE token = $1', [req.params.token]);
     res.json({ ok: true });
   } catch (err) {
-    res.status(500).json({ erro: err.message });
+    console.error('[foto-upload]', err.message);
+    res.status(500).json({ erro: 'Erro ao processar requisição' });
   }
 });
 

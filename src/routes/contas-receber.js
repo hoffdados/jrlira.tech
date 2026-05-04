@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const pool = require('../db');
+const { pool, query: dbQuery } = require('../db');
 const { apenasAdmin, compradorOuAdmin } = require('../auth');
 const { parseNFeSimples, MAX_XML_BYTES } = require('../parsers/nfe');
 

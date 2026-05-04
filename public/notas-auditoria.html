@@ -93,6 +93,14 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 1
 <div class="layout">
   <div class="sidebar">
     <h3>Notas em Auditoria</h3>
+    <div style="margin-bottom:12px">
+      <select id="fOrigem" onchange="carregarNotas()" style="width:100%;padding:7px 10px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:12px">
+        <option value="">Todas (Fornecedor + Transferências)</option>
+        <option value="nfe">Fornecedores</option>
+        <option value="cd">Transferências CD</option>
+        <option value="cd,transferencia_loja">Todas transferências</option>
+      </select>
+    </div>
     <div id="listaNota"><p class="empty">Carregando...</p></div>
   </div>
 
@@ -186,18 +194,26 @@ function showMsg(txt, tipo = 'ok') {
 
 async function carregarNotas() {
   try {
-    const notas = await fetchApi('/api/notas');
+    const filtroOrigem = document.getElementById('fOrigem')?.value || '';
+    const url = '/api/notas' + (filtroOrigem ? `?origem=${filtroOrigem}` : '');
+    const notas = await fetchApi(url);
     const auditoria = notas.filter(n => n.status === 'em_auditoria' || n.status === 'fechada');
     const el = document.getElementById('listaNota');
     if (!auditoria.length) { el.innerHTML = '<p class="empty" style="padding:24px 0">Nenhuma nota em auditoria</p>'; return; }
-    el.innerHTML = auditoria.map(n => `
+    el.innerHTML = auditoria.map(n => {
+      const isCd = n.origem === 'cd';
+      const titulo = isCd ? `📦 CD ${n.cd_mov_codi || n.numero_nota}` : `NF ${n.numero_nota}/${n.serie}`;
+      return `
       <div class="nota-card" id="card-${n.id}" onclick="abrirNota(${n.id})">
-        <div class="nc-num">NF ${n.numero_nota}/${n.serie}</div>
+        <div class="nc-num">${titulo}</div>
         <div class="nc-forn">${n.fornecedor_nome}</div>
         <div class="nc-info">${fmtData(n.data_emissao)} · ${fmtMoeda(n.valor_total)}</div>
-        <div class="nc-tags"><span class="badge b-${n.status}">${n.status === 'fechada' ? 'Fechada' : 'Em Auditoria'}</span></div>
-      </div>
-    `).join('');
+        <div class="nc-tags">
+          ${isCd ? '<span class="badge" style="background:#0c4a6e;color:#7dd3fc">CD</span>' : ''}
+          <span class="badge b-${n.status}">${n.status === 'fechada' ? 'Fechada' : 'Em Auditoria'}</span>
+        </div>
+      </div>`;
+    }).join('');
   } catch (e) { showMsg(e.message, 'err'); }
 }
 

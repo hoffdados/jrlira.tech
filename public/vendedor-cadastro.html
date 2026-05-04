@@ -55,29 +55,30 @@ input:focus{outline:none;border-color:#38bdf8}
 
     <div class="foto-wrap">
       <img id="fotoPreview" class="foto-preview" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='38' r='18' fill='%23475569'/%3E%3Cellipse cx='50' cy='85' rx='30' ry='20' fill='%23475569'/%3E%3C/svg%3E" alt="Foto">
-      <button class="btn-foto" onclick="document.getElementById('fotoInput').click()">📷 Tirar/escolher foto</button>
+      <button class="btn-foto" onclick="document.getElementById('fotoInput').click()">📷 Tirar/escolher foto *</button>
       <input type="file" id="fotoInput" accept="image/*" capture="user" style="display:none" onchange="previewFoto(this)">
+      <div style="font-size:11px;color:#64748b">A foto é obrigatória</div>
     </div>
 
     <label>Nome completo *</label>
-    <input type="text" id="nome" placeholder="João Silva">
+    <input type="text" id="nome" placeholder="João Silva" required>
 
-    <label>CPF</label>
-    <input type="text" id="cpf" placeholder="000.000.000-00" maxlength="14">
+    <label>CPF *</label>
+    <input type="text" id="cpf" placeholder="000.000.000-00" maxlength="14" oninput="mascaraCpf(this)" required>
 
     <label>E-mail *</label>
-    <input type="email" id="email" placeholder="joao@fornecedor.com.br">
+    <input type="email" id="email" placeholder="joao@fornecedor.com.br" required>
 
     <label>Telefone / WhatsApp *</label>
-    <input type="tel" id="telefone" placeholder="(00) 00000-0000">
+    <input type="tel" id="telefone" placeholder="(00) 00000-0000" maxlength="15" oninput="mascaraTel(this)" required>
 
-    <label>Nome do gerente/supervisor</label>
-    <input type="text" id="nome_gerente" placeholder="Maria Lima">
+    <label>Nome do gerente/supervisor *</label>
+    <input type="text" id="nome_gerente" placeholder="Maria Lima" required>
 
-    <label>Telefone do gerente</label>
-    <input type="tel" id="telefone_gerente" placeholder="(00) 00000-0000">
+    <label>Telefone do gerente *</label>
+    <input type="tel" id="telefone_gerente" placeholder="(00) 00000-0000" maxlength="15" oninput="mascaraTel(this)" required>
 
-    <div class="aviso">⚠️ Após o envio, aguarde a aprovação do comprador. Você receberá um e-mail com seu login e senha de acesso.</div>
+    <div class="aviso">⚠️ Todos os campos são obrigatórios. Após o envio, aguarde a aprovação do comprador. Você receberá um e-mail com seu login e senha de acesso.</div>
 
     <button class="btn-primary" onclick="enviar()">Enviar cadastro</button>
     <button class="btn-ghost" onclick="show('viewCnpj')">← Voltar</button>
@@ -107,6 +108,22 @@ function mascaraCnpj(el) {
   else if (v.length > 8) v = v.replace(/^(\d{2})(\d{3})(\d{3})(\d{0,4})/, '$1.$2.$3/$4');
   else if (v.length > 5) v = v.replace(/^(\d{2})(\d{3})(\d{0,3})/, '$1.$2.$3');
   else if (v.length > 2) v = v.replace(/^(\d{2})(\d{0,3})/, '$1.$2');
+  el.value = v;
+}
+
+function mascaraCpf(el) {
+  let v = el.value.replace(/\D/g, '').slice(0, 11);
+  if (v.length > 9) v = v.replace(/^(\d{3})(\d{3})(\d{3})(\d{0,2})/, '$1.$2.$3-$4');
+  else if (v.length > 6) v = v.replace(/^(\d{3})(\d{3})(\d{0,3})/, '$1.$2.$3');
+  else if (v.length > 3) v = v.replace(/^(\d{3})(\d{0,3})/, '$1.$2');
+  el.value = v;
+}
+
+function mascaraTel(el) {
+  let v = el.value.replace(/\D/g, '').slice(0, 11);
+  if (v.length > 10) v = v.replace(/^(\d{2})(\d{5})(\d{0,4})/, '($1) $2-$3');
+  else if (v.length > 6) v = v.replace(/^(\d{2})(\d{4})(\d{0,4})/, '($1) $2-$3');
+  else if (v.length > 2) v = v.replace(/^(\d{2})(\d{0,5})/, '($1) $2');
   el.value = v;
 }
 
@@ -144,22 +161,56 @@ async function enviar() {
   const errEl = document.getElementById('errForm');
   errEl.style.display = 'none';
   const nome = document.getElementById('nome').value.trim();
+  const cpf = document.getElementById('cpf').value.trim();
   const email = document.getElementById('email').value.trim();
   const telefone = document.getElementById('telefone').value.trim();
-  if (!nome || !email || !telefone) {
-    errEl.textContent = 'Nome, e-mail e telefone são obrigatórios.';
+  const nome_gerente = document.getElementById('nome_gerente').value.trim();
+  const telefone_gerente = document.getElementById('telefone_gerente').value.trim();
+
+  const faltam = [];
+  if (!nome) faltam.push('Nome completo');
+  if (!cpf) faltam.push('CPF');
+  if (!email) faltam.push('E-mail');
+  if (!telefone) faltam.push('Telefone');
+  if (!nome_gerente) faltam.push('Nome do gerente');
+  if (!telefone_gerente) faltam.push('Telefone do gerente');
+  if (!fotoFile) faltam.push('Foto');
+
+  if (faltam.length) {
+    errEl.textContent = 'Preencha: ' + faltam.join(', ');
     errEl.style.display = 'block';
     return;
   }
+  if (cpf.replace(/\D/g, '').length !== 11) {
+    errEl.textContent = 'CPF deve ter 11 dígitos.';
+    errEl.style.display = 'block';
+    return;
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    errEl.textContent = 'E-mail inválido.';
+    errEl.style.display = 'block';
+    return;
+  }
+  if (telefone.replace(/\D/g, '').length < 10) {
+    errEl.textContent = 'Telefone inválido (mínimo 10 dígitos).';
+    errEl.style.display = 'block';
+    return;
+  }
+  if (telefone_gerente.replace(/\D/g, '').length < 10) {
+    errEl.textContent = 'Telefone do gerente inválido (mínimo 10 dígitos).';
+    errEl.style.display = 'block';
+    return;
+  }
+
   const fd = new FormData();
   fd.append('fornecedor_id', document.getElementById('fornecedorId').value);
   fd.append('nome', nome);
-  fd.append('cpf', document.getElementById('cpf').value.trim());
+  fd.append('cpf', cpf);
   fd.append('email', email);
   fd.append('telefone', telefone);
-  fd.append('nome_gerente', document.getElementById('nome_gerente').value.trim());
-  fd.append('telefone_gerente', document.getElementById('telefone_gerente').value.trim());
-  if (fotoFile) fd.append('foto', fotoFile);
+  fd.append('nome_gerente', nome_gerente);
+  fd.append('telefone_gerente', telefone_gerente);
+  fd.append('foto', fotoFile);
   const btn = document.querySelector('#viewForm .btn-primary');
   btn.innerHTML = 'Enviando<span class="spinner"></span>';
   btn.disabled = true;

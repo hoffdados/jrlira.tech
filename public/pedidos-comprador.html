@@ -29,8 +29,15 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 1
 .badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700}
 .s-rascunho{background:#1e293b;color:#64748b}
 .s-aguardando{background:#1e3a5f;color:#60a5fa}
+.s-aguardando_validacao{background:#1e3a5f;color:#60a5fa}
+.s-aguardando_auditoria{background:#431407;color:#f97316}
 .s-validado{background:#14532d;color:#4ade80}
+.s-editado_validado{background:#14532d;color:#fbbf24}
+.s-faturado{background:#0c4a6e;color:#38bdf8}
+.s-atrasado{background:#7f1d1d;color:#fca5a5}
 .s-vinculado{background:#2e1065;color:#a78bfa}
+.s-rejeitado{background:#450a0a;color:#f87171}
+.s-cancelado_pelo_vendedor{background:#3f0f0f;color:#fca5a5;text-decoration:line-through}
 .filter-bar{padding:12px 16px;border-bottom:1px solid #334155;display:flex;gap:8px}
 .pedido-row{padding:12px 16px;border-bottom:1px solid #334155;cursor:pointer}
 .pedido-row:hover,.pedido-row.selected{background:#1e3a5f}
@@ -46,8 +53,11 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 1
 .msg-ok{background:#14532d;color:#4ade80}
 .msg-err{background:#450a0a;color:#f87171}
 table{width:100%;border-collapse:collapse;font-size:13px}
-thead th{background:#0f172a;padding:8px 10px;text-align:left;color:#64748b;font-weight:600;border-bottom:1px solid #334155}
-tbody td{padding:8px 10px;border-bottom:1px solid #334155;vertical-align:middle}
+thead th{background:#0f172a;padding:8px 10px;text-align:center;color:#64748b;font-weight:600;border-bottom:1px solid #334155}
+thead th.al-left{text-align:left}
+tbody td{padding:8px 10px;border-bottom:1px solid #334155;vertical-align:middle;text-align:center}
+tbody td.al-left{text-align:left}
+.input-val{text-align:center}
 .badge-novo{background:#431407;color:#f97316;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:700}
 .input-val{width:90px;padding:4px 8px;font-size:12px}
 .aviso{background:#1c1300;border-left:3px solid #f59e0b;padding:10px 14px;font-size:12px;color:#fbbf24;border-radius:4px;margin-bottom:12px}
@@ -78,13 +88,23 @@ tbody td{padding:8px 10px;border-bottom:1px solid #334155;vertical-align:middle}
 <div class="layout">
   <!-- LISTA DE PEDIDOS -->
   <div class="panel-left">
-    <div class="filter-bar">
-      <select id="filtroStatus" onchange="carregarPedidos()" style="flex:1">
-        <option value="">Todos (exceto rascunho)</option>
-        <option value="aguardando_validacao">Aguardando validação</option>
-        <option value="validado">Validados</option>
-        <option value="vinculado">Vinculados a NF</option>
-      </select>
+    <div class="filter-bar" style="flex-direction:column;gap:6px">
+      <input type="text" id="filtroBusca" placeholder="🔍 Buscar nº pedido / fornecedor..." oninput="filtrarPedidos()" style="width:100%">
+      <div style="display:flex;gap:6px">
+        <select id="filtroStatus" onchange="filtrarPedidos()" style="flex:1">
+          <option value="">Todos (exceto rascunho)</option>
+          <option value="aguardando_validacao">Aguardando validação</option>
+          <option value="aguardando_auditoria">Aguardando auditoria</option>
+          <option value="validado">Validados</option>
+          <option value="faturado">Faturados</option>
+          <option value="atrasado">Atrasados</option>
+          <option value="vinculado">Vinculados a NF</option>
+          <option value="rejeitado">Rejeitados</option>
+        </select>
+        <select id="filtroLoja" onchange="filtrarPedidos()" style="flex:1">
+          <option value="">Todas lojas</option>
+        </select>
+      </div>
     </div>
     <div id="listaPedidos"><div style="color:#475569;text-align:center;padding:24px">Carregando...</div></div>
   </div>
@@ -111,6 +131,7 @@ tbody td{padding:8px 10px;border-bottom:1px solid #334155;vertical-align:middle}
             <div class="info-item"><label>Vendedor</label><span id="d-vend"></span></div>
             <div class="info-item"><label>Loja</label><span id="d-loja"></span></div>
             <div class="info-item"><label>Enviado em</label><span id="d-enviado"></span></div>
+            <div class="info-item"><label>Preço válido até</label><span id="d-validade"></span></div>
           </div>
           <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px">
             <div>
@@ -136,27 +157,67 @@ tbody td{padding:8px 10px;border-bottom:1px solid #334155;vertical-align:middle}
         </div>
 
         <div class="card">
-          <div class="section-title">Itens do Pedido</div>
-          <table>
+          <div class="section-title" style="display:flex;align-items:center;gap:10px">
+            Itens do Pedido
+            <span id="contadorItens" style="font-size:11px;color:#475569"></span>
+            <span style="margin-left:auto;font-size:11px;color:#475569">🔴 sem cobertura · 🟡 atenção · 🟢 ok · ✨ NOVO</span>
+          </div>
+          <div style="overflow-x:auto">
+          <table style="min-width:1100px">
             <thead>
               <tr>
-                <th>Código</th><th>Descrição</th>
-                <th>Qtde pedida</th><th>Qtde validada</th>
-                <th>Preço pedido</th><th>Preço validado</th>
+                <th>⚑</th>
+                <th class="al-left">Código</th>
+                <th class="al-left">Descrição</th>
+                <th>Estoque</th>
+                <th>Venda/dia</th>
+                <th>Sugestão</th>
+                <th>Qtd ped.</th>
+                <th>Qtd val.</th>
+                <th>Preço ped.</th>
+                <th>Preço val.</th>
+                <th>Histórico</th>
                 <th>Total</th>
+                <th></th>
               </tr>
             </thead>
             <tbody id="tbodyItens"></tbody>
           </table>
+          </div>
           <div style="text-align:right;margin-top:12px">
             <div style="font-size:12px;color:#64748b">Total do Pedido</div>
             <div class="total-val" id="d-total">R$ 0,00</div>
           </div>
         </div>
 
-        <div style="display:flex;gap:10px" id="botoesValidacao">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap" id="botoesValidacao">
           <a id="btnPdf" href="#" target="_blank" class="btn-ghost" style="text-decoration:none;padding:8px 14px;border-radius:6px;font-size:13px;font-weight:600">⬇ Baixar PDF</a>
-          <button class="btn-ok" id="btnValidar" onclick="validarPedido(this)" style="flex:1">✓ Validar e enviar PDF ao fornecedor</button>
+          <button class="btn-ghost" onclick="abrirAddItem()">+ Adicionar item</button>
+          <button class="btn-danger" id="btnRejeitar" onclick="rejeitarPedido(this)">✕ Rejeitar pedido</button>
+          <button class="btn-primary" id="btnRascunho" onclick="salvarRascunhoValidacao(this)">💾 Salvar rascunho</button>
+          <button class="btn-ok" id="btnValidar" onclick="validarPedido(this)" style="flex:1">✓ Validar e enviar PDF</button>
+          <button class="btn-primary" id="btnRevalidar" onclick="revalidarAtrasado(this)" style="display:none;background:#f59e0b">↻ Re-validar pedido atrasado</button>
+        </div>
+        <div id="economiaInfo" style="margin-top:10px;font-size:12px;color:#94a3b8"></div>
+
+        <!-- Modal: Adicionar item -->
+        <div id="modalAddItem" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;align-items:center;justify-content:center">
+          <div style="background:#1e293b;border-radius:10px;padding:20px;width:420px;max-width:95vw">
+            <h3 style="margin-bottom:12px">Adicionar novo item</h3>
+            <label style="font-size:11px;color:#64748b">Código de barras</label>
+            <input type="text" id="addCodigo" style="margin-bottom:8px">
+            <label style="font-size:11px;color:#64748b">Descrição *</label>
+            <input type="text" id="addDescricao" style="margin-bottom:8px">
+            <div style="display:flex;gap:8px">
+              <div style="flex:1"><label style="font-size:11px;color:#64748b">Quantidade *</label><input type="number" step="0.001" id="addQtde"></div>
+              <div style="flex:1"><label style="font-size:11px;color:#64748b">Preço unitário *</label><input type="number" step="0.0001" id="addPreco"></div>
+            </div>
+            <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12px"><input type="checkbox" id="addNovo" style="width:auto"> Marcar como produto novo</label>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+              <button class="btn-ghost" onclick="document.getElementById('modalAddItem').style.display='none'">Cancelar</button>
+              <button class="btn-primary" onclick="confirmarAddItem(this)">Adicionar</button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -166,7 +227,23 @@ tbody td{padding:8px 10px;border-bottom:1px solid #334155;vertical-align:middle}
           <div style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap">
             <div>
               <label style="font-size:11px;color:#64748b;display:block;margin-bottom:4px">Lead time (dias)</label>
-              <input type="number" id="analiseLeadtime" min="1" max="180" value="7" style="width:90px" oninput="renderAnalise()">
+              <select id="analiseLeadtime" onchange="renderAnalise()">
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="5">5</option>
+                <option value="7" selected>7</option>
+                <option value="10">10</option>
+                <option value="12">12</option>
+                <option value="15">15</option>
+                <option value="20">20</option>
+                <option value="25">25</option>
+                <option value="30">30</option>
+                <option value="35">35</option>
+                <option value="40">40</option>
+                <option value="50">50</option>
+                <option value="60">60</option>
+              </select>
             </div>
             <div>
               <label style="font-size:11px;color:#64748b;display:block;margin-bottom:4px">Comprar para</label>
@@ -217,7 +294,7 @@ const token = () => localStorage.getItem('jrlira_token');
 document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
 
 
-const STATUS = { rascunho:'Rascunho', aguardando_validacao:'Aguardando validação', validado:'Validado', vinculado:'Vinculado à NF' };
+const STATUS = { rascunho:'Rascunho', aguardando_validacao:'Aguardando validação', aguardando_auditoria:'Aguardando auditoria', validado:'Validado (aguardando faturamento)', faturado:'Faturado pelo vendedor', atrasado:'ATRASADO (sem faturamento)', vinculado:'Vinculado à NF', rejeitado:'Rejeitado', cancelado_pelo_vendedor:'Cancelado pelo fornecedor' };
 let pedidoAtual = null;
 let itensAtuais = [];
 let analiseData = null;
@@ -248,37 +325,89 @@ function showMsg(txt, tipo='ok') {
 }
 
 // ── LISTA ─────────────────────────────────────────────────────────
+let pedidosCache = [];
+
 async function carregarPedidos() {
-  const status = document.getElementById('filtroStatus').value;
   const el = document.getElementById('listaPedidos');
   el.innerHTML = '<div style="color:#475569;text-align:center;padding:24px">Carregando...</div>';
   try {
-    const url = status ? `/api/pedidos?status=${status}` : '/api/pedidos';
-    const r = await apiFetch(`${API}${url}`);
-    const pedidos = await r.json();
-    if (!pedidos.length) { el.innerHTML = '<div style="color:#475569;text-align:center;padding:24px">Nenhum pedido.</div>'; return; }
-    el.innerHTML = pedidos.map(p => `
-      <div class="pedido-row${pedidoAtual?.id===p.id?' selected':''}" onclick="selecionarPedido(${p.id})">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
-          <span class="p-num">${p.numero_pedido || '#'+p.id}</span>
-          <span class="badge s-${p.status}">${STATUS[p.status]||p.status}</span>
-        </div>
-        <div class="p-forn">${p.fornecedor_fantasia || p.fornecedor_nome || '—'}</div>
-        <div class="p-info">${p.loja_nome||'—'} &nbsp;|&nbsp; ${p.vendedor_nome||'—'} &nbsp;|&nbsp; R$ ${parseFloat(p.valor_total||0).toFixed(2).replace('.',',')}</div>
-        <div class="p-info">${p.enviado_em ? 'Enviado: ' + new Date(p.enviado_em).toLocaleDateString('pt-BR') : ''}</div>
-      </div>
-    `).join('');
+    const r = await apiFetch(`${API}/api/pedidos`);
+    pedidosCache = await r.json();
+    // Popula select de lojas (distintos do cache)
+    const lojas = [...new Set(pedidosCache.map(p => p.loja_id).filter(Boolean))];
+    const sel = document.getElementById('filtroLoja');
+    if (sel.options.length <= 1) {
+      lojas.forEach(id => {
+        const ped = pedidosCache.find(p => p.loja_id === id);
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = ped?.loja_nome || ('Loja '+id);
+        sel.appendChild(opt);
+      });
+    }
+    filtrarPedidos();
   } catch { el.innerHTML = '<div style="color:#f87171;text-align:center;padding:24px">Erro ao carregar.</div>'; }
+}
+
+function filtrarPedidos() {
+  const status = document.getElementById('filtroStatus').value;
+  const loja = document.getElementById('filtroLoja').value;
+  const busca = document.getElementById('filtroBusca').value.toLowerCase().trim();
+  const el = document.getElementById('listaPedidos');
+  let filtrados = pedidosCache.slice();
+  if (status) filtrados = filtrados.filter(p => p.status === status);
+  if (loja) filtrados = filtrados.filter(p => String(p.loja_id) === loja);
+  if (busca) filtrados = filtrados.filter(p =>
+    (p.numero_pedido || '').toLowerCase().includes(busca) ||
+    (p.fornecedor_nome || '').toLowerCase().includes(busca) ||
+    (p.fornecedor_fantasia || '').toLowerCase().includes(busca) ||
+    (p.vendedor_nome || '').toLowerCase().includes(busca)
+  );
+  if (!filtrados.length) { el.innerHTML = '<div style="color:#475569;text-align:center;padding:24px">Nenhum pedido encontrado.</div>'; return; }
+  el.innerHTML = filtrados.map(p => {
+    const editado = p.editado_na_auditoria && p.status === 'validado';
+    const labelStatus = editado ? 'Editado (aguardando faturamento)' : (STATUS[p.status]||p.status);
+    const classeStatus = editado ? 's-editado_validado' : `s-${p.status}`;
+    const cancelLinha = p.status === 'cancelado_pelo_vendedor' && p.motivo_cancelamento
+      ? `<div class="p-info" style="color:#fca5a5;font-style:italic">🚫 ${escapeHtml(p.motivo_cancelamento)}</div>` : '';
+    const nfLinha = p.status === 'faturado' && p.numero_nf_faturada
+      ? `<div class="p-info" style="color:#38bdf8;font-weight:700">📄 NF ${escapeHtml(p.numero_nf_faturada)}${p.faturado_em ? ' · ' + new Date(p.faturado_em).toLocaleDateString('pt-BR') : ''}</div>` : '';
+    return `
+    <div class="pedido-row${pedidoAtual?.id===p.id?' selected':''}" onclick="selecionarPedido(${p.id})">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
+        <span class="p-num">${escapeHtml(p.numero_pedido || '#'+p.id)}</span>
+        <span class="badge ${classeStatus}">${labelStatus}</span>
+      </div>
+      <div class="p-forn">${escapeHtml(p.fornecedor_fantasia || p.fornecedor_nome || '—')}</div>
+      <div class="p-info">${escapeHtml(p.loja_nome||'—')} &nbsp;|&nbsp; ${escapeHtml(p.vendedor_nome||'—')} &nbsp;|&nbsp; R$ ${parseFloat(p.valor_total||0).toFixed(2).replace('.',',')}</div>
+      <div class="p-info">${p.enviado_em ? 'Enviado: ' + new Date(p.enviado_em).toLocaleDateString('pt-BR') : ''}</div>
+      ${nfLinha}${cancelLinha}
+    </div>`;
+  }).join('');
 }
 
 async function selecionarPedido(id) {
   try {
-    const r = await apiFetch(`${API}/api/pedidos/${id}`);
-    pedidoAtual = await r.json();
-    itensAtuais = pedidoAtual.itens || [];
+    // Carrega pedido e análise em paralelo
+    const [rPed, rAna] = await Promise.all([
+      apiFetch(`${API}/api/pedidos/${id}`),
+      apiFetch(`${API}/api/pedidos/${id}/analise`).catch(() => null),
+    ]);
+    pedidoAtual = await rPed.json();
+    // Filtra excluídos da visualização (continuam no banco para o PDF do vendedor)
+    itensAtuais = (pedidoAtual.itens || []).filter(i => !i.excluido_pelo_comprador);
+    // Mapa de análise por item_id (ou codigo_barras como fallback)
+    if (rAna && rAna.ok) {
+      const ana = await rAna.json();
+      pedidoAtual.analise_map = {};
+      pedidoAtual.leadtime_dias = ana.leadtime_dias || 7;
+      (ana.analise || []).forEach(a => { pedidoAtual.analise_map[a.item_id] = a; });
+    } else { pedidoAtual.analise_map = {}; }
     renderDetalhe();
     document.getElementById('painelVazio').style.display = 'none';
     document.getElementById('painelPedido').style.display = 'block';
+    // Marca selecionado na lista
+    document.querySelectorAll('.pedido-row.selected').forEach(el => el.classList.remove('selected'));
   } catch { showMsg('Erro ao carregar pedido.', 'err'); }
 }
 
@@ -286,40 +415,157 @@ function renderDetalhe() {
   if (!pedidoAtual) return;
   const p = pedidoAtual;
   document.getElementById('d-num').textContent = p.numero_pedido || '#' + p.id;
-  document.getElementById('d-status').innerHTML = `<span class="badge s-${p.status}">${STATUS[p.status]||p.status}</span>`;
+  const editado = p.editado_na_auditoria && p.status === 'validado';
+  const labelStatus = editado ? 'Editado (aguardando faturamento)' : (STATUS[p.status]||p.status);
+  const classeStatus = editado ? 's-editado_validado' : `s-${p.status}`;
+  let extraStatus = '';
+  if (editado && p.auditado_por) extraStatus = `<span style="font-size:10px;color:#94a3b8;margin-left:6px">por ${escapeHtml(p.auditado_por)}</span>`;
+  if (p.status === 'cancelado_pelo_vendedor' && p.motivo_cancelamento) {
+    extraStatus = `<div style="margin-top:6px;padding:8px;background:#3f0f0f;border-left:3px solid #f87171;color:#fca5a5;font-size:12px">🚫 <strong>Cancelado pelo fornecedor</strong>${p.cancelado_por ? ' — ' + escapeHtml(p.cancelado_por) : ''}${p.cancelado_em ? ' em ' + new Date(p.cancelado_em).toLocaleDateString('pt-BR') : ''}<br><span style="font-style:italic">Motivo: ${escapeHtml(p.motivo_cancelamento)}</span></div>`;
+  }
+  if (p.status === 'faturado' && p.numero_nf_faturada) {
+    extraStatus = `<div style="margin-top:6px;padding:8px;background:#0c2440;border-left:3px solid #38bdf8;color:#38bdf8;font-size:12px">📄 <strong>NF ${escapeHtml(p.numero_nf_faturada)}</strong>${p.faturado_por ? ' — ' + escapeHtml(p.faturado_por) : ''}${p.faturado_em ? ' em ' + new Date(p.faturado_em).toLocaleDateString('pt-BR') : ''}</div>`;
+  }
+  document.getElementById('d-status').innerHTML = `<span class="badge ${classeStatus}">${labelStatus}</span>${extraStatus}`;
   document.getElementById('d-forn').textContent = p.fantasia || p.razao_social || '—';
   document.getElementById('d-vend').textContent = `${p.vendedor_nome||'—'} — ${p.vendedor_email||''}`;
   document.getElementById('d-loja').textContent = p.loja_nome || '—';
   document.getElementById('d-enviado').textContent = p.enviado_em ? new Date(p.enviado_em).toLocaleDateString('pt-BR') : '—';
+  // Validade do preço
+  const validadeEl = document.getElementById('d-validade');
+  if (validadeEl) {
+    if (p.preco_valido_ate) {
+      const dt = new Date(p.preco_valido_ate);
+      const hoje = new Date(); hoje.setHours(0,0,0,0);
+      const expirou = dt < hoje;
+      validadeEl.innerHTML = `<span style="color:${expirou?'#f87171':'#4ade80'};font-weight:700">${dt.toLocaleDateString('pt-BR',{timeZone:'UTC'})}${expirou?' (expirou)':''}</span>`;
+    } else validadeEl.textContent = '—';
+  }
   document.getElementById('d-condicao').value = p.condicao_pagamento || 30;
   document.getElementById('d-obs').value = p.observacoes || '';
-  document.getElementById('btnPdf').href = `/api/pedidos/${p.id}/pdf`;
+  // Mostra/oculta botões conforme status
+  const btnRev = document.getElementById('btnRevalidar');
+  if (btnRev) btnRev.style.display = p.status === 'atrasado' ? 'inline-block' : 'none';
+  const btnVal = document.getElementById('btnValidar');
+  if (btnVal) btnVal.style.display = ['aguardando_validacao','validado'].includes(p.status) ? 'inline-block' : 'none';
+  // PDF com token na URL (rota aceita ?token=)
+  document.getElementById('btnPdf').href = `/api/pedidos/${p.id}/pdf?token=${encodeURIComponent(localStorage.getItem('jrlira_token') || '')}`;
 
-  // Itens
-  let totalGeral = 0;
-  document.getElementById('tbodyItens').innerHTML = itensAtuais.map(item => {
-    const qtdPed = parseFloat(item.quantidade);
+  // Itens — calcula classificação para ordenação
+  const propostas = pedidoAtual.propostas_alternativas || {};
+  const histPrecos = pedidoAtual.historico_precos || {};
+  const anaMap = pedidoAtual.analise_map || {};
+  const leadtime = pedidoAtual.leadtime_dias || 7;
+
+  // Computa metadados por item
+  const itensComMeta = itensAtuais.map(item => {
     const qtdVal = parseFloat(item.qtd_validada ?? item.quantidade);
-    const precoPed = parseFloat(item.preco_unitario);
     const precoVal = parseFloat(item.preco_validado ?? item.preco_unitario);
+    const ana = anaMap[item.id] || {};
+    const cobertura = (ana.media_dia || 0) > 0 ? ((ana.estdisponivel || 0) + (ana.em_transito || 0)) / ana.media_dia : null;
+    let urgencia = 3; // verde
+    if (item.produto_novo) urgencia = 2; // novo (sem histórico) - prioridade média
+    if (ana.media_dia > 0) {
+      if (cobertura < leadtime) urgencia = 0; // vermelho
+      else if (cobertura < leadtime + 14) urgencia = 1; // amarelo
+    }
+    return { item, ana, qtdVal, precoVal, cobertura, urgencia };
+  });
+
+  // Ordena: vermelho > amarelo > novo > verde
+  itensComMeta.sort((a, b) => a.urgencia - b.urgencia || (a.item.descricao || '').localeCompare(b.item.descricao || ''));
+
+  let totalGeral = 0;
+  let totalOriginal = 0;
+  document.getElementById('tbodyItens').innerHTML = itensComMeta.map(({ item, ana, qtdVal, precoVal, cobertura, urgencia }) => {
+    const qtdPed = parseFloat(item.quantidade);
+    const precoPed = parseFloat(item.preco_unitario);
     const tot = qtdVal * precoVal;
     totalGeral += tot;
-    return `<tr>
-      <td style="font-family:monospace;font-size:12px">${item.codigo_barras||'—'}</td>
-      <td>${item.produto_novo?'<span class="badge-novo">NOVO</span> ':''}<span style="font-size:12px">${item.descricao}</span></td>
-      <td style="text-align:right;color:#94a3b8">${qtdPed.toFixed(2)}</td>
+    totalOriginal += qtdPed * precoPed;
+
+    const sugestao = (ana.media_dia || 0) > 0 ? Math.max(0, (30 * ana.media_dia) - (ana.estdisponivel || 0) - (ana.em_transito || 0)) : null;
+    const flag = urgencia === 0 ? '🔴' : urgencia === 1 ? '🟡' : urgencia === 2 ? '✨' : '🟢';
+    const corBgUrg = urgencia === 0 ? 'background:#1a0505' : (urgencia === 1 ? 'background:#1a1200' : '');
+
+    // Histórico
+    const hist = item.codigo_barras ? histPrecos[item.codigo_barras] : null;
+    const precoHistorico = hist?.preco;
+    const precoAlto = precoHistorico && precoVal > precoHistorico * 1.05;
+    const histStr = hist
+      ? `<span style="color:${precoAlto?'#f87171':'#94a3b8'};${precoAlto?'font-weight:700':''}" title="${escapeHtml(hist.fornecedor||'')} em ${new Date(hist.data).toLocaleDateString('pt-BR',{timeZone:'UTC'})}">R$ ${hist.preco.toFixed(4).replace('.',',')}${precoAlto?' ⚠':''}</span>`
+      : '<span style="color:#475569">—</span>';
+
+    // Propostas alternativas
+    const alt = item.codigo_barras ? (propostas[item.codigo_barras] || []) : [];
+    const altMaisBarata = alt.find(a => a.preco < precoVal);
+    let altRow = '';
+    if (alt.length) {
+      altRow = `<tr><td colspan="13" style="background:#0f172a;padding:6px 10px;border-bottom:1px solid #334155">
+        <div style="font-size:11px;color:#94a3b8">${altMaisBarata?'<span style="color:#fbbf24;font-weight:700">⚠ Proposta mais barata disponível</span> · ':''}Outras propostas (${alt.length}):</div>
+        <table style="margin-top:4px;width:100%;font-size:11px">
+          <thead><tr><th>Pedido</th><th>Fornecedor</th><th>Vendedor</th><th style="text-align:right">Preço</th><th>Cond.</th><th>Válido até</th></tr></thead>
+          <tbody>${alt.map(a => {
+            const dest = a.preco < precoVal ? '#4ade80' : (a.preco > precoVal ? '#f87171' : '#94a3b8');
+            return `<tr>
+              <td style="font-family:monospace">${escapeHtml(a.numero_pedido || '#'+a.pedido_id)}</td>
+              <td>${escapeHtml(a.fantasia || a.razao_social || '—')}</td>
+              <td>${escapeHtml(a.vendedor_nome || '—')}</td>
+              <td style="text-align:right;color:${dest};font-weight:700">R$ ${a.preco.toFixed(4).replace('.',',')}</td>
+              <td>${a.condicao_pagamento || '?'}d</td>
+              <td>${a.preco_valido_ate ? new Date(a.preco_valido_ate).toLocaleDateString('pt-BR',{timeZone:'UTC'}) : '—'}</td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table>
+      </td></tr>`;
+    }
+
+    const corBg = altMaisBarata ? 'background:#1a1200' : corBgUrg;
+    const desc = `${item.produto_novo?'<span class="badge-novo">NOVO</span> ':''}${escapeHtml(item.descricao)}`;
+    const cobStr = cobertura == null ? '—' : `${Math.round(cobertura)}d`;
+    // Indicador de excesso vs sugestão
+    const excessoFator = sugestao != null && sugestao > 0 ? qtdVal / sugestao : null;
+    const excesso30 = excessoFator != null && excessoFator > 1.30;
+    const sugestaoStr = sugestao != null
+      ? `<span style="color:${excesso30?'#f87171':'#fbbf24'};${excesso30?'font-weight:700':''}" title="${excesso30?'Qtd validada está '+Math.round((excessoFator-1)*100)+'% acima':''}">${sugestao.toFixed(0)}${excesso30?' ⚠':''}</span>`
+      : '—';
+
+    return `<tr style="${corBg}">
+      <td title="Cobertura ${cobStr}">${flag}</td>
+      <td class="al-left" style="font-family:monospace;font-size:11px">${escapeHtml(item.codigo_barras||'—')}</td>
+      <td class="al-left"><span style="font-size:12px">${desc}</span></td>
+      <td>${ana.estdisponivel != null ? parseFloat(ana.estdisponivel).toFixed(0) : '—'}</td>
+      <td>${ana.media_dia > 0 ? ana.media_dia.toFixed(2) : '<span style="color:#475569">—</span>'}</td>
+      <td>${sugestaoStr}</td>
+      <td style="color:#94a3b8">${qtdPed.toFixed(2)}</td>
       <td><input class="input-val" type="number" step="0.001" value="${qtdVal.toFixed(3)}" data-item="${item.id}" data-field="qtd" oninput="atualizarLinha(this)"></td>
-      <td style="text-align:right;color:#94a3b8">R$ ${precoPed.toFixed(2).replace('.',',')}</td>
-      <td><input class="input-val" type="number" step="0.01" value="${precoVal.toFixed(4)}" data-item="${item.id}" data-field="preco" oninput="atualizarLinha(this)"></td>
-      <td style="text-align:right;color:#4ade80;font-weight:700" id="tot-${item.id}">R$ ${tot.toFixed(2).replace('.',',')}</td>
-    </tr>`;
+      <td style="color:#94a3b8">R$ ${precoPed.toFixed(4).replace('.',',')}</td>
+      <td><input class="input-val" type="number" step="0.0001" value="${precoVal.toFixed(4)}" data-item="${item.id}" data-field="preco" oninput="atualizarLinha(this)"></td>
+      <td style="font-size:11px">${histStr}</td>
+      <td style="color:#4ade80;font-weight:700" id="tot-${item.id}">R$ ${tot.toFixed(2).replace('.',',')}</td>
+      <td><button class="btn-danger btn-sm" onclick="removerItemValidacao(${item.id}, this)" title="Remover item">✕</button></td>
+    </tr>${altRow}`;
   }).join('');
+  document.getElementById('contadorItens').textContent = `${itensComMeta.length} ${itensComMeta.length===1?'item':'itens'}`;
   document.getElementById('d-total').textContent = `R$ ${totalGeral.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.')}`;
+  // Economia (se total mudou em relação ao original)
+  const diff = totalOriginal - totalGeral;
+  const econEl = document.getElementById('economiaInfo');
+  if (econEl) {
+    if (Math.abs(diff) < 0.01) {
+      econEl.textContent = `Total original: R$ ${totalOriginal.toFixed(2).replace('.',',')} · sem alterações`;
+    } else if (diff > 0) {
+      econEl.innerHTML = `Total original: R$ ${totalOriginal.toFixed(2).replace('.',',')} · <span style="color:#4ade80;font-weight:700">economia de R$ ${diff.toFixed(2).replace('.',',')}</span> (${(diff/totalOriginal*100).toFixed(1)}%)`;
+    } else {
+      econEl.innerHTML = `Total original: R$ ${totalOriginal.toFixed(2).replace('.',',')} · <span style="color:#f87171;font-weight:700">aumento de R$ ${(-diff).toFixed(2).replace('.',',')}</span>`;
+    }
+  }
 
   const jaValidado = p.status === 'validado' || p.status === 'vinculado';
   document.getElementById('btnValidar').textContent = jaValidado ? '✓ Re-validar e reenviar PDF' : '✓ Validar e enviar PDF ao fornecedor';
 }
 
+let autoSaveTimer = null;
 function atualizarLinha(input) {
   const itemId = parseInt(input.dataset.item);
   const field = input.dataset.field;
@@ -330,18 +576,124 @@ function atualizarLinha(input) {
   const q = parseFloat(item.qtd_validada ?? item.quantidade);
   const p = parseFloat(item.preco_validado ?? item.preco_unitario);
   document.getElementById(`tot-${itemId}`).textContent = `R$ ${(q*p).toFixed(2).replace('.',',')}`;
-  // Recalc total
-  const total = itensAtuais.reduce((s, i) => {
-    const qq = parseFloat(i.qtd_validada ?? i.quantidade);
-    const pp = parseFloat(i.preco_validado ?? i.preco_unitario);
-    return s + qq * pp;
-  }, 0);
+  let total = 0, totalOrig = 0;
+  itensAtuais.forEach(i => {
+    total += parseFloat(i.qtd_validada ?? i.quantidade) * parseFloat(i.preco_validado ?? i.preco_unitario);
+    totalOrig += parseFloat(i.quantidade) * parseFloat(i.preco_unitario);
+  });
   document.getElementById('d-total').textContent = `R$ ${total.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.')}`;
+  const econEl = document.getElementById('economiaInfo');
+  if (econEl) {
+    const diff = totalOrig - total;
+    if (Math.abs(diff) < 0.01) econEl.textContent = `Total original: R$ ${totalOrig.toFixed(2).replace('.',',')} · sem alterações`;
+    else if (diff > 0) econEl.innerHTML = `Total original: R$ ${totalOrig.toFixed(2).replace('.',',')} · <span style="color:#4ade80;font-weight:700">economia de R$ ${diff.toFixed(2).replace('.',',')}</span> (${(diff/totalOrig*100).toFixed(1)}%)`;
+    else econEl.innerHTML = `Total original: R$ ${totalOrig.toFixed(2).replace('.',',')} · <span style="color:#f87171;font-weight:700">aumento de R$ ${(-diff).toFixed(2).replace('.',',')}</span>`;
+  }
+  // Auto-save com debounce 1.5s
+  clearTimeout(autoSaveTimer);
+  autoSaveTimer = setTimeout(() => salvarRascunhoSilencioso(), 1500);
+}
+
+async function salvarRascunhoSilencioso() {
+  if (!pedidoAtual) return;
+  const itensPayload = itensAtuais.map(i => ({
+    id: i.id,
+    qtd_validada: parseFloat(i.qtd_validada ?? i.quantidade),
+    preco_validado: parseFloat(i.preco_validado ?? i.preco_unitario)
+  }));
+  try {
+    await apiFetch(`${API}/api/pedidos/${pedidoAtual.id}/rascunho-validacao`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        itens: itensPayload,
+        condicao_pagamento: parseInt(document.getElementById('d-condicao').value) || null,
+        observacoes: document.getElementById('d-obs').value.trim()
+      })
+    });
+  } catch {}
+}
+
+async function salvarRascunhoValidacao(btn) {
+  await withLoading(btn, async () => {
+    await salvarRascunhoSilencioso();
+    showMsg('Rascunho salvo. Pode voltar depois para finalizar.', 'ok');
+  }, 'Salvando...');
+}
+
+function abrirAddItem() {
+  ['addCodigo','addDescricao','addQtde','addPreco'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('addNovo').checked = false;
+  document.getElementById('modalAddItem').style.display = 'flex';
+}
+
+async function confirmarAddItem(btn) {
+  if (!pedidoAtual) return;
+  const codigo_barras = document.getElementById('addCodigo').value.trim() || null;
+  const descricao = document.getElementById('addDescricao').value.trim();
+  const quantidade = parseFloat(document.getElementById('addQtde').value);
+  const preco_unitario = parseFloat(document.getElementById('addPreco').value);
+  const produto_novo = document.getElementById('addNovo').checked;
+  if (!descricao || !quantidade || !preco_unitario) return alert('Descrição, quantidade e preço são obrigatórios');
+  await withLoading(btn, async () => {
+    const r = await apiFetch(`${API}/api/pedidos/${pedidoAtual.id}/itens`, {
+      method: 'POST',
+      body: JSON.stringify({ codigo_barras, descricao, quantidade, preco_unitario, produto_novo })
+    });
+    const d = await r.json();
+    if (!r.ok) return alert(d.erro);
+    document.getElementById('modalAddItem').style.display = 'none';
+    selecionarPedido(pedidoAtual.id);
+  }, 'Adicionando...');
+}
+
+async function removerItemValidacao(itemId, btn) {
+  if (!confirm('Remover este item do pedido?')) return;
+  await withLoading(btn, async () => {
+    const r = await apiFetch(`${API}/api/pedidos/itens/${itemId}`, { method: 'DELETE' });
+    if (r.ok) selecionarPedido(pedidoAtual.id);
+    else { const d = await r.json(); alert(d.erro); }
+  }, '...');
+}
+
+// Detecta itens que precisam de auditoria:
+//  - excesso 30% acima da sugestão
+//  - produto cadastrado (não novo) sem venda em 90d
+function calcularExcessosLocal() {
+  const ana = pedidoAtual?.analise_map || {};
+  const excessos = [];
+  for (const item of itensAtuais) {
+    const a = ana[item.id] || {};
+    const qtdVal = parseFloat(item.qtd_validada ?? item.quantidade);
+    if (qtdVal <= 0) continue;
+    const mediaDia = a.media_dia || 0;
+    const estoque = a.estdisponivel;
+    const sug = mediaDia > 0 ? Math.max(0, 30 * mediaDia - (estoque || 0) - (a.em_transito || 0)) : null;
+    let motivo = null;
+    if (sug != null && sug > 0 && qtdVal > sug * 1.30) motivo = 'excesso_30pct';
+    else if (!item.produto_novo && estoque != null && mediaDia <= 0) motivo = 'sem_historico_vendas';
+    if (motivo) {
+      excessos.push({
+        item_id: item.id, codigo_barras: item.codigo_barras, descricao: item.descricao,
+        qtd: qtdVal, sugestao: sug, media_dia: mediaDia, motivo,
+        fator: sug && sug > 0 ? qtdVal / sug : null,
+      });
+    }
+  }
+  return excessos;
 }
 
 async function validarPedido(btn) {
   if (!pedidoAtual) return;
-  if (!confirm('Validar pedido e enviar PDF ao fornecedor por e-mail?')) return;
+
+  const excessos = calcularExcessosLocal();
+  let justificativas = null;
+  if (excessos.length) {
+    justificativas = await pedirJustificativas(excessos);
+    if (!justificativas) return; // cancelou
+  } else {
+    if (!confirm('Validar pedido e enviar PDF ao fornecedor por e-mail?')) return;
+  }
+
   const itensPayload = itensAtuais.map(i => ({
     id: i.id,
     qtd_validada: parseFloat(i.qtd_validada ?? i.quantidade),
@@ -354,16 +706,104 @@ async function validarPedido(btn) {
         body: JSON.stringify({
           itens: itensPayload,
           condicao_pagamento: parseInt(document.getElementById('d-condicao').value),
-          observacoes: document.getElementById('d-obs').value.trim()
+          observacoes: document.getElementById('d-obs').value.trim(),
+          justificativas
         })
       });
       const d = await r.json();
       if (!r.ok) return showMsg(d.erro, 'err');
-      showMsg('Pedido validado e PDF enviado ao fornecedor!', 'ok');
+      if (d.status === 'aguardando_auditoria') {
+        alert(d.mensagem || 'Pedido enviado para análise do Administrador.');
+        showMsg('Pedido aguardando auditoria do admin.', 'ok');
+      } else {
+        showMsg('Pedido validado e PDF enviado ao fornecedor!', 'ok');
+      }
       await selecionarPedido(pedidoAtual.id);
       carregarPedidos();
     } catch { showMsg('Erro ao validar.', 'err'); }
   }, 'Enviando...');
+}
+
+// Modal de justificativa por item — retorna {item_id: texto} ou null se cancelou
+function pedirJustificativas(excessos) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:300;display:flex;align-items:center;justify-content:center;padding:20px';
+    overlay.innerHTML = `
+      <div style="background:#1e293b;border-radius:10px;padding:24px;max-width:760px;width:100%;max-height:90vh;overflow-y:auto">
+        <h3 style="color:#f97316;margin-bottom:8px">⚠ Itens acima da sugestão (>30%)</h3>
+        <p style="font-size:13px;color:#94a3b8;margin-bottom:16px">Justifique cada item. O pedido seguirá para análise do Administrador antes de ser enviado ao fornecedor.</p>
+        <div id="listaExc" style="display:flex;flex-direction:column;gap:12px"></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px">
+          <button class="btn-ghost" id="cancelExc">Cancelar</button>
+          <button class="btn-primary" id="confirmExc">Enviar para auditoria</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const lista = overlay.querySelector('#listaExc');
+    lista.innerHTML = excessos.map(e => {
+      const tag = e.motivo === 'sem_historico_vendas'
+        ? '<span style="background:#450a0a;color:#fbbf24;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700">SEM HISTÓRICO DE VENDAS</span>'
+        : '<span style="background:#431407;color:#fbbf24;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700">+30% ACIMA DA SUGESTÃO</span>';
+      const detalhe = e.motivo === 'sem_historico_vendas'
+        ? `Produto cadastrado mas <strong style="color:#fbbf24">sem venda nos últimos 90 dias</strong>. Qtd pedida: <strong>${e.qtd.toFixed(2)}</strong>`
+        : `Sugestão (30d): <strong>${e.sugestao.toFixed(0)}</strong> · Qtd validada: <strong style="color:#f87171">${e.qtd.toFixed(2)}</strong> · <strong style="color:#f87171">+${Math.round((e.fator-1)*100)}%</strong>`;
+      const placeholder = e.motivo === 'sem_historico_vendas'
+        ? 'Justificativa: por que comprar um produto sem histórico de venda?'
+        : 'Justificativa: por que comprar mais que a sugestão?';
+      return `
+      <div style="background:#0f172a;border-radius:8px;padding:12px;border-left:4px solid #f97316">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+          <div style="font-weight:700;font-size:13px;flex:1">${escapeHtml(e.descricao)}</div>
+          ${tag}
+        </div>
+        <div style="font-size:11px;color:#94a3b8;margin:4px 0">${detalhe}</div>
+        <textarea data-id="${e.item_id}" placeholder="${placeholder}" style="width:100%;min-height:60px;padding:8px;font-size:12px;background:#0a1020;border:1px solid #334155;color:#e2e8f0;border-radius:6px"></textarea>
+      </div>`;
+    }).join('');
+    overlay.querySelector('#cancelExc').onclick = () => { document.body.removeChild(overlay); resolve(null); };
+    overlay.querySelector('#confirmExc').onclick = () => {
+      const just = {};
+      let faltam = [];
+      lista.querySelectorAll('textarea').forEach(t => {
+        const v = t.value.trim();
+        if (!v) faltam.push(t.dataset.id); else just[t.dataset.id] = v;
+      });
+      if (faltam.length) { alert('Justifique todos os itens.'); return; }
+      document.body.removeChild(overlay);
+      resolve(just);
+    };
+  });
+}
+
+async function revalidarAtrasado(btn) {
+  if (!pedidoAtual) return;
+  if (!confirm(`Re-validar o pedido atrasado ${pedidoAtual.numero_pedido}?\n\nO vendedor poderá faturar novamente. Verifique antes os preços e validade.`)) return;
+  await withLoading(btn, async () => {
+    const r = await apiFetch(`${API}/api/pedidos/${pedidoAtual.id}/revalidar-atrasado`, { method: 'POST' });
+    const d = await r.json();
+    if (!r.ok) return showMsg(d.erro, 'err');
+    showMsg('Pedido re-validado. Vendedor tem novamente 48h para faturar.', 'ok');
+    await selecionarPedido(pedidoAtual.id);
+    carregarPedidos();
+  }, 'Re-validando...');
+}
+
+async function rejeitarPedido(btn) {
+  if (!pedidoAtual) return;
+  const motivo = prompt('Motivo da rejeição (opcional):');
+  if (motivo === null) return;
+  if (!confirm(`Rejeitar o pedido ${pedidoAtual.numero_pedido || '#'+pedidoAtual.id}?`)) return;
+  await withLoading(btn, async () => {
+    const r = await apiFetch(`${API}/api/pedidos/${pedidoAtual.id}/rejeitar`, {
+      method: 'POST', body: JSON.stringify({ motivo: motivo || null })
+    });
+    const d = await r.json();
+    if (!r.ok) return showMsg(d.erro, 'err');
+    showMsg('Pedido rejeitado.', 'ok');
+    await selecionarPedido(pedidoAtual.id);
+    carregarPedidos();
+  }, 'Rejeitando...');
 }
 
 
@@ -378,7 +818,11 @@ async function carregarAnalise() {
     const d = await r.json();
     if (!r.ok) { document.getElementById('analiseCarregando').textContent = d.erro; return; }
     analiseData = d;
-    document.getElementById('analiseLeadtime').value = d.leadtime_dias || 7;
+    const ltSel = document.getElementById('analiseLeadtime');
+    const ltVal = d.leadtime_dias || 7;
+    const opcoes = [2,3,4,5,7,10,12,15,20,25,30,35,40,50,60];
+    const ltProximo = opcoes.reduce((a,b) => Math.abs(b-ltVal) < Math.abs(a-ltVal) ? b : a);
+    ltSel.value = ltProximo;
     renderAnalise();
   } catch { document.getElementById('analiseCarregando').textContent = 'Erro ao carregar análise.'; }
 }

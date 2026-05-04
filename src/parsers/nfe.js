@@ -79,6 +79,9 @@ async function parseNFe(buf) {
   const itens = dets.map((det, idx) => {
     const prod = det.prod || {};
     const qCom = n(prod.qCom) || n(prod.qTrib) || 1;
+    const qTrib = n(prod.qTrib) || 0;
+    const uCom = String(prod.uCom || '').trim().toUpperCase();
+    const uTrib = String(prod.uTrib || '').trim().toUpperCase();
     const vprod = n(prod.vProd);
     const vdesc_item = n(prod.vDesc);
     const vfrete_item = n(prod.vFrete);
@@ -90,12 +93,41 @@ async function parseNFe(buf) {
 
     const custo_total = (vprod - vdesc_item) + vfrete_item + vseg_item + voutro_item + vipi + vst + vfcp_st;
     const preco_total_nota = parseFloat(custo_total.toFixed(2));
-    const preco_unitario_nota = parseFloat((custo_total / qCom).toFixed(4));
+    // Preço unitário em UN (tributável) — comparável com custo do CD que está em UN.
+    // Quando uCom=uTrib (bulk), qTrib==qCom e o resultado é o mesmo.
+    // Quando uCom=CX e uTrib=UN, qTrib = total UN → divide certo.
+    const qBase = qTrib > 0 ? qTrib : qCom;
+    const preco_unitario_nota = parseFloat((custo_total / qBase).toFixed(4));
+    const preco_unitario_caixa = (qCom > 0 && qCom !== qBase)
+      ? parseFloat((custo_total / qCom).toFixed(4))
+      : null;
 
     const eanRaw = prod.cEAN;
     const ean = (!eanRaw || eanRaw === 'SEM GTIN') ? null : String(eanRaw).trim();
     const eanTribRaw = prod.cEANTrib;
     const eanTrib = (!eanTribRaw || eanTribRaw === 'SEM GTIN') ? null : String(eanTribRaw).trim();
+
+    // Qtd por caixa derivada do XML.
+    // qCom = unidade comercial (geralmente CX/PCT/FD), qTrib = unidade tributável (geralmente UN).
+    // Se qCom > 0 e qTrib é múltiplo inteiro, ratio = qtd por caixa pra esse fornecedor.
+    let qtd_por_caixa_nfe = null;
+    let qtd_por_caixa_confianca = 'nula';
+    if (qCom > 0 && qTrib > 0 && uCom && uTrib && uCom !== uTrib) {
+      const ratio = qTrib / qCom;
+      const ratioInt = Math.round(ratio);
+      const exato = Math.abs(ratio - ratioInt) < 0.001 && ratioInt >= 2;
+      const UCOM_CAIXA = ['CX','CXS','CAIXA','PCT','PC','FD','FDO','FARDO','DP','DZ','DUZIA','BD','BD24','BD12'];
+      const UTRIB_UN = ['UN','UND','UNID','UNIDADE','PC','PCT'];
+      if (exato) {
+        if (UCOM_CAIXA.includes(uCom) && UTRIB_UN.includes(uTrib)) {
+          qtd_por_caixa_nfe = ratioInt;
+          qtd_por_caixa_confianca = 'alta';
+        } else {
+          qtd_por_caixa_nfe = ratioInt;
+          qtd_por_caixa_confianca = 'media';
+        }
+      }
+    }
 
     return {
       numero_item: parseInt(det.$?.nItem || idx + 1) || idx + 1,
@@ -103,7 +135,13 @@ async function parseNFe(buf) {
       ean_trib: eanTrib,
       descricao_nota: String(prod.xProd || '').trim(),
       quantidade: qCom,
-      preco_unitario_nota, preco_total_nota,
+      qtd_comercial: qCom,
+      un_comercial: uCom || null,
+      qtd_tributavel: qTrib || null,
+      un_tributavel: uTrib || null,
+      qtd_por_caixa_nfe,
+      qtd_por_caixa_confianca,
+      preco_unitario_nota, preco_total_nota, preco_unitario_caixa,
       vprod, vdesc_item, vfrete_item, vseg_item, voutro_item,
       vicms_bc, vicms, vst_bc, vst, vfcp_st, vipi_bc, vipi,
     };

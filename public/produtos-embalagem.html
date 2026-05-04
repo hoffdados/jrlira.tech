@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cadastro CD — JR Lira Tech</title>
+<link rel="stylesheet" href="/shared.css">
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; padding: 24px; }
+.wrap { max-width: 1200px; margin: 0 auto; }
+.header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+.h-title { font-family: 'Segoe UI Black', 'Segoe UI', sans-serif; font-weight: 900; font-size: 24px; color: #38bdf8; letter-spacing: -0.5px; }
+.h-back { font-size: 12px; color: #475569; text-decoration: none; }
+.h-back:hover { color: #94a3b8; }
+
+.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-bottom: 24px; }
+.stat { background: #1e293b; border-radius: 10px; padding: 16px; }
+.stat-label { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+.stat-value { font-size: 24px; font-weight: 700; margin-top: 4px; }
+.stat-value.warn { color: #fbbf24; }
+.stat-value.err { color: #f87171; }
+.stat-value.ok { color: #4ade80; }
+
+.toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+.toolbar input, .toolbar select { padding: 8px 12px; background: #1e293b; border: 1px solid #334155; border-radius: 8px; color: #e2e8f0; font-size: 13px; min-width: 200px; }
+.toolbar button { padding: 8px 16px; background: #0ea5e9; border: none; border-radius: 8px; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; }
+.toolbar button.ghost { background: transparent; border: 1px solid #334155; color: #94a3b8; }
+.toolbar button.danger { background: #dc2626; }
+.toolbar button:hover { opacity: 0.85; }
+
+.lista { background: #1e293b; border-radius: 12px; overflow: hidden; }
+.row { display: grid; grid-template-columns: 100px 1fr 60px 60px 60px 110px 130px 130px 90px 200px; gap: 10px; padding: 12px 16px; border-bottom: 1px solid #1e3148; align-items: center; font-size: 12px; }
+.row.suggest-nfe { background: #1c2a3f; box-shadow: inset 3px 0 0 #38bdf8; }
+.nfe-pill { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:6px; background:#0ea5e944; color:#7dd3fc; font-weight:700; font-size:11px; }
+.row.head { background: #0f2a3f; font-size: 11px; text-transform: uppercase; color: #64748b; letter-spacing: 0.5px; padding: 12px 16px; font-weight: 700; }
+.row:last-child { border-bottom: none; }
+.row.divergente { background: #2a1c1c; }
+.row.pendente { background: #2a261c; }
+.diff { color: #f87171; font-weight: 700; }
+.code { font-family: 'Cascadia Code', 'Consolas', monospace; color: #94a3b8; font-size: 12px; }
+.desc { color: #cbd5e1; }
+.qtd-input { width: 70px; padding: 5px 8px; background: #0f172a; border: 1px solid #334155; border-radius: 6px; color: #e2e8f0; font-size: 13px; text-align: center; }
+.ean-input { width: 130px; padding: 5px 8px; background: #0f172a; border: 1px solid #334155; border-radius: 6px; color: #e2e8f0; font-size: 12px; font-family: 'Cascadia Code', 'Consolas', monospace; transition: border-color .25s, box-shadow .25s; }
+.ean-input:focus { outline: none; border-color: #38bdf8; }
+.ean-input.dirty { border-color: #fbbf24; box-shadow: 0 0 0 1px #fbbf24; }
+.ean-input.saving { border-color: #38bdf8; box-shadow: 0 0 0 1px #38bdf8; }
+.ean-input.saved { border-color: #4ade80; box-shadow: 0 0 0 1px #4ade80; }
+.ean-input.errored { border-color: #f87171; box-shadow: 0 0 0 1px #f87171; }
+.ean-flash { font-size: 10px; margin-left: 6px; font-weight: 700; text-transform: uppercase; }
+.ean-flash.ok { color: #4ade80; }
+.ean-flash.err { color: #f87171; }
+.badge { display: inline-block; padding: 2px 7px; border-radius: 5px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+.b-alta { background: #16a34a44; color: #4ade80; }
+.b-baixa { background: #ca8a0444; color: #fbbf24; }
+.b-nula { background: #44444444; color: #94a3b8; }
+.b-pendente { background: #ca8a0444; color: #fbbf24; }
+.b-divergente { background: #dc262644; color: #f87171; }
+.b-validado { background: #16a34a44; color: #4ade80; }
+.acoes { display: flex; gap: 6px; align-items: center; }
+.acoes button { padding: 5px 10px; font-size: 11px; border: none; border-radius: 6px; cursor: pointer; font-weight: 700; }
+.acoes .aceitar { background: #16a34a; color: #fff; }
+.acoes .salvar { background: #0ea5e9; color: #fff; }
+.acoes .ignorar { background: transparent; color: #64748b; border: 1px solid #334155; }
+.paginador { display: flex; gap: 8px; justify-content: center; padding: 16px; }
+.paginador button { padding: 6px 14px; background: #1e293b; border: 1px solid #334155; color: #e2e8f0; border-radius: 6px; cursor: pointer; font-size: 12px; }
+.paginador button:disabled { opacity: 0.4; cursor: not-allowed; }
+.empty { padding: 60px; text-align: center; color: #64748b; font-size: 14px; }
+
+.modal { position: fixed; top:0; left:0; right:0; bottom:0; width:100vw; height:100vh; background: rgba(0,0,0,0.7); display: none; align-items: center; justify-content: center; z-index: 1000; }
+.modal.show { display: flex; }
+.modal-box { background: #1e293b; border-radius: 12px; padding: 24px; width: 460px; max-width: 90vw; }
+.modal h3 { color: #38bdf8; margin-bottom: 16px; font-size: 18px; }
+.modal label { display: block; font-size: 11px; color: #94a3b8; text-transform: uppercase; margin-top: 12px; margin-bottom: 4px; letter-spacing: 0.5px; }
+.modal input { width: 100%; padding: 8px 12px; background: #0f172a; border: 1px solid #334155; border-radius: 6px; color: #e2e8f0; }
+.modal-act { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+.modal-act button { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px; }
+.modal-act .cancel { background: transparent; color: #94a3b8; border: 1px solid #334155; }
+.modal-act .confirm { background: #0ea5e9; color: #fff; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="header">
+    <div>
+      <div class="h-title">Cadastro CD</div>
+      <a class="h-back" href="/">← voltar</a>
+    </div>
+  </div>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="toolbar">
+    <select id="fStatus" onchange="carregar()">
+      <option value="">Status emb: todos</option>
+      <option value="pendente_validacao">Pendente validação</option>
+      <option value="divergente_descricao_mudou">Div. desc. mudou</option>
+      <option value="divergente_qtd_planilha">Div. qtd planilha</option>
+      <option value="validado">Validado</option>
+    </select>
+    <select id="fEanStatus" onchange="carregar()">
+      <option value="">Status EAN: todos</option>
+      <option value="ok">OK (batem)</option>
+      <option value="divergente">Divergente CD≠JR</option>
+      <option value="sem_ean_cd">Sem EAN no CD</option>
+      <option value="sem_ean_jrlira">Sem EAN JR Lira</option>
+      <option value="sem_ambos">Sem EAN nenhum</option>
+    </select>
+    <select id="fApontaAgregado" onchange="carregar()">
+      <option value="">Agregado: todos</option>
+      <option value="true">Aponta pra agregado ⚠️</option>
+    </select>
+    <select id="fDuplicado" onchange="carregar()">
+      <option value="">Duplicado: todos</option>
+      <option value="true">EAN em vários MAT 🔁</option>
+    </select>
+    <select id="fSugNfe" onchange="carregar()">
+      <option value="">Sug NF-e: todos</option>
+      <option value="true">Só com sugestão NF-e 📥</option>
+    </select>
+    <label style="display:flex;align-items:center;gap:6px;color:#94a3b8;font-size:12px"><input type="checkbox" id="fAtivo" checked onchange="carregar()" style="margin:0"> só ativos</label>
+    <input type="text" id="fQ" placeholder="Código, descrição ou EAN" oninput="debouncedCarregar()">
+    <button onclick="aceitarMassa('alta')">Aceitar conf. ALTA</button>
+    <button class="ghost" onclick="syncEansCd()">🔄 Sync EAN do CD</button>
+    <button class="ghost" onclick="sugerirMassa()">✨ Sugerir do Eco em massa</button>
+    <button class="ghost" onclick="recalcularMeta()">🔄 Recalcular agregado/duplicado</button>
+    <button class="ghost" onclick="syncStatusAtivo()">🔄 Sync status ativos CD</button>
+    <button class="ghost" onclick="baixarRelatorioCd()">📊 Relatório CD (Excel)</button>
+    <input type="file" id="fileImport" accept=".xlsx,.xls" style="display:none" onchange="importarExcel('embalagens')">
+    <input type="file" id="fileImportEans" accept=".xlsx,.xls" style="display:none" onchange="importarExcel('eans')">
+    <button class="ghost" onclick="document.getElementById('fileImport').click()">📥 Excel embalagens</button>
+    <button class="ghost" onclick="document.getElementById('fileImportEans').click()">📥 Excel EANs</button>
+  </div>
+
+  <div class="lista" id="lista"></div>
+  <div class="paginador" id="paginador"></div>
+</div>
+
+<div class="modal" id="modalEdit">
+  <div class="modal-box">
+    <h3>Definir quantidade manualmente</h3>
+    <div id="modalDesc" style="font-size:12px; color:#94a3b8; margin-bottom:8px"></div>
+    <label>Código</label>
+    <input type="text" id="modalMat" disabled>
+    <label>Quantidade por embalagem</label>
+    <input type="number" id="modalQtd" min="1">
+    <label>Observação (opcional)</label>
+    <input type="text" id="modalObs">
+      <div class="modal-act">
+      <button class="cancel" onclick="fecharModal()">Cancelar</button>
+      <button class="confirm" onclick="salvarManual()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="modalSug">
+  <div class="modal-box" style="width:640px;max-width:92vw">
+    <h3 id="sugTitle" style="word-break:break-word">Sugestões do Ecocentauro</h3>
+    <div id="sugSub" style="font-size:11px;color:#64748b;margin-bottom:12px;word-break:break-word"></div>
+    <div id="sugLista" style="max-height:60vh;overflow-y:auto;background:#0f172a;border-radius:8px"></div>
+    <div class="modal-act">
+      <button class="cancel" onclick="document.getElementById('modalSug').classList.remove('show')">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<script src="/shared.js"></script>
+<script>
+let pagina = 0;
+const POR_PAGINA = 50;
+let totalPagina = 0;
+let timer = null;
+function debouncedCarregar() { clearTimeout(timer); timer = setTimeout(() => { pagina = 0; carregar(); }, 300); }
+
+async function carregar() {
+  const status = document.getElementById('fStatus').value;
+  const eanStatus = document.getElementById('fEanStatus').value;
+  const apontaAgregado = document.getElementById('fApontaAgregado').value;
+  const duplicado = document.getElementById('fDuplicado').value;
+  const sugNfe = document.getElementById('fSugNfe').value;
+  const ativo = document.getElementById('fAtivo').checked;
+  const q = document.getElementById('fQ').value.trim();
+  const params = new URLSearchParams();
+  if (status) params.set('status', status);
+  if (eanStatus) params.set('ean_status', eanStatus);
+  if (apontaAgregado) params.set('aponta_agregado', apontaAgregado);
+  if (duplicado) params.set('duplicado', duplicado);
+  if (sugNfe) params.set('sugestao_nfe', sugNfe);
+  if (ativo) params.set('ativo', 'true');
+  if (q) params.set('q', q);
+  params.set('limit', POR_PAGINA);
+  params.set('offset', pagina * POR_PAGINA);
+  try {
+    const r = await apiFetch(`/api/produtos-embalagem?${params}`);
+    const data = await r.json();
+    totalPagina = data.total;
+    renderLista(data.rows);
+    renderPaginador();
+  } catch (e) { alert('Erro: ' + e.message); }
+  carregarStats();
+}
+
+async function carregarStats() {
+  try {
+    const [r1, r2] = await Promise.all([
+      apiFetch('/api/produtos-embalagem/stats').then(r => r.json()),
+      apiFetch('/api/produtos-embalagem/stats-ean').then(r => r.json())
+    ]);
+    const m = Object.fromEntries(r1.por_status.map(s => [s.status, s.qtd]));
+    const e = Object.fromEntries(r2.por_status.map(s => [s.ean_status || 'null', s.qtd]));
+    const sugNfe = r1.sugestoes_nfe_pendentes || 0;
+    document.getElementById('stats').innerHTML = `
+      <div class="stat"><div class="stat-label">Embalagens validadas</div><div class="stat-value ok">${(m.validado || 0).toLocaleString('pt-BR')}</div></div>
+      <div class="stat"><div class="stat-label">Emb. pendente/diverg.</div><div class="stat-value warn">${((m.pendente_validacao || 0) + (m.divergente_qtd_planilha || 0) + (m.divergente_descricao_mudou || 0)).toLocaleString('pt-BR')}</div></div>
+      ${sugNfe > 0 ? `<div class="stat" style="cursor:pointer;outline:2px solid #38bdf8" onclick="document.getElementById('fSugNfe').value='true';carregar()"><div class="stat-label">📥 Sug. NF-e pendentes</div><div class="stat-value warn">${sugNfe.toLocaleString('pt-BR')}</div></div>` : ''}
+      <div class="stat"><div class="stat-label">EAN OK (ativos)</div><div class="stat-value ok">${(e.ok || 0).toLocaleString('pt-BR')}</div></div>
+      <div class="stat"><div class="stat-label">EAN divergente</div><div class="stat-value err">${(e.divergente || 0).toLocaleString('pt-BR')}</div></div>
+      <div class="stat"><div class="stat-label">Sem EAN no CD</div><div class="stat-value warn">${(e.sem_ean_cd || 0).toLocaleString('pt-BR')}</div></div>
+      <div class="stat"><div class="stat-label">Sem EAN JR Lira</div><div class="stat-value warn">${(e.sem_ean_jrlira || 0).toLocaleString('pt-BR')}</div></div>
+    `;
+  } catch (er) { /* silencioso */ }
+}
+
+function renderLista(rows) {
+  const el = document.getElementById('lista');
+  if (!rows.length) { el.innerHTML = '<div class="empty">Nenhum produto encontrado.</div>'; return; }
+  let html = `<div class="row head">
+    <div>Código</div><div>Descrição</div><div>Und</div>
+    <div>Qtd</div><div>Sug</div><div>NF-e</div><div>EAN CD</div><div>EAN JR Lira</div><div>EAN status</div><div>Ações</div>
+  </div>`;
+  for (const r of rows) {
+    const sugNfeAtiva = r.qtd_sugerida_nfe != null && (r.qtd_embalagem == null || r.qtd_embalagem !== r.qtd_sugerida_nfe);
+    const cls = sugNfeAtiva ? 'suggest-nfe'
+              : r.ean_status === 'divergente' || r.status === 'divergente_qtd_planilha' || r.status === 'divergente_descricao_mudou' ? 'divergente'
+              : r.status === 'pendente_validacao' ? 'pendente' : '';
+    const divergeQtd = r.qtd_embalagem != null && r.qtd_sugerida != null && r.qtd_embalagem !== r.qtd_sugerida;
+    const badgeStatus = r.status === 'validado' ? `<span class="badge b-validado">val</span>`
+                      : r.status === 'pendente_validacao' ? `<span class="badge b-pendente">pend</span>`
+                      : `<span class="badge b-divergente">div</span>`;
+    const eanBadgeMain = r.ean_status === 'ok' ? `<span class="badge b-validado">ok</span>`
+                  : r.ean_status === 'divergente' ? `<span class="badge b-divergente">div</span>`
+                  : r.ean_status === 'sem_ean_cd' ? `<span class="badge b-pendente">s/ CD</span>`
+                  : r.ean_status === 'sem_ean_jrlira' ? `<span class="badge b-pendente">s/ JR</span>`
+                  : r.ean_status === 'sem_ambos' ? `<span class="badge b-nula">vazio</span>`
+                  : '';
+    const apontaBadge = r.ean_aponta_para
+      ? `<span class="badge b-divergente" title="EAN é agregado de ${escapeHtml(r.ean_aponta_para)}">⚠ agreg→${escapeHtml(r.ean_aponta_para)}</span>`
+      : '';
+    const dupBadge = r.ean_duplicado_count > 0
+      ? `<span class="badge b-pendente" title="${r.ean_duplicado_count} outro(s) MAT_CODI usam o mesmo EAN">🔁 ${r.ean_duplicado_count}</span>`
+      : '';
+    const eanBadge = `${eanBadgeMain} ${apontaBadge} ${dupBadge}`.trim();
+    const eanCd = r.ean_principal_cd ? `<span class="code">${escapeHtml(r.ean_principal_cd)}</span>` : '<span style="color:#475569">—</span>';
+    const buscarBtn = `<button onclick="buscarEco('${escapeHtml(r.mat_codi)}')" style="background:#7c3aed;color:#fff;border:none;border-radius:5px;padding:3px 7px;cursor:pointer;font-size:10px;margin-left:4px" title="Buscar no Ecocentauro">🔍</button>`;
+    const valEan = escapeHtml(r.ean_principal_jrlira || '');
+    const eanJrInput = `<input class="ean-input" data-mat="${escapeHtml(r.mat_codi)}" data-original="${valEan}" value="${valEan}" placeholder="—" oninput="marcarDirty(this)" onblur="salvarEan(this)">${buscarBtn}<span class="ean-flash" data-mat-flash="${escapeHtml(r.mat_codi)}"></span>`;
+    const sugNfeBtn = sugNfeAtiva
+      ? `<button class="aceitar" title="Aceitar qtd ${r.qtd_sugerida_nfe} da NF-e (${escapeHtml(r.qtd_sugerida_nfe_fornecedor || '')})" onclick="aceitarNfe('${r.mat_codi}', ${r.qtd_sugerida_nfe})">📥 ${r.qtd_sugerida_nfe}</button>
+         <button class="ignorar" title="Ignorar sugestão NF-e" onclick="ignorarNfe('${r.mat_codi}')">✕</button>`
+      : '';
+    const acoesEmb = r.status === 'validado'
+      ? `${sugNfeBtn}<button class="ignorar" onclick='editar(${JSON.stringify(r)})'>Edit qtd</button>`
+      : `${sugNfeBtn}${r.qtd_sugerida != null ? `<button class="salvar" onclick="aceitar('${r.mat_codi}', ${r.qtd_sugerida})">desc:${r.qtd_sugerida}</button>` : ''}
+         <button class="salvar" onclick='editar(${JSON.stringify(r)})'>Manual</button>`;
+    const colNfe = sugNfeAtiva
+      ? `<span class="nfe-pill" title="Sugerido pela NF-e de ${escapeHtml(r.qtd_sugerida_nfe_fornecedor || '?')} em ${r.qtd_sugerida_nfe_em ? new Date(r.qtd_sugerida_nfe_em).toLocaleDateString('pt-BR') : ''}">${r.qtd_sugerida_nfe}</span>`
+      : (r.qtd_sugerida_nfe != null ? `<span style="color:#475569" title="já igual à qtd validada">${r.qtd_sugerida_nfe}</span>` : '<span style="color:#475569">—</span>');
+    html += `<div class="row ${cls}">
+      <div class="code">${escapeHtml(r.mat_codi)}</div>
+      <div class="desc">${escapeHtml((r.descricao_atual || '').trim() || '(inativo)')} ${badgeStatus}</div>
+      <div class="code">${escapeHtml(r.unidade || '')}</div>
+      <div class="${divergeQtd ? 'diff' : ''}">${r.qtd_embalagem != null ? r.qtd_embalagem : '—'}</div>
+      <div>${r.qtd_sugerida != null ? r.qtd_sugerida : '—'}</div>
+      <div>${colNfe}</div>
+      <div>${eanCd}</div>
+      <div>${eanJrInput}</div>
+      <div>${eanBadge}</div>
+      <div class="acoes">${acoesEmb}</div>
+    </div>`;
+  }
+  el.innerHTML = html;
+}
+
+function marcarDirty(input) {
+  const original = input.dataset.original || '';
+  if (input.value.trim() === original) {
+    input.classList.remove('dirty', 'saved', 'errored');
+  } else {
+    input.classList.add('dirty');
+    input.classList.remove('saved', 'errored');
+  }
+  const flash = document.querySelector(`[data-mat-flash="${input.dataset.mat}"]`);
+  if (flash) flash.textContent = '';
+}
+
+async function salvarEan(input) {
+  const mat = input.dataset.mat;
+  const ean = input.value.trim();
+  const original = input.dataset.original || '';
+  if (ean === original) return;
+  const flash = document.querySelector(`[data-mat-flash="${mat}"]`);
+  input.classList.remove('dirty', 'saved', 'errored');
+  input.classList.add('saving');
+  if (flash) { flash.textContent = 'salvando...'; flash.className = 'ean-flash'; }
+  try {
+    const r = await apiFetch(`/api/produtos-embalagem/${encodeURIComponent(mat)}/validar-ean`, {
+      method: 'POST', body: JSON.stringify({ ean_principal_jrlira: ean })
+    });
+    if (!r.ok) throw new Error((await r.json()).erro);
+    input.classList.remove('saving');
+    input.classList.add('saved');
+    input.dataset.original = ean;
+    if (flash) { flash.textContent = '✓ salvo'; flash.className = 'ean-flash ok'; }
+    setTimeout(() => {
+      input.classList.remove('saved');
+      if (flash) flash.textContent = '';
+      carregarStats();
+    }, 1200);
+  } catch (e) {
+    input.classList.remove('saving');
+    input.classList.add('errored');
+    if (flash) { flash.textContent = '✗ erro'; flash.className = 'ean-flash err'; }
+    console.error('Erro ao salvar EAN:', e.message);
+  }
+}
+
+async function buscarEco(mat) {
+  try {
+    const r = await apiFetch(`/api/produtos-embalagem/${encodeURIComponent(mat)}/sugestoes-ean`);
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.erro);
+    const m = document.getElementById('modalSug');
+    document.getElementById('sugTitle').textContent = (data.produto.descricao_atual || '').trim() + ' (CD ' + data.produto.mat_codi + ')';
+    document.getElementById('sugSub').textContent = 'Busca normalizada: "' + data.descricao_normalizada + '"';
+    if (!data.candidatos.length) {
+      document.getElementById('sugLista').innerHTML = '<div style="padding:20px;color:#64748b;text-align:center">Nenhum candidato encontrado nas lojas</div>';
+    } else {
+      document.getElementById('sugLista').innerHTML = data.candidatos.map(c => {
+        const cor = c.score >= 0.85 ? '#16a34a' : c.score >= 0.6 ? '#fbbf24' : '#94a3b8';
+        const lojas = (c.lojas || []).join(',');
+        const usado = (c.ja_usado_em || []);
+        const aviso = usado.length
+          ? `<div style="color:#fbbf24;font-size:11px;margin-top:4px">⚠ Já atribuído a: ${usado.map(u=>escapeHtml(u.mat)+' ('+escapeHtml((u.desc||'').trim().slice(0,40))+')').join(', ')}</div>`
+          : '';
+        return `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 12px;border-bottom:1px solid #1e3148">
+          <div style="flex:1">
+            <div><span class="code">${escapeHtml(c.codigobarra)}</span> <span style="color:${cor};font-weight:700;margin-left:6px">${(c.score*100).toFixed(0)}%</span></div>
+            <div style="color:#cbd5e1;font-size:12px;margin-top:2px">${escapeHtml(c.descricao||'')}</div>
+            <div style="color:#64748b;font-size:11px">Lojas: ${lojas}${c.qtd_embalagem_eco?' · qtd emb eco: '+c.qtd_embalagem_eco:''}</div>
+            ${aviso}
+          </div>
+          <button onclick="aceitarSugestao('${escapeHtml(mat)}','${escapeHtml(c.codigobarra)}')" class="confirm" style="background:#16a34a;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-weight:600">Usar</button>
+        </div>`;
+      }).join('');
+    }
+    m.classList.add('show');
+  } catch (e) { alert('Erro: ' + e.message); }
+}
+
+async function aceitarSugestao(mat, ean) {
+  try {
+    const r = await apiFetch(`/api/produtos-embalagem/${encodeURIComponent(mat)}/validar-ean`, {
+      method: 'POST', body: JSON.stringify({ ean_principal_jrlira: ean })
+    });
+    if (!r.ok) throw new Error((await r.json()).erro);
+    document.getElementById('modalSug').classList.remove('show');
+    carregar();
+  } catch (e) { alert('Erro: ' + e.message); }
+}
+
+async function sugerirMassa() {
+  const t = prompt('Threshold de similaridade (0.5 a 1.0). Default 0.85:', '0.85');
+  if (!t) return;
+  try {
+    const r = await apiFetch('/api/produtos-embalagem/sugerir-massa', {
+      method: 'POST', body: JSON.stringify({ threshold: parseFloat(t) })
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.erro);
+    alert(`Sugestões aplicadas: ${data.aplicados}\nIgnorados: ${data.ignorados}\nThreshold: ${data.threshold}\n\nObs: salvou em ean_sugerido_eco (não substitui ean_principal_jrlira). Use o botão 🔍 pra revisar antes de validar.`);
+    carregar();
+  } catch (e) { alert('Erro: ' + e.message); }
+}
+
+async function baixarRelatorioCd() {
+  try {
+    const r = await apiFetch('/api/produtos-embalagem/relatorio-divergencias-cd');
+    if (!r.ok) throw new Error((await r.json()).erro);
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `divergencias_cd_${new Date().toISOString().slice(0,10)}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (e) { alert('Erro: ' + e.message); }
+}
+
+async function syncStatusAtivo() {
+  if (!confirm('Sincronizar status ativo do UltraSyst (MAT_SITU)? Pode demorar 1 min.')) return;
+  try {
+    const r = await apiFetch('/api/produtos-embalagem/sync-status-ativo-cd', { method: 'POST' });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.erro);
+    alert(`Sync status OK em ${data.ms}ms.\nConsultados: ${data.total_consultados}\nReativados (voltam pra pendente): ${data.ativados}\nDesativados: ${data.desativados}\nSem mudança: ${data.sem_mudanca}`);
+    carregar();
+  } catch (e) { alert('Erro: ' + e.message); }
+}
+
+async function recalcularMeta() {
+  if (!confirm('Recalcular flags de agregado/duplicado pra todos os produtos?')) return;
+  try {
+    const r = await apiFetch('/api/produtos-embalagem/recalcular-meta-ean', { method: 'POST' });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.erro);
+    alert(`Recálculo OK em ${data.ms}ms.\n\nApontam pra agregado: ${data.stats.aponta_agregado}\nCom EAN duplicado: ${data.stats.com_duplicado} (ativos: ${data.stats.com_duplicado_ativos})\n\nUse o filtro "Aponta pra agregado" pra revisar.`);
+    carregar();
+  } catch (e) { alert('Erro: ' + e.message); }
+}
+
+async function syncEansCd() {
+  if (!confirm('Sync vai consultar o UltraSyst pra cada MAT_CODI. Pode demorar 1-2 min. Continuar?')) return;
+  try {
+    const r = await apiFetch('/api/produtos-embalagem/sync-eans-cd', { method: 'POST' });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.erro);
+    alert(`Sync OK: ${data.atualizados} EANs atualizados em ${data.ms}ms`);
+    carregar();
+  } catch (e) { alert('Erro: ' + e.message); }
+}
+
+function renderPaginador() {
+  const totalPaginas = Math.ceil(totalPagina / POR_PAGINA);
+  const el = document.getElementById('paginador');
+  if (totalPaginas <= 1) { el.innerHTML = `<div style="font-size:12px;color:#64748b">Total: ${totalPagina}</div>`; return; }
+  el.innerHTML = `
+    <button onclick="pagina=Math.max(0,pagina-1);carregar()" ${pagina === 0 ? 'disabled' : ''}>← Anterior</button>
+    <span style="padding:6px 12px;font-size:12px;color:#94a3b8">Pág. ${pagina+1} de ${totalPaginas} (${totalPagina} produtos)</span>
+    <button onclick="pagina=Math.min(totalPaginas-1,pagina+1);carregar()" ${pagina+1 >= totalPaginas ? 'disabled' : ''}>Próximo →</button>
+  `;
+}
+
+async function aceitar(mat, qtd) {
+  try {
+    const r = await apiFetch(`/api/produtos-embalagem/${encodeURIComponent(mat)}/validar`, {
+      method: 'POST', body: JSON.stringify({ qtd_embalagem: qtd })
+    });
+    if (!r.ok) throw new Error((await r.json()).erro);
+    carregar();
+  } catch (e) { alert('Erro: ' + e.message); }
+}
+
+async function aceitarNfe(mat, qtd) {
+  if (!confirm(`Validar qtd ${qtd} (vinda da NF-e do fornecedor) para ${mat}?`)) return;
+  try {
+    const r = await apiFetch(`/api/produtos-embalagem/${encodeURIComponent(mat)}/aceitar-sugestao-nfe`, { method: 'POST' });
+    if (!r.ok) throw new Error((await r.json()).erro);
+    carregar();
+  } catch (e) { alert('Erro: ' + e.message); }
+}
+
+async function ignorarNfe(mat) {
+  if (!confirm('Ignorar a sugestão da NF-e?')) return;
+  try {
+    const r = await apiFetch(`/api/produtos-embalagem/${encodeURIComponent(mat)}/ignorar-sugestao-nfe`, { method: 'POST' });
+    if (!r.ok) throw new Error((await r.json()).erro);
+    carregar();
+  } catch (e) { alert('Erro: ' + e.message); }
+}
+
+let editarAlvo = null;
+function editar(row) {
+  editarAlvo = row;
+  document.getElementById('modalDesc').textContent = (row.descricao_atual || '').trim();
+  document.getElementById('modalMat').value = row.mat_codi;
+  document.getElementById('modalQtd').value = row.qtd_embalagem || row.qtd_sugerida || 1;
+  document.getElementById('modalObs').value = row.observacao || '';
+  document.getElementById('modalEdit').classList.add('show');
+}
+function fecharModal() { document.getElementById('modalEdit').classList.remove('show'); editarAlvo = null; }
+
+async function salvarManual() {
+  if (!editarAlvo) return;
+  const qtd = parseInt(document.getElementById('modalQtd').value);
+  const obs = document.getElementById('modalObs').value.trim();
+  try {
+    const r = await apiFetch(`/api/produtos-embalagem/${encodeURIComponent(editarAlvo.mat_codi)}/validar`, {
+      method: 'POST', body: JSON.stringify({ qtd_embalagem: qtd, observacao: obs || null })
+    });
+    if (!r.ok) throw new Error((await r.json()).erro);
+    fecharModal();
+    carregar();
+  } catch (e) { alert('Erro: ' + e.message); }
+}
+
+async function aceitarMassa(confianca) {
+  if (!confirm(`Aceitar TODAS as sugestões com confiança ${confianca.toUpperCase()}?`)) return;
+  try {
+    const r = await apiFetch('/api/produtos-embalagem/aceitar-sugestao-massa', {
+      method: 'POST', body: JSON.stringify({ confianca })
+    });
+    const data = await r.json();
+    alert(`${data.atualizados} produtos validados.`);
+    carregar();
+  } catch (e) { alert('Erro: ' + e.message); }
+}
+
+async function importarExcel(tipo) {
+  const inputId = tipo === 'eans' ? 'fileImportEans' : 'fileImport';
+  const url = tipo === 'eans' ? '/api/produtos-embalagem/import-eans' : '/api/produtos-embalagem/import';
+  const file = document.getElementById(inputId).files[0];
+  if (!file) return;
+  const fd = new FormData();
+  fd.append('arquivo', file);
+  try {
+    const r = await apiFetch(url, { method: 'POST', body: fd });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.erro);
+    alert(`Import OK!\n${JSON.stringify(data.resumo, null, 2)}`);
+    document.getElementById(inputId).value = '';
+    carregar();
+  } catch (e) { alert('Erro import: ' + e.message); }
+}
+
+if (!localStorage.getItem('jrlira_token')) location.href = '/';
+else carregar();
+</script>
+</body>
+</html>
