@@ -22,6 +22,24 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 1
 .btn-sm{padding:4px 10px;font-size:12px}
 .btn-nav{background:#0ea5e9;color:#fff;border:none;padding:7px 14px;border-radius:6px;font-size:13px;cursor:pointer}
 
+/* ABAS */
+.abas{display:flex;gap:4px;padding:10px 24px 0;background:#0f172a;border-bottom:1px solid #1e293b}
+.aba{background:#1e293b;color:#94a3b8;border:1px solid #334155;border-bottom:none;border-radius:8px 8px 0 0;padding:10px 18px;font-weight:600;cursor:pointer;font-size:13px;display:flex;align-items:center;gap:8px}
+.aba.ativa{background:#0c2040;color:#38bdf8;border-color:#0ea5e9}
+.aba:hover:not(.ativa){background:#243149;color:#cbd5e1}
+.badge-pendente{background:#7f1d1d;color:#fecaca;font-size:10px;padding:1px 7px;border-radius:10px;font-weight:700}
+
+/* ACORDOS */
+.acordos-status{display:inline-block;padding:2px 9px;border-radius:10px;font-size:10px;font-weight:700;white-space:nowrap}
+.acordos-status.pendente_compras{background:#451a03;color:#fbbf24}
+.acordos-status.ativo{background:#14532d;color:#4ade80}
+.acordos-status.fechado{background:#1e3a8a;color:#93c5fd}
+.acordos-status.recusado{background:#450a0a;color:#fca5a5}
+.acordos-status.cancelado{background:#1e293b;color:#64748b}
+.det-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.det-item label{font-size:10px;color:#64748b;text-transform:uppercase;display:block;margin-bottom:2px}
+.det-item span{font-size:13px;color:#e2e8f0}
+
 /* FILTROS */
 .filtros{padding:14px 24px;background:#1e293b;border-bottom:1px solid #334155;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
 .fg{display:flex;flex-direction:column;gap:3px}
@@ -85,6 +103,12 @@ tbody tr.ativo{background:#0c2040;outline:2px solid #0ea5e9}
   <button class="btn-nav" onclick="location.href='/'">← Início</button>
 </nav>
 
+<div class="abas">
+  <button class="aba ativa" id="abaDebitosBtn" onclick="setAba('debitos')">📃 Débitos (Devoluções)</button>
+  <button class="aba" id="abaAcordosBtn" onclick="setAba('acordos')">📝 Acordos Comerciais <span id="badgePendentes" class="badge-pendente" style="display:none">0</span></button>
+</div>
+
+<div id="abaDebitos">
 <div class="filtros">
   <div class="fg"><label>Loja</label>
     <select id="fLoja" onchange="carregar()"><option value="">Todas</option></select>
@@ -117,6 +141,58 @@ tbody tr.ativo{background:#0c2040;outline:2px solid #0ea5e9}
       <button class="btn-ghost btn-sm" onclick="fecharDetalhe()">✕</button>
     </div>
     <div class="det-body" id="detBody"></div>
+  </div>
+</div>
+
+</div><!-- /abaDebitos -->
+
+<div id="abaAcordos" style="display:none">
+  <div class="filtros">
+    <div class="fg"><label>Status</label>
+      <select id="acStatus" onchange="carregarAcordos()">
+        <option value="pendente_compras">🟡 Pendentes (aguardando aprovação)</option>
+        <option value="ativo">🟢 Ativos (monitorando)</option>
+        <option value="fechado">🔵 Fechados (já viraram débito)</option>
+        <option value="recusado">🔴 Recusados</option>
+        <option value="">Todos</option>
+      </select>
+    </div>
+    <div class="fg"><label>Loja</label>
+      <select id="acLoja" onchange="carregarAcordos()"><option value="">Todas</option></select>
+    </div>
+    <div class="fg"><label>Buscar</label>
+      <input type="text" id="acBusca" placeholder="Produto / fornecedor / EAN" oninput="renderAcordos()" style="min-width:220px">
+    </div>
+  </div>
+  <div class="main">
+    <div class="painel-lista">
+      <div id="resumoAcordos" class="resumo"></div>
+      <div id="tabelaAcordos"></div>
+    </div>
+    <div class="painel-detalhe" id="painelDetalheAcordo">
+      <div class="det-header">
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:700" id="acDetTitulo">—</div>
+          <div style="font-size:11px;color:#64748b" id="acDetSub">—</div>
+        </div>
+        <button class="btn-ghost btn-sm" onclick="fecharDetalheAcordo()">✕</button>
+      </div>
+      <div class="det-body" id="acDetBody"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal recusar acordo -->
+<div class="overlay" id="modalRecusar" style="display:none">
+  <div class="modal">
+    <h3>Recusar Acordo Comercial</h3>
+    <p style="font-size:12px;color:#64748b">Informe o motivo. O responsável que solicitou será notificado.</p>
+    <div class="form-row"><label>Motivo *</label><textarea id="rcMotivo" rows="3" placeholder="Ex: Diferença muito alta, fornecedor não autorizou, etc."></textarea></div>
+    <div id="rcMsg"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn-ghost" onclick="fecharModal('modalRecusar')">Cancelar</button>
+      <button class="btn-danger" onclick="confirmarRecusa()">Recusar acordo</button>
+    </div>
   </div>
 </div>
 
@@ -276,7 +352,7 @@ function renderLista() {
 }
 
 function lojaLabel(id) {
-  const m = {1:'ECONOMICO',2:'BR',3:'JOAO PAULO',4:'FLORESTA',5:'SAO JOSE',6:'SANTAREM'};
+  const m = {1:'ECONOMICO',2:'BR',3:'JOAO PESSOA',4:'FLORESTA',5:'SAO JOSE',6:'SANTAREM'};
   return m[id] || id;
 }
 
@@ -474,6 +550,260 @@ async function excluirDebito(id, btn) {
 
 function fecharModal(id) { document.getElementById(id).style.display = 'none'; }
 document.querySelectorAll('.overlay').forEach(el => el.addEventListener('click', e => { if (e.target===el) fecharModal(el.id); }));
+
+// ── ABAS ─────────────────────────────────────────────────────────
+let abaAtual = 'debitos';
+function setAba(qual) {
+  abaAtual = qual;
+  document.getElementById('abaDebitos').style.display       = qual === 'debitos' ? 'block' : 'none';
+  document.getElementById('abaAcordos').style.display       = qual === 'acordos' ? 'block' : 'none';
+  document.getElementById('abaDebitosBtn').classList.toggle('ativa', qual === 'debitos');
+  document.getElementById('abaAcordosBtn').classList.toggle('ativa', qual === 'acordos');
+  if (qual === 'acordos' && !acordosCarregadosUmaVez) {
+    popularSelectLojaAcordos();
+    carregarAcordos();
+    acordosCarregadosUmaVez = true;
+  }
+}
+
+// ── ACORDOS COMERCIAIS ───────────────────────────────────────────
+let acordosCarregadosUmaVez = false;
+let acordos = [];
+let acordoAtivoId = null;
+let acordoAtivo = null;
+
+function popularSelectLojaAcordos() {
+  // reaproveita as lojas já carregadas no select de débitos
+  const fLoja = document.getElementById('fLoja');
+  const acLoja = document.getElementById('acLoja');
+  if (!acLoja || !fLoja) return;
+  acLoja.innerHTML = '<option value="">Todas</option>' +
+    Array.from(fLoja.options).filter(o => o.value).map(o => `<option value="${o.value}">${o.textContent}</option>`).join('');
+}
+
+async function carregarBadgePendentes() {
+  try {
+    const r = await apiFetch(`${API}/api/acordos/contagem-pendentes`);
+    if (!r.ok) return;
+    const d = await r.json();
+    const b = document.getElementById('badgePendentes');
+    if (d.pendentes > 0) { b.textContent = d.pendentes; b.style.display = 'inline-block'; }
+    else b.style.display = 'none';
+  } catch {}
+}
+
+async function carregarAcordos() {
+  const status = document.getElementById('acStatus').value;
+  const loja_id = document.getElementById('acLoja').value;
+  const params = new URLSearchParams();
+  if (status)  params.set('status', status);
+  if (loja_id) params.set('loja_id', loja_id);
+
+  document.getElementById('tabelaAcordos').innerHTML = '<div style="color:#64748b;padding:40px;text-align:center">Carregando...</div>';
+  const r = await apiFetch(`${API}/api/acordos?${params}`);
+  acordos = r.ok ? await r.json() : [];
+  renderAcordos();
+}
+
+function renderAcordos() {
+  const busca = (document.getElementById('acBusca').value || '').toLowerCase();
+  const filtrados = busca
+    ? acordos.filter(a =>
+        (a.produto_nome || '').toLowerCase().includes(busca) ||
+        (a.fornecedor_nome || a.forn_razao || '').toLowerCase().includes(busca) ||
+        (a.barcode || '').includes(busca))
+    : acordos;
+
+  // resumo
+  const totConfess = filtrados.reduce((acc, a) => acc + parseFloat(a.valor_confessado || 0), 0);
+  const totDebito  = filtrados.reduce((acc, a) => acc + parseFloat(a.valor_debito_atual || 0), 0);
+  document.getElementById('resumoAcordos').innerHTML = `
+    <div class="resumo-card"><label>Acordos</label><span style="color:#38bdf8">${filtrados.length}</span></div>
+    <div class="resumo-card"><label>Valor confessado</label><span style="color:#fbbf24">${fmtR(totConfess)}</span></div>
+    <div class="resumo-card"><label>Débito atual (apurado)</label><span style="color:#f87171">${fmtR(totDebito)}</span></div>
+  `;
+
+  if (!filtrados.length) {
+    document.getElementById('tabelaAcordos').innerHTML = '<div style="color:#475569;padding:40px;text-align:center">Nenhum acordo encontrado</div>';
+    return;
+  }
+
+  document.getElementById('tabelaAcordos').innerHTML = `
+    <table>
+      <thead><tr>
+        <th>Solicitado</th>
+        <th>Loja</th>
+        <th>Produto</th>
+        <th>Fornecedor</th>
+        <th>Validade</th>
+        <th style="text-align:right">Preço atual</th>
+        <th style="text-align:right">Preço acordo</th>
+        <th style="text-align:right">Qtde</th>
+        <th style="text-align:right">Valor confessado</th>
+        <th style="text-align:right">Débito atual</th>
+        <th>Status</th>
+      </tr></thead>
+      <tbody>
+        ${filtrados.map(a => `
+          <tr onclick="abrirDetalheAcordo(${a.id})" class="${acordoAtivoId===a.id?'ativo':''}">
+            <td style="font-size:11px">${fmtD(a.solicitado_em)}<br><span style="color:#64748b;font-size:10px">${escapeHtml(a.solicitado_por_nome || '')}</span></td>
+            <td style="font-size:11px">${escapeHtml(a.loja_nome || lojaLabel(a.loja_id))}</td>
+            <td><div style="font-weight:600;font-size:12px">${escapeHtml(a.produto_nome)}</div><div style="font-size:10px;color:#475569">${escapeHtml(a.barcode||'')}</div></td>
+            <td style="font-size:11px">${escapeHtml(a.forn_razao || a.fornecedor_nome || '—')}<br><span style="color:#475569;font-size:10px">${escapeHtml(a.fornecedor_cnpj||'')}</span></td>
+            <td style="font-size:11px">${fmtD(a.data_validade)}</td>
+            <td style="text-align:right">${fmtR(a.preco_atual)}</td>
+            <td style="text-align:right;color:#fbbf24">${fmtR(a.preco_acordo)}</td>
+            <td style="text-align:right">${parseFloat(a.qtde_acordada||0).toFixed(0)}</td>
+            <td style="text-align:right;color:#fbbf24;font-weight:700">${fmtR(a.valor_confessado)}</td>
+            <td style="text-align:right;color:${parseFloat(a.valor_debito_atual||0)>0?'#f87171':'#64748b'};font-weight:700">${fmtR(a.valor_debito_atual)}</td>
+            <td><span class="acordos-status ${a.status}">${formatStatus(a.status)}</span></td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+function formatStatus(s) {
+  return ({
+    pendente_compras: 'Pendente',
+    ativo: 'Ativo',
+    fechado: 'Fechado',
+    recusado: 'Recusado',
+    cancelado: 'Cancelado'
+  })[s] || s;
+}
+
+async function abrirDetalheAcordo(id) {
+  acordoAtivoId = id;
+  document.getElementById('painelDetalheAcordo').classList.add('aberto');
+  document.getElementById('acDetBody').innerHTML = '<div style="color:#64748b;padding:40px;text-align:center">Carregando...</div>';
+  const r = await apiFetch(`${API}/api/acordos/${id}`);
+  if (!r.ok) { document.getElementById('acDetBody').innerHTML = '<div class="msg-err">Erro ao carregar acordo</div>'; return; }
+  acordoAtivo = await r.json();
+  renderDetalheAcordo();
+  renderAcordos();
+}
+
+function fecharDetalheAcordo() {
+  acordoAtivoId = null;
+  acordoAtivo = null;
+  document.getElementById('painelDetalheAcordo').classList.remove('aberto');
+  renderAcordos();
+}
+
+function renderDetalheAcordo() {
+  const a = acordoAtivo;
+  if (!a) return;
+  document.getElementById('acDetTitulo').textContent = a.produto_nome;
+  document.getElementById('acDetSub').textContent = (a.forn_razao || a.fornecedor_nome || '') + ' · ' + (a.loja_nome || lojaLabel(a.loja_id));
+
+  const vendedoresHtml = (a.vendedores || []).length
+    ? a.vendedores.map(v =>
+        `<div class="credito-row">
+           <div class="credito-info">
+             <div style="font-weight:600;font-size:12px">${escapeHtml(v.nome)}</div>
+             <div style="color:#94a3b8;font-size:11px">${escapeHtml(v.email||'')} · ${escapeHtml(v.telefone||'')}</div>
+             <div style="color:#64748b;font-size:10px;margin-top:2px">Status: ${escapeHtml(v.status||'')}</div>
+           </div>
+         </div>`).join('')
+    : '<div style="color:#64748b;font-size:12px">Nenhum vendedor cadastrado para este fornecedor.</div>';
+
+  let acoesHtml = '';
+  if (a.status === 'pendente_compras') {
+    acoesHtml = `
+      <div style="display:flex;gap:10px">
+        <button class="btn-green" onclick="aprovarAcordo()" style="flex:1">✓ Aprovar acordo</button>
+        <button class="btn-danger" onclick="abrirRecusa()" style="flex:1">✕ Recusar</button>
+      </div>`;
+  } else if (a.status === 'ativo') {
+    acoesHtml = `<div class="msg-ok">Aprovado em ${fmtDT(a.aprovado_em)} por ${escapeHtml(a.aprovado_por||'')}. Aguardando vencimento da validade para fechamento automático.</div>`;
+  } else if (a.status === 'recusado') {
+    acoesHtml = `<div class="msg-err">Recusado por ${escapeHtml(a.aprovado_por||'')} em ${fmtDT(a.aprovado_em)}.<br><strong>Motivo:</strong> ${escapeHtml(a.motivo_recusa||'')}</div>`;
+  } else if (a.status === 'fechado') {
+    acoesHtml = `<div style="background:#0c1a30;color:#93c5fd;padding:8px 12px;border-radius:6px;font-size:13px">Fechado em ${fmtDT(a.fechado_em)}. Débito gerado: <strong>cr_debitos #${a.cr_debito_id || '?'}</strong></div>`;
+  }
+
+  document.getElementById('acDetBody').innerHTML = `
+    <div>
+      <div class="sec-title">Solicitação</div>
+      <div class="det-grid">
+        <div class="det-item"><label>Solicitado em</label><span>${fmtDT(a.solicitado_em)}</span></div>
+        <div class="det-item"><label>Solicitado por</label><span>${escapeHtml(a.solicitado_por_nome||'')}</span></div>
+        <div class="det-item"><label>Validade do produto</label><span>${fmtD(a.data_validade)}</span></div>
+        <div class="det-item"><label>Status</label><span><span class="acordos-status ${a.status}">${formatStatus(a.status)}</span></span></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="sec-title">Termos comerciais</div>
+      <div class="det-grid">
+        <div class="det-item"><label>Preço atual</label><span>${fmtR(a.preco_atual)}</span></div>
+        <div class="det-item"><label>Preço acordo</label><span style="color:#fbbf24">${fmtR(a.preco_acordo)}</span></div>
+        <div class="det-item"><label>Diferença unitária</label><span style="color:#f87171">${fmtR(a.diferenca_unitaria)}</span></div>
+        <div class="det-item"><label>Qtde acordada</label><span>${parseFloat(a.qtde_acordada||0).toFixed(0)} un</span></div>
+        <div class="det-item"><label>Valor confessado (limite)</label><span style="color:#fbbf24;font-weight:700">${fmtR(a.valor_confessado)}</span></div>
+        <div class="det-item"><label>Débito apurado (até agora)</label><span style="color:#f87171;font-weight:700">${fmtR(a.valor_debito_atual)}</span></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="sec-title">Origem (NF-e)</div>
+      <div class="det-grid">
+        <div class="det-item"><label>Fornecedor</label><span>${escapeHtml(a.forn_razao || a.fornecedor_nome || '—')}</span></div>
+        <div class="det-item"><label>CNPJ</label><span>${escapeHtml(a.fornecedor_cnpj||'—')}</span></div>
+        <div class="det-item"><label>Chave da NF-e</label><span style="font-family:monospace;font-size:10px">${escapeHtml(a.nota_origem_chave||'—')}</span></div>
+        <div class="det-item"><label>Data emissão</label><span>${fmtD(a.nota_origem_data)}</span></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="sec-title">Vendedores credenciados</div>
+      ${vendedoresHtml}
+    </div>
+
+    <div>
+      <div class="sec-title">Ações</div>
+      ${acoesHtml}
+    </div>
+  `;
+}
+
+async function aprovarAcordo() {
+  if (!acordoAtivoId) return;
+  if (!confirm('Aprovar o acordo? O produto será marcado como rebaixado para o repositor (etiqueta vermelha) e o débito do fornecedor será apurado a cada hora até a data de validade.')) return;
+  const r = await apiFetch(`${API}/api/acordos/${acordoAtivoId}/aprovar`, { method: 'POST' });
+  const d = await r.json();
+  if (!r.ok) { alert(d.erro || 'Erro ao aprovar'); return; }
+  await carregarAcordos();
+  await carregarBadgePendentes();
+  await abrirDetalheAcordo(acordoAtivoId);
+}
+
+let _acordoIdRecusa = null;
+function abrirRecusa() {
+  _acordoIdRecusa = acordoAtivoId;
+  document.getElementById('rcMotivo').value = '';
+  document.getElementById('rcMsg').innerHTML = '';
+  document.getElementById('modalRecusar').style.display = 'flex';
+}
+async function confirmarRecusa() {
+  const motivo = document.getElementById('rcMotivo').value.trim();
+  if (!motivo) { document.getElementById('rcMsg').innerHTML = '<div class="msg-err">Motivo obrigatório</div>'; return; }
+  const r = await apiFetch(`${API}/api/acordos/${_acordoIdRecusa}/recusar`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ motivo })
+  });
+  const d = await r.json();
+  if (!r.ok) { document.getElementById('rcMsg').innerHTML = `<div class="msg-err">${d.erro||'Erro'}</div>`; return; }
+  fecharModal('modalRecusar');
+  await carregarAcordos();
+  await carregarBadgePendentes();
+  await abrirDetalheAcordo(_acordoIdRecusa);
+}
+
+// Carrega badge ao iniciar (depois do init original)
+setTimeout(carregarBadgePendentes, 800);
+setInterval(carregarBadgePendentes, 60000);
 
 init();
 </script>
