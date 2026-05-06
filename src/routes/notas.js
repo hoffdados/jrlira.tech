@@ -4,6 +4,31 @@ const multer = require('multer');
 const { query, pool } = require('../db');
 const { autenticar } = require('../auth');
 const { parseNFe, MAX_XML_BYTES } = require('../parsers/nfe');
+const { parseEmbalagem } = require('../parser_embalagem');
+const { recalcularItensFornecedor } = require('./embalagens_fornecedor');
+
+// Classifica o preço da NF vs custo do CD.
+//   diferença <= R$ 0,01           → igual    (azul)
+//   variação > 15% (qualquer lado) → auditagem (laranja, exige análise)
+//   preco_nota > custo             → maior    (vermelho, vai render menos)
+//   preco_nota < custo             → menor    (verde, ganho)
+function classificarPreco(precoNota, custoFabrica) {
+  if (custoFabrica == null || isNaN(precoNota) || precoNota <= 0) return 'sem_cadastro';
+  const diff = precoNota - custoFabrica;
+  if (Math.abs(diff) <= 0.01) return 'igual';
+  const pctDiff = custoFabrica > 0 ? Math.abs(diff) / custoFabrica : 0;
+  if (pctDiff > 0.15) return 'auditagem';
+  return diff > 0 ? 'maior' : 'menor';
+}
+
+function normalizarDescricao(s) {
+  if (!s) return null;
+  return String(s)
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toUpperCase()
+    .replace(/\s+/g, ' ')
+    .trim() || null;
+}
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_XML_BYTES } });
 
@@ -50,13 +75,45 @@ async function importarNotaParseada(client, header, itens, loja_id, importado_po
   if (itens.length) {
     const cols = {
       nota_id: [], numero_item: [], ean_nota: [], ean_trib: [], ean_validado: [], ean_fonte: [],
+      cprod_fornecedor: [],
       descricao_nota: [], quantidade: [], preco_unitario_nota: [], preco_total_nota: [],
       custo_fabrica: [], status_preco: [], produto_novo: [],
       vprod: [], vdesc_item: [], vfrete_item: [], vseg_item: [], voutro_item: [],
       vicms_bc: [], vicms: [], vst_bc: [], vst: [], vfcp_st: [], vipi_bc: [], vipi: [],
       qtd_comercial: [], un_comercial: [], qtd_tributavel: [], un_tributavel: [],
       qtd_por_caixa_nfe: [], qtd_por_caixa_confianca: [], preco_unitario_caixa: [],
+      qtd_em_unidades: [],
     };
+
+    // Lookup em eans_fornecedor para itens sem match direto via produtos_externo
+    const fornCnpjLookup = (header.fornecedor_cnpj || '').replace(/\D/g, '') || null;
+    const eansForncMap = new Map(); // chave: cprod ou desc_norm → ean_validado
+    if (fornCnpjLookup) {
+      const cprods = [...new Set(itens.map(i => i.cprod_fornecedor).filter(Boolean))];
+      const descsNorm = [...new Set(itens.map(i => normalizarDescricao(i.descricao_nota)).filter(Boolean))];
+      if (cprods.length || descsNorm.length) {
+        const { rows: assocs } = await client.query(
+          `SELECT cprod_fornecedor, descricao_normalizada, ean_validado
+             FROM eans_fornecedor
+            WHERE fornecedor_cnpj = $1
+              AND (cprod_fornecedor = ANY($2::text[]) OR descricao_normalizada = ANY($3::text[]))`,
+          [fornCnpjLookup, cprods, descsNorm]
+        );
+        for (const a of assocs) {
+          if (a.cprod_fornecedor) eansForncMap.set('c:' + a.cprod_fornecedor, a.ean_validado);
+          if (a.descricao_normalizada) eansForncMap.set('d:' + a.descricao_normalizada, a.ean_validado);
+        }
+        // Carrega custos dos EANs encontrados via eans_fornecedor (caso ainda não estejam no custoMap)
+        const eansAssoc = [...new Set(assocs.map(a => a.ean_validado).filter(e => !custoMap.has(e)))];
+        if (eansAssoc.length) {
+          const { rows: extras } = await client.query(
+            'SELECT codigobarra, custoorigem FROM produtos_externo WHERE codigobarra = ANY($1) AND loja_id = $2',
+            [eansAssoc, loja_id]
+          );
+          for (const p of extras) custoMap.set(p.codigobarra, parseFloat(p.custoorigem) || 0);
+        }
+      }
+    }
 
     for (const it of itens) {
       let custo_fabrica = null, status_preco = 'sem_cadastro', produto_novo = true;
@@ -68,10 +125,22 @@ async function importarNotaParseada(client, header, itens, loja_id, importado_po
         if (custoMap.has(ean)) {
           custo_fabrica = custoMap.get(ean);
           produto_novo = false;
-          status_preco = Math.abs(it.preco_unitario_nota - custo_fabrica) <= 0.01 ? 'igual' : 'divergente';
+          status_preco = classificarPreco(it.preco_unitario_nota, custo_fabrica);
           ean_matched = ean;
           ean_fonte = fonte;
           break;
+        }
+      }
+      // Fallback: tenta achar via vínculo prévio em eans_fornecedor (cProd ou descricao)
+      if (produto_novo && fornCnpjLookup) {
+        const eanAssoc = (it.cprod_fornecedor && eansForncMap.get('c:' + it.cprod_fornecedor))
+                      || eansForncMap.get('d:' + normalizarDescricao(it.descricao_nota));
+        if (eanAssoc && custoMap.has(eanAssoc)) {
+          custo_fabrica = custoMap.get(eanAssoc);
+          produto_novo = false;
+          status_preco = classificarPreco(it.preco_unitario_nota, custo_fabrica);
+          ean_matched = eanAssoc;
+          ean_fonte = it.cprod_fornecedor && eansForncMap.has('c:' + it.cprod_fornecedor) ? 'cprod_assoc' : 'desc_assoc';
         }
       }
       cols.nota_id.push(nota_id);
@@ -80,6 +149,7 @@ async function importarNotaParseada(client, header, itens, loja_id, importado_po
       cols.ean_trib.push(it.ean_trib);
       cols.ean_validado.push(ean_matched || it.ean_nota || it.ean_trib);
       cols.ean_fonte.push(ean_fonte);
+      cols.cprod_fornecedor.push(it.cprod_fornecedor || null);
       cols.descricao_nota.push(it.descricao_nota);
       cols.quantidade.push(it.quantidade);
       cols.preco_unitario_nota.push(it.preco_unitario_nota);
@@ -106,62 +176,109 @@ async function importarNotaParseada(client, header, itens, loja_id, importado_po
       cols.qtd_por_caixa_nfe.push(it.qtd_por_caixa_nfe ?? null);
       cols.qtd_por_caixa_confianca.push(it.qtd_por_caixa_confianca ?? null);
       cols.preco_unitario_caixa.push(it.preco_unitario_caixa ?? null);
+      cols.qtd_em_unidades.push(it.qtd_em_unidades ?? null);
     }
 
     await client.query(`
       INSERT INTO itens_nota
-        (nota_id, numero_item, ean_nota, ean_trib, ean_validado, ean_fonte, descricao_nota,
+        (nota_id, numero_item, ean_nota, ean_trib, ean_validado, ean_fonte, cprod_fornecedor, descricao_nota,
          quantidade, preco_unitario_nota, preco_total_nota, custo_fabrica, status_preco, produto_novo,
          vprod, vdesc_item, vfrete_item, vseg_item, voutro_item,
          vicms_bc, vicms, vst_bc, vst, vfcp_st, vipi_bc, vipi,
          qtd_comercial, un_comercial, qtd_tributavel, un_tributavel,
-         qtd_por_caixa_nfe, qtd_por_caixa_confianca, preco_unitario_caixa)
+         qtd_por_caixa_nfe, qtd_por_caixa_confianca, preco_unitario_caixa, qtd_em_unidades)
       SELECT * FROM UNNEST(
-        $1::int[], $2::int[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[],
-        $8::numeric[], $9::numeric[], $10::numeric[], $11::numeric[], $12::text[], $13::bool[],
-        $14::numeric[], $15::numeric[], $16::numeric[], $17::numeric[], $18::numeric[],
-        $19::numeric[], $20::numeric[], $21::numeric[], $22::numeric[], $23::numeric[], $24::numeric[], $25::numeric[],
-        $26::numeric[], $27::text[], $28::numeric[], $29::text[],
-        $30::int[], $31::text[], $32::numeric[]
+        $1::int[], $2::int[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::text[],
+        $9::numeric[], $10::numeric[], $11::numeric[], $12::numeric[], $13::text[], $14::bool[],
+        $15::numeric[], $16::numeric[], $17::numeric[], $18::numeric[], $19::numeric[],
+        $20::numeric[], $21::numeric[], $22::numeric[], $23::numeric[], $24::numeric[], $25::numeric[], $26::numeric[],
+        $27::numeric[], $28::text[], $29::numeric[], $30::text[],
+        $31::int[], $32::text[], $33::numeric[], $34::numeric[]
       )
     `, [
       cols.nota_id, cols.numero_item, cols.ean_nota, cols.ean_trib, cols.ean_validado, cols.ean_fonte,
-      cols.descricao_nota, cols.quantidade, cols.preco_unitario_nota, cols.preco_total_nota,
+      cols.cprod_fornecedor, cols.descricao_nota, cols.quantidade, cols.preco_unitario_nota, cols.preco_total_nota,
       cols.custo_fabrica, cols.status_preco, cols.produto_novo,
       cols.vprod, cols.vdesc_item, cols.vfrete_item, cols.vseg_item, cols.voutro_item,
       cols.vicms_bc, cols.vicms, cols.vst_bc, cols.vst, cols.vfcp_st, cols.vipi_bc, cols.vipi,
       cols.qtd_comercial, cols.un_comercial, cols.qtd_tributavel, cols.un_tributavel,
-      cols.qtd_por_caixa_nfe, cols.qtd_por_caixa_confianca, cols.preco_unitario_caixa
+      cols.qtd_por_caixa_nfe, cols.qtd_por_caixa_confianca, cols.preco_unitario_caixa, cols.qtd_em_unidades
     ]);
 
-    // Sugestões de qtd_por_caixa pra produtos_embalagem com confiança alta:
-    // casa item.ean_validado/ean_nota com produtos_embalagem.ean_principal_jrlira
-    // (ou ean_principal_cd como fallback) e grava como sugestão pendente de revisão.
+    const fornCnpj = (header.fornecedor_cnpj || '').replace(/\D/g, '') || null;
+    const fornNome = header.fornecedor_nome || null;
+
+    // Aplica embalagens VALIDADAS já cadastradas (admin/comprador anteriormente).
+    // Sobrescreve qtd_por_caixa_nfe e recalcula preço/qtd_un quando achar match por
+    // (ean, cnpj) ou (descricao_normalizada, cnpj).
     await client.query(`
-      WITH itens_alta AS (
-        SELECT DISTINCT ON (pe.mat_codi)
-               pe.mat_codi, i.qtd_por_caixa_nfe, i.qtd_por_caixa_confianca, i.id AS item_id
+      WITH match_emb AS (
+        SELECT i.id AS item_id, ef.qtd_por_caixa, i.qtd_comercial, i.preco_total_nota
           FROM itens_nota i
-          JOIN produtos_embalagem pe
-            ON LTRIM(COALESCE(pe.ean_principal_jrlira, pe.ean_principal_cd, ''), '0')
-             = LTRIM(COALESCE(i.ean_validado, i.ean_nota, ''), '0')
-           AND COALESCE(pe.ean_principal_jrlira, pe.ean_principal_cd, '') <> ''
+          JOIN embalagens_fornecedor ef
+            ON ef.status = 'validado'
+           AND ef.qtd_por_caixa IS NOT NULL
+           AND (
+             (ef.ean IS NOT NULL
+              AND NULLIF(LTRIM(ef.ean,'0'),'') = NULLIF(LTRIM(COALESCE(i.ean_validado, i.ean_nota,''),'0'),'')
+              AND COALESCE(REGEXP_REPLACE(ef.fornecedor_cnpj,'\\D','','g'),'')
+                = COALESCE(REGEXP_REPLACE($2::text,'\\D','','g'),''))
+             OR
+             (ef.ean IS NULL
+              AND ef.descricao_normalizada IS NOT NULL
+              AND ef.descricao_normalizada = UPPER(REGEXP_REPLACE(i.descricao_nota,'\\s+',' ','g'))
+              AND COALESCE(REGEXP_REPLACE(ef.fornecedor_cnpj,'\\D','','g'),'')
+                = COALESCE(REGEXP_REPLACE($2::text,'\\D','','g'),''))
+           )
          WHERE i.nota_id = $1
-           AND i.qtd_por_caixa_nfe IS NOT NULL
-           AND i.qtd_por_caixa_confianca = 'alta'
-           AND (pe.qtd_embalagem IS NULL OR pe.qtd_embalagem <> i.qtd_por_caixa_nfe)
-         ORDER BY pe.mat_codi, i.id DESC
+           AND i.qtd_comercial > 0
       )
-      UPDATE produtos_embalagem pe
-         SET qtd_sugerida_nfe = ia.qtd_por_caixa_nfe,
-             qtd_sugerida_nfe_fornecedor = $2,
-             qtd_sugerida_nfe_em = NOW(),
-             qtd_sugerida_nfe_nota_id = $1,
-             qtd_sugerida_nfe_confianca = ia.qtd_por_caixa_confianca,
-             atualizado_em = NOW()
-        FROM itens_alta ia
-       WHERE pe.mat_codi = ia.mat_codi
-    `, [nota_id, header.fornecedor_nome || header.fornecedor_cnpj || 'NF-e']);
+      UPDATE itens_nota i
+         SET qtd_por_caixa_nfe = m.qtd_por_caixa,
+             qtd_por_caixa_confianca = 'cadastrada',
+             qtd_em_unidades = m.qtd_comercial * m.qtd_por_caixa,
+             preco_unitario_nota = ROUND((m.preco_total_nota / (m.qtd_comercial * m.qtd_por_caixa::numeric))::numeric, 4),
+             preco_unitario_caixa = CASE WHEN m.qtd_por_caixa > 1
+               THEN ROUND((m.preco_total_nota / m.qtd_comercial)::numeric, 4)
+               ELSE NULL END
+        FROM match_emb m
+       WHERE i.id = m.item_id
+    `, [nota_id, fornCnpj]);
+
+    // Embalagens vindas de NF-e fornecedor — registra na tabela própria (separada do CD).
+    // Chave (ean, fornecedor_cnpj) — mesma EAN pode ter qtd diferente em fornecedores diferentes.
+    // Não sobrescreve registros já validados.
+    await client.query(`
+      INSERT INTO embalagens_fornecedor
+        (ean, descricao, fornecedor_cnpj, fornecedor_nome,
+         qtd_sugerida_nfe, qtd_sugerida_nfe_em, qtd_sugerida_nfe_nota_id, qtd_sugerida_nfe_confianca,
+         status)
+      SELECT DISTINCT ON (NULLIF(LTRIM(COALESCE(i.ean_validado, i.ean_nota,''),'0'),''))
+             NULLIF(LTRIM(COALESCE(i.ean_validado, i.ean_nota,''),'0'),'') AS ean,
+             i.descricao_nota,
+             $2, $3,
+             i.qtd_por_caixa_nfe, NOW(), $1, i.qtd_por_caixa_confianca,
+             'pendente_validacao'
+        FROM itens_nota i
+       WHERE i.nota_id = $1
+         AND i.qtd_por_caixa_nfe IS NOT NULL
+         AND NULLIF(LTRIM(COALESCE(i.ean_validado, i.ean_nota,''),'0'),'') IS NOT NULL
+       ORDER BY NULLIF(LTRIM(COALESCE(i.ean_validado, i.ean_nota,''),'0'),''), i.id DESC
+      ON CONFLICT (ean, COALESCE(fornecedor_cnpj, ''::character varying)) WHERE ean IS NOT NULL DO UPDATE
+        SET descricao = COALESCE(EXCLUDED.descricao, embalagens_fornecedor.descricao),
+            qtd_sugerida_nfe = EXCLUDED.qtd_sugerida_nfe,
+            qtd_sugerida_nfe_em = EXCLUDED.qtd_sugerida_nfe_em,
+            qtd_sugerida_nfe_nota_id = EXCLUDED.qtd_sugerida_nfe_nota_id,
+            qtd_sugerida_nfe_confianca = EXCLUDED.qtd_sugerida_nfe_confianca,
+            atualizado_em = NOW(),
+            -- Se já estava validado e a sugestão diverge da qtd validada, volta pra pendente
+            status = CASE
+              WHEN embalagens_fornecedor.status = 'validado'
+                AND embalagens_fornecedor.qtd_por_caixa = EXCLUDED.qtd_sugerida_nfe
+                THEN 'validado'
+              ELSE 'pendente_validacao'
+            END
+    `, [nota_id, fornCnpj, fornNome]);
   }
 
   await client.query('COMMIT');
@@ -375,6 +492,281 @@ router.patch('/:id/aprovar-emergencial', autenticar, async (req, res) => {
   } catch (err) { res.status(500).json({ erro: err.message }); }
 });
 
+// PATCH /api/notas/:id/itens/:itemId/embalagem  body: { qtd_por_caixa }
+// Comprador ajusta a qtd por caixa direto na linha do item.
+// Atualiza item, recalcula preço/qtd em UN, autocadastra em embalagens_fornecedor + log.
+router.patch('/:id/itens/:itemId/embalagem', autenticar, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const qtdNovo = parseInt(req.body?.qtd_por_caixa);
+    if (!Number.isFinite(qtdNovo) || qtdNovo < 1) return res.status(400).json({ erro: 'qtd_por_caixa inválida (>= 1)' });
+
+    const [item] = await query(
+      `SELECT i.*, n.fornecedor_cnpj, n.fornecedor_nome
+         FROM itens_nota i JOIN notas_entrada n ON n.id = i.nota_id
+        WHERE i.id = $1 AND i.nota_id = $2`,
+      [req.params.itemId, req.params.id]
+    );
+    if (!item) return res.status(404).json({ erro: 'Item não encontrado' });
+
+    const qCom = parseFloat(item.qtd_comercial) || parseFloat(item.quantidade) || 0;
+    const custoTotal = parseFloat(item.preco_total_nota) || 0;
+    if (qCom <= 0) return res.status(400).json({ erro: 'Item sem qtd_comercial — não dá pra recalcular' });
+
+    const qtdAnterior = parseInt(item.qtd_por_caixa_nfe) || 1;
+    const totalUn = qCom * qtdNovo;
+    const precoUn = parseFloat((custoTotal / totalUn).toFixed(4));
+    const precoCx = qtdNovo > 1 ? parseFloat((custoTotal / qCom).toFixed(4)) : null;
+    const ean = (item.ean_validado || item.ean_nota || '').replace(/\D/g, '').replace(/^0+/, '') || null;
+    const fornCnpj = (item.fornecedor_cnpj || '').replace(/\D/g, '') || null;
+    const descNorm = normalizarDescricao(item.descricao_nota);
+    const usuario = req.usuario.nome || req.usuario.usuario;
+
+    const novoStatusPreco = classificarPreco(precoUn, parseFloat(item.custo_fabrica));
+    await client.query('BEGIN');
+    await client.query(
+      `UPDATE itens_nota
+          SET qtd_por_caixa_nfe = $1, qtd_por_caixa_confianca = 'manual',
+              qtd_em_unidades = $2, preco_unitario_nota = $3, preco_unitario_caixa = $4,
+              status_preco = $5
+        WHERE id = $6`,
+      [qtdNovo > 1 ? qtdNovo : null, totalUn, precoUn, precoCx, novoStatusPreco, item.id]
+    );
+
+    // Auto-cadastra/atualiza embalagens_fornecedor
+    let embId = null;
+    if (ean) {
+      const r = await client.query(
+        `INSERT INTO embalagens_fornecedor
+           (ean, descricao, descricao_normalizada, fornecedor_cnpj, fornecedor_nome,
+            qtd_por_caixa, status, validado_em, validado_por)
+         VALUES ($1::text, $2::text, $3::text, $4::text, $5::text, $6::int, 'validado', NOW(), $7::text)
+         ON CONFLICT (ean, COALESCE(fornecedor_cnpj, ''::character varying)) WHERE ean IS NOT NULL DO UPDATE
+           SET qtd_por_caixa = EXCLUDED.qtd_por_caixa,
+               descricao = COALESCE(EXCLUDED.descricao, embalagens_fornecedor.descricao),
+               descricao_normalizada = COALESCE(EXCLUDED.descricao_normalizada, embalagens_fornecedor.descricao_normalizada),
+               fornecedor_nome = COALESCE(EXCLUDED.fornecedor_nome, embalagens_fornecedor.fornecedor_nome),
+               status = 'validado',
+               validado_em = NOW(),
+               validado_por = $7::text,
+               atualizado_em = NOW()
+         RETURNING id`,
+        [ean, item.descricao_nota, descNorm, fornCnpj, item.fornecedor_nome, qtdNovo, usuario]
+      );
+      embId = r.rows[0]?.id;
+    } else if (descNorm) {
+      const r = await client.query(
+        `INSERT INTO embalagens_fornecedor
+           (ean, descricao, descricao_normalizada, fornecedor_cnpj, fornecedor_nome,
+            qtd_por_caixa, status, validado_em, validado_por)
+         VALUES (NULL, $1::text, $2::text, $3::text, $4::text, $5::int, 'validado', NOW(), $6::text)
+         ON CONFLICT (descricao_normalizada, COALESCE(fornecedor_cnpj, ''::character varying))
+           WHERE ean IS NULL AND descricao_normalizada IS NOT NULL DO UPDATE
+           SET qtd_por_caixa = EXCLUDED.qtd_por_caixa,
+               descricao = COALESCE(EXCLUDED.descricao, embalagens_fornecedor.descricao),
+               fornecedor_nome = COALESCE(EXCLUDED.fornecedor_nome, embalagens_fornecedor.fornecedor_nome),
+               status = 'validado',
+               validado_em = NOW(),
+               validado_por = $6::text,
+               atualizado_em = NOW()
+         RETURNING id`,
+        [item.descricao_nota, descNorm, fornCnpj, item.fornecedor_nome, qtdNovo, usuario]
+      );
+      embId = r.rows[0]?.id;
+    }
+
+    // Log
+    await client.query(
+      `INSERT INTO embalagens_fornecedor_log
+         (embalagem_id, ean, descricao, fornecedor_cnpj, fornecedor_nome,
+          qtd_anterior, qtd_novo, origem, nota_id, item_nota_id, alterado_por)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'comprador_nota',$8,$9,$10)`,
+      [embId, ean, item.descricao_nota, fornCnpj, item.fornecedor_nome,
+       qtdAnterior, qtdNovo, item.nota_id, item.id, usuario]
+    );
+
+    await client.query('COMMIT');
+
+    let propagados = 0;
+    if (qtdNovo >= 2 && ean) {
+      try {
+        const r = await recalcularItensFornecedor(ean, fornCnpj, qtdNovo, { excluirItemId: item.id });
+        propagados = r.recalculados;
+      } catch (e) { console.error('[propagar embalagem]', e.message); }
+    }
+
+    res.json({
+      ok: true,
+      qtd_por_caixa_nfe: qtdNovo > 1 ? qtdNovo : null,
+      qtd_em_unidades: totalUn,
+      preco_unitario_nota: precoUn,
+      preco_unitario_caixa: precoCx,
+      embalagem_cadastro_id: embId,
+      propagados
+    });
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('[PATCH item embalagem]', e.message);
+    res.status(500).json({ erro: e.message });
+  } finally { client.release(); }
+});
+
+// POST /api/notas/reprocessar-qtd-caixa  body: { todas_notas?: bool, nota_id?: int, force?: bool }
+// Roda parser de descrição em itens. force=true reprocessa MESMO os já marcados (recalcula preços).
+// IMPORTANTE: definir antes de '/:id' pra não cair em router.get('/:id')
+router.post('/reprocessar-qtd-caixa', autenticar, async (req, res) => {
+  try {
+    if (req.usuario.perfil !== 'admin') return res.status(403).json({ erro: 'Apenas admin' });
+    const { todas_notas, nota_id, force } = req.body || {};
+    if (!todas_notas && !nota_id) return res.status(400).json({ erro: 'Passe nota_id ou todas_notas=true' });
+    const condNotaId = todas_notas ? '' : `AND i.nota_id = $1`;
+    const condForce = force ? '' : `AND i.qtd_por_caixa_nfe IS NULL`;
+    const params = todas_notas ? [] : [nota_id];
+    const itens = await query(
+      `SELECT i.id, i.nota_id, i.descricao_nota, i.ean_nota, i.ean_trib, i.ean_validado,
+              i.qtd_comercial, i.un_comercial, i.qtd_tributavel, i.un_tributavel,
+              i.preco_total_nota,
+              n.fornecedor_cnpj, n.fornecedor_nome
+         FROM itens_nota i
+         JOIN notas_entrada n ON n.id = i.nota_id
+        WHERE n.origem = 'nfe' ${condNotaId} ${condForce}`,
+      params
+    );
+    let processados = 0, atualizados = 0, recalculados_preco = 0, revertidos = 0;
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      for (const it of itens) {
+        processados++;
+        const qCom = parseFloat(it.qtd_comercial) || 0;
+        const custoTotal = parseFloat(it.preco_total_nota) || 0;
+        const uCom = (it.un_comercial || '').toUpperCase();
+        const uTrib = (it.un_tributavel || '').toUpperCase();
+        // REGRA: cEAN == cEANTrib → emb=1, mesmo se descrição tiver NxN
+        const eanDistinto = it.ean_nota && it.ean_trib && it.ean_nota !== it.ean_trib;
+
+        if (!eanDistinto) {
+          // Reverte pra emb=1 (caso BAUDISC: vendia individual, parser tinha colocado 30)
+          if (qCom > 0) {
+            const precoUn = parseFloat((custoTotal / qCom).toFixed(4));
+            const itemFull = await client.query('SELECT custo_fabrica FROM itens_nota WHERE id=$1', [it.id]);
+            const novoStatus = classificarPreco(precoUn, parseFloat(itemFull.rows[0]?.custo_fabrica));
+            await client.query(
+              `UPDATE itens_nota
+                  SET qtd_por_caixa_nfe = NULL, qtd_por_caixa_confianca = NULL,
+                      qtd_em_unidades = $1, preco_unitario_nota = $2, preco_unitario_caixa = NULL,
+                      status_preco = $3
+                WHERE id = $4 AND qtd_por_caixa_nfe IS NOT NULL`,
+              [qCom, precoUn, novoStatus, it.id]
+            );
+            revertidos++;
+          }
+          continue;
+        }
+
+        const p = parseEmbalagem(it.descricao_nota || '');
+        if (!p.qtd || p.qtd < 2) continue;
+        const conf = p.confianca === 'alta' ? 'media' : 'baixa';
+        // Recalcula preço só quando uCom == uTrib (caso B). Caso A (uCom != uTrib) já está correto.
+        if (uCom && uTrib && uCom === uTrib && qCom > 0) {
+          const totalUn = qCom * p.qtd;
+          const precoUn = parseFloat((custoTotal / totalUn).toFixed(4));
+          const precoCx = parseFloat((custoTotal / qCom).toFixed(4));
+          const itemFull = await client.query('SELECT custo_fabrica FROM itens_nota WHERE id=$1', [it.id]);
+          const novoStatus = classificarPreco(precoUn, parseFloat(itemFull.rows[0]?.custo_fabrica));
+          await client.query(
+            `UPDATE itens_nota
+                SET qtd_por_caixa_nfe = $1, qtd_por_caixa_confianca = $2,
+                    qtd_em_unidades = $3, preco_unitario_nota = $4, preco_unitario_caixa = $5,
+                    status_preco = $6
+              WHERE id = $7`,
+            [p.qtd, conf, totalUn, precoUn, precoCx, novoStatus, it.id]
+          );
+          recalculados_preco++;
+        } else {
+          await client.query(
+            `UPDATE itens_nota SET qtd_por_caixa_nfe = $1, qtd_por_caixa_confianca = $2 WHERE id = $3`,
+            [p.qtd, conf, it.id]
+          );
+        }
+        const ean = (it.ean_validado || it.ean_nota || '').replace(/^0+/, '');
+        if (!ean) continue;
+        const fornCnpj = (it.fornecedor_cnpj || '').replace(/\D/g, '') || null;
+        await client.query(
+          `INSERT INTO embalagens_fornecedor
+             (ean, descricao, fornecedor_cnpj, fornecedor_nome,
+              qtd_sugerida_nfe, qtd_sugerida_nfe_em, qtd_sugerida_nfe_nota_id, qtd_sugerida_nfe_confianca,
+              status)
+           VALUES ($1,$2,$3,$4,$5,NOW(),$6,$7,'pendente_validacao')
+           ON CONFLICT (ean, COALESCE(fornecedor_cnpj, ''::character varying)) WHERE ean IS NOT NULL DO UPDATE
+             SET descricao = COALESCE(EXCLUDED.descricao, embalagens_fornecedor.descricao),
+                 qtd_sugerida_nfe = EXCLUDED.qtd_sugerida_nfe,
+                 qtd_sugerida_nfe_em = EXCLUDED.qtd_sugerida_nfe_em,
+                 qtd_sugerida_nfe_nota_id = EXCLUDED.qtd_sugerida_nfe_nota_id,
+                 qtd_sugerida_nfe_confianca = EXCLUDED.qtd_sugerida_nfe_confianca,
+                 atualizado_em = NOW(),
+                 status = CASE
+                   WHEN embalagens_fornecedor.status = 'validado'
+                     AND embalagens_fornecedor.qtd_por_caixa = EXCLUDED.qtd_sugerida_nfe
+                     THEN 'validado'
+                   ELSE 'pendente_validacao'
+                 END`,
+          [ean, it.descricao_nota, fornCnpj, it.fornecedor_nome, p.qtd, it.nota_id, conf]
+        );
+        atualizados++;
+      }
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw e;
+    } finally { client.release(); }
+    res.json({ ok: true, processados, atualizados, recalculados_preco, revertidos });
+  } catch (e) {
+    console.error('[reprocessar-qtd-caixa]', e.message);
+    res.status(500).json({ erro: e.message });
+  }
+});
+
+// GET /api/notas/diag-qtd-caixa?numero=N&serie=S — diagnóstico das colunas qCom/qTrib
+// IMPORTANTE: definir antes de '/:id' pra não cair em router.get('/:id')
+router.get('/diag-qtd-caixa', autenticar, async (req, res) => {
+  try {
+    const { numero, serie } = req.query;
+    if (!numero) return res.status(400).json({ erro: 'numero obrigatório' });
+    const params = [String(numero)];
+    let where = `n.numero_nota = $1`;
+    if (serie) { params.push(String(serie)); where += ` AND n.serie = $${params.length}`; }
+    const [nota] = await query(`SELECT id, numero_nota, serie, fornecedor_nome, fornecedor_cnpj, origem, status FROM notas_entrada n WHERE ${where} ORDER BY n.id DESC LIMIT 1`, params);
+    if (!nota) return res.status(404).json({ erro: 'Nota não encontrada' });
+    const itens = await query(
+      `SELECT id, numero_item, ean_nota, ean_validado, descricao_nota,
+              qtd_comercial, un_comercial, qtd_tributavel, un_tributavel,
+              qtd_por_caixa_nfe, qtd_por_caixa_confianca,
+              quantidade, preco_unitario_nota, preco_unitario_caixa
+         FROM itens_nota WHERE nota_id = $1 ORDER BY numero_item`,
+      [nota.id]
+    );
+    const stats = {
+      total: itens.length,
+      com_qcom: itens.filter(i => i.qtd_comercial != null).length,
+      com_qtrib: itens.filter(i => i.qtd_tributavel != null).length,
+      com_ucom: itens.filter(i => i.un_comercial).length,
+      com_utrib: itens.filter(i => i.un_tributavel).length,
+      com_qtd_por_caixa: itens.filter(i => i.qtd_por_caixa_nfe).length,
+    };
+    const eans = itens.map(i => (i.ean_validado || i.ean_nota || '').replace(/^0+/, '')).filter(Boolean);
+    const emFornEmb = eans.length
+      ? await query(
+          `SELECT ean, fornecedor_nome, qtd_sugerida_nfe, qtd_por_caixa, status
+             FROM embalagens_fornecedor
+            WHERE NULLIF(LTRIM(ean,'0'),'') = ANY($1::text[])`,
+          [eans]
+        )
+      : [];
+    res.json({ nota, stats, itens, em_embalagens_fornecedor: emFornEmb });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
 // GET /api/notas
 router.get('/', autenticar, async (req, res) => {
   try {
@@ -497,25 +889,129 @@ router.get('/:id', autenticar, async (req, res) => {
 });
 
 // PATCH /api/notas/:id/itens/:itemId/remap-ean
+// Atualiza o EAN do item, salva vínculo (cnpj+cprod ou cnpj+desc) em eans_fornecedor
+// e retroaplica em itens compatíveis de notas em status editável.
 router.patch('/:id/itens/:itemId/remap-ean', autenticar, async (req, res) => {
+  const client = await pool.connect();
   try {
     const { ean_novo } = req.body;
-    if (!ean_novo) return res.status(400).json({ erro: 'EAN obrigatório' });
-    const [item] = await query('SELECT * FROM itens_nota WHERE id = $1 AND nota_id = $2', [req.params.itemId, req.params.id]);
+    const eanLimpo = String(ean_novo || '').trim();
+    if (!eanLimpo) return res.status(400).json({ erro: 'EAN obrigatório' });
+    const [item] = await query(
+      `SELECT i.*, n.fornecedor_cnpj, n.fornecedor_nome, n.loja_id
+         FROM itens_nota i
+         JOIN notas_entrada n ON n.id = i.nota_id
+        WHERE i.id = $1 AND i.nota_id = $2`,
+      [req.params.itemId, req.params.id]
+    );
     if (!item) return res.status(404).json({ erro: 'Item não encontrado' });
-    const prods = await query('SELECT custoorigem FROM produtos_externo WHERE codigobarra = $1 LIMIT 1', [ean_novo]);
-    if (!prods.length) return res.status(404).json({ erro: 'EAN não encontrado no cadastro' });
+    const prods = await query(
+      'SELECT custoorigem FROM produtos_externo WHERE codigobarra = $1 AND loja_id = $2 LIMIT 1',
+      [eanLimpo, item.loja_id]
+    );
+    if (!prods.length) {
+      // fallback sem filtro de loja (catálogo geral)
+      const prodsGeral = await query('SELECT custoorigem FROM produtos_externo WHERE codigobarra = $1 LIMIT 1', [eanLimpo]);
+      if (!prodsGeral.length) return res.status(404).json({ erro: 'EAN não encontrado no cadastro' });
+      prods.push(prodsGeral[0]);
+    }
     const custo_fabrica = parseFloat(prods[0].custoorigem) || 0;
-    const diff = Math.abs(parseFloat(item.preco_unitario_nota) - custo_fabrica);
-    const status_preco = diff <= 0.01 ? 'igual' : 'divergente';
-    await query(`
-      UPDATE itens_nota SET ean_validado=$1, custo_fabrica=$2, status_preco=$3, produto_novo=FALSE, validado_cadastro=TRUE
-      WHERE id=$4
-    `, [ean_novo, custo_fabrica, status_preco, item.id]);
-    res.json({ ok: true, status_preco, custo_fabrica });
+
+    const fornCnpj = (item.fornecedor_cnpj || '').replace(/\D/g, '') || null;
+    const cprod = item.cprod_fornecedor || null;
+    const descNorm = normalizarDescricao(item.descricao_nota);
+
+    await client.query('BEGIN');
+
+    // Atualiza o item da nota corrente
+    const status_preco = classificarPreco(parseFloat(item.preco_unitario_nota), custo_fabrica);
+    await client.query(
+      `UPDATE itens_nota SET ean_validado=$1, custo_fabrica=$2, status_preco=$3,
+              produto_novo=FALSE, validado_cadastro=TRUE, ean_fonte='manual'
+        WHERE id=$4`,
+      [eanLimpo, custo_fabrica, status_preco, item.id]
+    );
+
+    // Salva vínculo em eans_fornecedor (preferindo cProd; senão descricao_normalizada)
+    let assocCount = 0;
+    if (fornCnpj && (cprod || descNorm)) {
+      if (cprod) {
+        await client.query(
+          `INSERT INTO eans_fornecedor (fornecedor_cnpj, fornecedor_nome, cprod_fornecedor, descricao_normalizada, ean_validado, associado_por, atualizado_em)
+           VALUES ($1,$2,$3,$4,$5,$6,NOW())
+           ON CONFLICT (fornecedor_cnpj, cprod_fornecedor) WHERE cprod_fornecedor IS NOT NULL DO UPDATE
+             SET ean_validado = EXCLUDED.ean_validado,
+                 descricao_normalizada = EXCLUDED.descricao_normalizada,
+                 associado_por = EXCLUDED.associado_por,
+                 atualizado_em = NOW()`,
+          [fornCnpj, item.fornecedor_nome, cprod, descNorm, eanLimpo, req.usuario?.nome || null]
+        );
+      } else {
+        await client.query(
+          `INSERT INTO eans_fornecedor (fornecedor_cnpj, fornecedor_nome, cprod_fornecedor, descricao_normalizada, ean_validado, associado_por, atualizado_em)
+           VALUES ($1,$2,NULL,$3,$4,$5,NOW())
+           ON CONFLICT (fornecedor_cnpj, descricao_normalizada) WHERE cprod_fornecedor IS NULL AND descricao_normalizada IS NOT NULL DO UPDATE
+             SET ean_validado = EXCLUDED.ean_validado,
+                 associado_por = EXCLUDED.associado_por,
+                 atualizado_em = NOW()`,
+          [fornCnpj, item.fornecedor_nome, descNorm, eanLimpo, req.usuario?.nome || null]
+        );
+      }
+
+      // Retroaplica em itens em notas editáveis com mesma chave
+      const STATUS_EDITAVEIS = ['importada','emergencial_pendente','em_validacao_cadastro'];
+      const upd = await client.query(
+        `WITH alvos AS (
+           SELECT i.id
+             FROM itens_nota i
+             JOIN notas_entrada n ON n.id = i.nota_id
+            WHERE n.status = ANY($1::text[])
+              AND COALESCE(REGEXP_REPLACE(n.fornecedor_cnpj,'\\D','','g'),'') = $2
+              AND i.id <> $3
+              AND COALESCE(i.produto_novo, FALSE) = TRUE
+              AND (
+                ($4::text IS NOT NULL AND i.cprod_fornecedor = $4)
+                OR ($4::text IS NULL AND $5::text IS NOT NULL
+                    AND UPPER(REGEXP_REPLACE(COALESCE(i.descricao_nota,''),'\\s+',' ','g')) = $5)
+              )
+         )
+         UPDATE itens_nota i
+            SET ean_validado = $6,
+                custo_fabrica = COALESCE((SELECT custoorigem FROM produtos_externo WHERE codigobarra=$6 AND loja_id=n.loja_id LIMIT 1), $7),
+                produto_novo = FALSE,
+                ean_fonte = CASE WHEN $4::text IS NOT NULL THEN 'cprod_assoc' ELSE 'desc_assoc' END
+           FROM notas_entrada n
+          WHERE i.id IN (SELECT id FROM alvos)
+            AND n.id = i.nota_id
+          RETURNING i.id`,
+        [STATUS_EDITAVEIS, fornCnpj, item.id, cprod, descNorm, eanLimpo, custo_fabrica]
+      );
+      assocCount = upd.rowCount;
+
+      // Reclassifica status_preco dos itens retroaplicados
+      if (assocCount > 0) {
+        await client.query(
+          `UPDATE itens_nota
+              SET status_preco = CASE
+                WHEN custo_fabrica IS NULL OR custo_fabrica = 0 THEN 'sem_cadastro'
+                WHEN ABS(preco_unitario_nota - custo_fabrica) < 0.01 THEN 'igual'
+                WHEN preco_unitario_nota < custo_fabrica THEN 'menor'
+                WHEN preco_unitario_nota > custo_fabrica * 1.15 THEN 'auditagem'
+                ELSE 'maior'
+              END
+            WHERE ean_validado = $1
+              AND nota_id IN (SELECT id FROM notas_entrada WHERE status = ANY($2::text[]))`,
+          [eanLimpo, STATUS_EDITAVEIS]
+        );
+      }
+    }
+
+    await client.query('COMMIT');
+    res.json({ ok: true, status_preco, custo_fabrica, retroaplicados: assocCount });
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
     res.status(500).json({ erro: err.message });
-  }
+  } finally { client.release(); }
 });
 
 // PATCH /api/notas/:id/reprocessar — re-checar EANs no produtos_externo sem reimportar XML
@@ -543,8 +1039,7 @@ router.patch('/:id/reprocessar', autenticar, async (req, res) => {
         if (prods.length) {
           custo_fabrica = parseFloat(prods[0].custoorigem) || 0;
           produto_novo  = false;
-          const diff    = Math.abs(parseFloat(item.preco_unitario_nota) - custo_fabrica);
-          status_preco  = diff <= 0.01 ? 'igual' : 'divergente';
+          status_preco  = classificarPreco(parseFloat(item.preco_unitario_nota), custo_fabrica);
           ean_matched   = ean;
           ean_fonte     = fonte;
           break;
@@ -751,7 +1246,8 @@ router.patch('/:id/finalizar-conferencia-transf', autenticar, async (req, res) =
             const vd = await client.query(
               `SELECT COALESCE(SUM(qtd_vendida),0)::numeric AS total
                  FROM vendas_historico
-                WHERE loja_id=$1 AND codigobarra=$2 AND data_venda >= CURRENT_DATE - INTERVAL '60 days'`,
+                WHERE loja_id=$1 AND codigobarra=$2 AND data_venda >= CURRENT_DATE - INTERVAL '60 days'
+                  AND COALESCE(tipo_saida, 'venda') = 'venda'`,
               [notaInfo.loja_id, eanRef]
             );
             vendasMedia = (parseFloat(vd.rows[0]?.total) || 0) / 60;
@@ -886,11 +1382,93 @@ router.get('/:id/historico', autenticar, async (req, res) => {
             WHERE i.nota_id = $1
             ORDER BY i.numero_item`
         : `SELECT i.*,
-                  (SELECT json_agg(json_build_object('rodada', c.rodada, 'qtd_contada', c.qtd_contada, 'status', c.status))
-                     FROM conferencias_estoque c WHERE c.item_id = i.id) AS conferencias
+                  (SELECT json_agg(json_build_object(
+                    'rodada', c.rodada,
+                    'qtd_contada', c.qtd_contada,
+                    'status', c.status,
+                    'conferido_por', c.conferido_por,
+                    'conferido_em', c.conferido_em,
+                    'lotes', (SELECT json_agg(json_build_object(
+                       'lote', cl.lote, 'validade', cl.validade,
+                       'quantidade', cl.quantidade, 'local_destino', cl.local_destino
+                     )) FROM conferencia_lotes cl WHERE cl.conferencia_id = c.id)
+                  ) ORDER BY c.rodada)
+                     FROM conferencias_estoque c WHERE c.item_id = i.id) AS conferencias,
+                  (SELECT row_to_json(a.*) FROM auditoria_itens a WHERE a.item_id = i.id) AS auditoria,
+                  (SELECT json_agg(json_build_object(
+                    'validade', v.validade, 'dias_ate_vencer', v.dias_ate_vencer,
+                    'qtd_em_risco', v.qtd_em_risco, 'qtd_em_risco_caixas', v.qtd_em_risco_caixas,
+                    'qtd_embalagem', v.qtd_embalagem, 'valor_em_risco', v.valor_em_risco,
+                    'motivo_risco', v.motivo_risco, 'status', v.status,
+                    'observacao', v.observacao,
+                    'decidido_em', v.decidido_em, 'decidido_por', v.decidido_por
+                  )) FROM validades_em_risco v WHERE v.item_id = i.id) AS validades_risco,
+                  (SELECT json_agg(json_build_object(
+                    'qtd_anterior', l.qtd_anterior, 'qtd_novo', l.qtd_novo,
+                    'origem', l.origem, 'alterado_por', l.alterado_por, 'alterado_em', l.alterado_em
+                  ) ORDER BY l.alterado_em) FROM embalagens_fornecedor_log l
+                    WHERE l.item_nota_id = i.id) AS log_embalagem
              FROM itens_nota i WHERE i.nota_id = $1 ORDER BY i.numero_item`,
       [req.params.id]
     );
+
+    // Último preço pago do mesmo fornecedor pra cada EAN ANTES desta nota — pra calcular diff de ganho/perda
+    if (!isCD) {
+      const eans = [...new Set(itens.map(i => (i.ean_validado || i.ean_nota || '').replace(/^0+/, '')).filter(Boolean))];
+      if (eans.length) {
+        const fornCnpj = (nota.fornecedor_cnpj || '').replace(/\D/g, '');
+        const ultPrecos = await query(
+          `SELECT codigobarra, preco
+             FROM (
+               SELECT NULLIF(LTRIM(ch.codigobarra,'0'),'') AS codigobarra,
+                      (ch.custo_total / NULLIF(ch.qtd_comprada,0))::float AS preco,
+                      ch.data_entrada,
+                      ROW_NUMBER() OVER (
+                        PARTITION BY NULLIF(LTRIM(ch.codigobarra,'0'),'')
+                        ORDER BY ch.data_entrada DESC, ch.id DESC
+                      ) AS rn
+                 FROM compras_historico ch
+                WHERE NULLIF(LTRIM(ch.codigobarra,'0'),'') = ANY($1::text[])
+                  AND REGEXP_REPLACE(COALESCE(ch.fornecedor_cnpj,''),'\\D','','g') = $2
+                  AND ch.data_entrada < COALESCE($3::date, CURRENT_DATE + 1)
+                  AND ch.qtd_comprada > 0
+                  AND COALESCE(ch.tipo_entrada, 'compra') = 'compra'
+             ) sub
+            WHERE rn = 1`,
+          [eans, fornCnpj, nota.data_emissao || null]
+        );
+        const mapPrecos = Object.fromEntries(ultPrecos.map(r => [r.codigobarra, r.preco]));
+        for (const it of itens) {
+          const ean = (it.ean_validado || it.ean_nota || '').replace(/^0+/, '');
+          const precoAnt = ean ? mapPrecos[ean] : null;
+          if (precoAnt && it.preco_unitario_nota) {
+            it.preco_anterior_fornecedor = precoAnt;
+            const qtdUn = parseFloat(it.qtd_em_unidades) || parseFloat(it.quantidade) || 0;
+            const diffUn = parseFloat(it.preco_unitario_nota) - precoAnt;
+            it.diff_unit = diffUn;
+            it.diff_total = diffUn * qtdUn;
+            it.diff_pct = precoAnt > 0 ? (diffUn / precoAnt) * 100 : null;
+          }
+        }
+      }
+    }
+
+    // Eventos do log de embalagem específicos da nota (todos itens)
+    const logsEmbalagem = !isCD ? await query(
+      `SELECT l.*, i.descricao_nota
+         FROM embalagens_fornecedor_log l
+         LEFT JOIN itens_nota i ON i.id = l.item_nota_id
+        WHERE l.nota_id = $1
+        ORDER BY l.alterado_em`,
+      [req.params.id]
+    ) : [];
+
+    // Alertas associados (notas_alertas)
+    const alertas = await query(
+      `SELECT tipo, mensagem, criado_em, lido_em, lido_por
+         FROM notas_alertas WHERE nota_id = $1 ORDER BY criado_em`,
+      [req.params.id]
+    ).catch(() => []);
 
     // Devoluções vinculadas
     const devolucoes = await query(
@@ -899,7 +1477,7 @@ router.get('/:id/historico', autenticar, async (req, res) => {
       [req.params.id]
     );
 
-    res.json({ nota, pedido, itensPedido, itens, devolucoes });
+    res.json({ nota, pedido, itensPedido, itens, devolucoes, logsEmbalagem, alertas });
   } catch (err) {
     console.error('[historico]', err.message);
     res.status(500).json({ erro: err.message });
@@ -1066,25 +1644,102 @@ router.post('/:id/auditoria', autenticar, async (req, res) => {
     if (nota.status !== 'em_auditoria') return res.status(400).json({ erro: 'Nota não está em auditoria' });
 
     await client.query('BEGIN');
-    // Limpa validades pendentes anteriores desta nota
+    // Limpa validades + divergências pendentes anteriores desta nota
     await client.query(`DELETE FROM validades_em_risco WHERE nota_id=$1 AND status='pendente'`, [req.params.id]);
+    await client.query(`DELETE FROM auditagem_divergencias WHERE nota_id=$1 AND status='pendente'`, [req.params.id]);
 
     let temValidadeEmRisco = false;
+    let temFalta = false;
+    let temSobra = false;
+    const sobras = []; // pra alerta
+    let devolucaoId = null;
     for (const aud of itens_auditados) {
       const { rows: [item] } = await client.query(
         'SELECT i.*, COALESCE(pe.qtd_embalagem,1)::numeric AS emb FROM itens_nota i LEFT JOIN produtos_embalagem pe ON pe.mat_codi = i.cd_pro_codi WHERE i.id = $1 AND i.nota_id = $2',
         [aud.item_id, req.params.id]
       );
       if (!item) continue;
-      const diff = Math.abs(n(aud.qtd_contada) - n(item.quantidade));
+      const qtdEsperada = n(item.quantidade);
+      const qtdContada = n(aud.qtd_contada);
+      const diferenca = qtdContada - qtdEsperada;
+      const diff = Math.abs(diferenca);
       const statusAud = diff < 0.001 ? 'ok' : 'divergente';
       await client.query(`
         INSERT INTO auditoria_itens (item_id, qtd_contada, lote, validade, status, observacao, auditado_por)
         VALUES ($1,$2,$3,$4,$5,$6,$7)
         ON CONFLICT (item_id) DO UPDATE
           SET qtd_contada=$2, lote=$3, validade=$4, status=$5, observacao=$6, auditado_por=$7, auditado_em=NOW()
-      `, [aud.item_id, n(aud.qtd_contada), aud.lote || null, aud.validade || null,
+      `, [aud.item_id, qtdContada, aud.lote || null, aud.validade || null,
           statusAud, aud.observacao || null, req.usuario.nome]);
+
+      // ── Divergência (falta/sobra) ──
+      if (diff >= 0.001) {
+        // qtd_esperada/qtd_contada estão na MESMA unidade da NF (geralmente caixas);
+        // preco_unitario_nota está SEMPRE por UNIDADE INDIVIDUAL (parser converte).
+        // qtd_por_caixa_nfe = unidades por caixa (do parser ou cadastro).
+        // Precisamos do preço por "unidade da NF" → preco_caixa quando >1, senão preco_unit.
+        const embPorCx = parseInt(item.qtd_por_caixa_nfe) || parseFloat(item.emb) || 1;
+        const precoUnitInd = parseFloat(item.preco_unitario_nota) || 0;
+        const precoPorQtdNota = parseFloat(item.preco_unitario_caixa) || (precoUnitInd * embPorCx);
+        const valorDif = diff * precoPorQtdNota;
+        await client.query(
+          `INSERT INTO auditagem_divergencias
+              (nota_id, item_id, loja_id, cd_pro_codi, descricao, ean_nota,
+               qtd_esperada, qtd_contada, valor_unitario, valor_total_diferenca, observacao)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+          [req.params.id, aud.item_id, nota.loja_id, item.cd_pro_codi,
+           item.descricao_nota, item.ean_nota,
+           qtdEsperada, qtdContada, precoPorQtdNota, valorDif, aud.observacao || null]
+        );
+
+        if (diferenca < 0) {
+          // FALTA — gera item de devolução pro fornecedor
+          temFalta = true;
+          if (!devolucaoId) {
+            const destCnpj = (nota.fornecedor_cnpj || '').replace(/\D/g, '');
+            const destNome = nota.fornecedor_nome || 'Fornecedor';
+            const { rows: existeDev } = await client.query(
+              `SELECT id FROM devolucoes WHERE nota_id=$1 AND destinatario_cnpj=$2 AND status='aguardando' LIMIT 1`,
+              [req.params.id, destCnpj]
+            );
+            if (existeDev.length) {
+              devolucaoId = existeDev[0].id;
+            } else {
+              const { rows: novoDev } = await client.query(
+                `INSERT INTO devolucoes
+                    (nota_id, loja_id, tipo, destinatario_cnpj, destinatario_nome, motivo, criado_por)
+                  VALUES ($1,$2,'fornecedor',$3,$4,'divergencia_quantidade',$5) RETURNING id`,
+                [req.params.id, nota.loja_id, destCnpj, destNome, req.usuario.nome]
+              );
+              devolucaoId = novoDev[0].id;
+            }
+          }
+          const qtdFaltaCx = -diferenca;                     // em caixas (qtd da NF)
+          const qtdFaltaUn = qtdFaltaCx * embPorCx;          // em unidades individuais
+          const valorFalta = qtdFaltaCx * precoPorQtdNota;   // = qtdFaltaUn × precoUnitInd
+          await client.query(
+            `INSERT INTO devolucoes_itens
+                (devolucao_id, item_nota_id, cd_pro_codi, ean, descricao,
+                 qtd_caixas, qtd_unidades, qtd_total, valor_unitario, valor_total,
+                 origem_tipo, origem_id)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'auditagem_divergencia',NULL)`,
+            [devolucaoId, aud.item_id, item.cd_pro_codi, item.ean_nota, item.descricao_nota,
+             qtdFaltaCx, qtdFaltaUn, qtdFaltaUn, precoUnitInd, valorFalta]
+          );
+        } else {
+          // SOBRA — relatório informativo
+          temSobra = true;
+          sobras.push({
+            item_id: aud.item_id,
+            descricao: item.descricao_nota,
+            ean: item.ean_nota,
+            qtd_esperada: qtdEsperada,
+            qtd_contada: qtdContada,
+            sobra: diferenca,
+            valor: valorDif,
+          });
+        }
+      }
 
       // ── Análise de validade em risco (se auditor preencheu) ──
       if (aud.validade) {
@@ -1100,7 +1755,8 @@ router.post('/:id/auditoria', autenticar, async (req, res) => {
           estoqueAtual = parseFloat(ext.rows[0]?.est) || 0;
           const vd = await client.query(
             `SELECT COALESCE(SUM(qtd_vendida),0)::numeric AS total FROM vendas_historico
-              WHERE loja_id=$1 AND codigobarra=$2 AND data_venda >= CURRENT_DATE - INTERVAL '60 days'`,
+              WHERE loja_id=$1 AND codigobarra=$2 AND data_venda >= CURRENT_DATE - INTERVAL '60 days'
+                AND COALESCE(tipo_saida, 'venda') = 'venda'`,
             [nota.loja_id, eanRef]
           );
           vendasMedia = (parseFloat(vd.rows[0]?.total) || 0) / 60;
@@ -1139,15 +1795,51 @@ router.post('/:id/auditoria', autenticar, async (req, res) => {
       }
     }
 
-    // Validade em risco tem precedência: vai pra admin decidir; senão fecha como antes.
-    const novoStatus = temValidadeEmRisco ? 'aguardando_admin_validade' : 'fechada';
+    // Atualiza valor_total da devolução agregada (se houve falta)
+    if (devolucaoId) {
+      await client.query(
+        `UPDATE devolucoes SET valor_total = (SELECT COALESCE(SUM(valor_total),0) FROM devolucoes_itens WHERE devolucao_id=$1) WHERE id=$1`,
+        [devolucaoId]
+      );
+    }
+
+    // Precedência: validade em risco > falta (devolução) > sobra/ok (fecha)
+    const novoStatus = temValidadeEmRisco
+      ? 'aguardando_admin_validade'
+      : temFalta
+        ? 'aguardando_devolucao'
+        : 'fechada';
     await client.query(
-      `UPDATE notas_entrada SET status=$1, fechado_em = CASE WHEN $1='fechada' THEN NOW() ELSE fechado_em END WHERE id=$2`,
+      `UPDATE notas_entrada SET status=$1::text, fechado_em = CASE WHEN $1::text='fechada' THEN NOW() ELSE fechado_em END WHERE id=$2`,
       [novoStatus, req.params.id]
     );
+
+    // Alerta admin/comprador quando há SOBRA (não vai pro estoque — informativo)
+    if (temSobra) {
+      const totalValor = sobras.reduce((s, x) => s + (x.valor || 0), 0);
+      const titulo = `Sobras na NF ${nota.numero_nota || '#'+nota.id} — ${nota.fornecedor_nome || ''}`;
+      const linhas = sobras.map(s => `${s.descricao} (+${s.sobra.toFixed(2)} un · R$ ${s.valor.toFixed(2)})`).join(' | ');
+      const mensagem = `Auditoria detectou ${sobras.length} item(ns) com sobra (total R$ ${totalValor.toFixed(2)}). Não entra no estoque. Avisar comprador/vendedor — só recebe se fornecedor emitir nova NF complementar. Itens: ${linhas}`;
+      await client.query(
+        `INSERT INTO alertas_admin (tipo, entidade, entidade_id, titulo, mensagem)
+           VALUES ('sobra_auditoria', 'nota', $1, $2, $3)
+           ON CONFLICT (tipo, entidade, entidade_id) WHERE resolvido_em IS NULL DO UPDATE
+             SET titulo = EXCLUDED.titulo, mensagem = EXCLUDED.mensagem, criado_em = NOW()`,
+        [req.params.id, titulo, mensagem]
+      );
+    }
+
     await client.query('COMMIT');
     if (novoStatus === 'fechada') enviarWebhookEntrada(req.params.id);
-    res.json({ ok: true, novo_status: novoStatus, validade_em_risco: temValidadeEmRisco });
+    res.json({
+      ok: true,
+      novo_status: novoStatus,
+      validade_em_risco: temValidadeEmRisco,
+      tem_falta: temFalta,
+      tem_sobra: temSobra,
+      sobras_count: sobras.length,
+      devolucao_id: devolucaoId,
+    });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     res.status(500).json({ erro: err.message });
