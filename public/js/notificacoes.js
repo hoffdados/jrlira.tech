@@ -1,7 +1,7 @@
 // Badge de notificações in-app — incluir <script src="/js/notificacoes.js"></script>
 // Auto-instala se houver token; pollinga /api/notificacoes a cada 60s.
 (() => {
-  const TOKEN_KEYS = ['jrlira_token', 'token'];
+  const TOKEN_KEYS = ['jrlira_token', 'vend_token', 'token'];
   function token() { for (const k of TOKEN_KEYS) { const v = localStorage.getItem(k); if (v) return v; } return null; }
   if (!token()) return;
 
