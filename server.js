@@ -42,6 +42,7 @@ app.use('/api/validades-em-risco', require('./src/routes/validades_em_risco'));
 app.use('/api/devolucoes', require('./src/routes/devolucoes'));
 app.use('/api/perdas', require('./src/routes/perdas'));
 app.use('/api/sync-status', require('./src/routes/sync_status'));
+app.use('/api/notificacoes', require('./src/routes/notificacoes'));
 
 // ── PÁGINAS ───────────────────────────────────────────────────────
 app.get('/favicon.ico', (req, res) => res.redirect(301, '/favicon.svg'));
@@ -1625,6 +1626,23 @@ async function initDB() {
         ordem = EXCLUDED.ordem
     `).catch(err => console.error('[seed tipos_licenca]', err.message));
 
+    // Notificações in-app (substitui WhatsApp em vários fluxos)
+    await runMigration(client, '20260506_notificacoes',
+      `CREATE TABLE IF NOT EXISTS notificacoes (
+         id SERIAL PRIMARY KEY,
+         destinatario_tipo VARCHAR(20) NOT NULL,
+         destinatario_id INTEGER NOT NULL,
+         tipo VARCHAR(40) NOT NULL,
+         titulo VARCHAR(120) NOT NULL,
+         corpo TEXT,
+         url VARCHAR(200),
+         lida_em TIMESTAMPTZ,
+         criado_em TIMESTAMPTZ DEFAULT NOW()
+       )`);
+    await runMigration(client, '20260506_idx_notificacoes_dest',
+      `CREATE INDEX IF NOT EXISTS idx_notificacoes_dest
+         ON notificacoes (destinatario_tipo, destinatario_id, lida_em NULLS FIRST, criado_em DESC)`);
+
     console.log('[DB] Tabelas inicializadas');
   } finally {
     client.release();
@@ -1997,15 +2015,26 @@ initDB().then(() => {
       const linhaSync = atrasosSync.length
         ? `\n\n⚠️ *SYNC ATRASADO:*\n${atrasosSync.map(a => '• ' + a).join('\n')}`
         : '';
-      const msg = `🔔 *JR Lira Tech — alertas pendentes*\n${total} pendência(s):\n${linhas}${linhaDivs}${linhaVals}${linhaDevs}${linhaEmbNfe}${linhaEmbPend}${linhaSync}\n\nResolver:\n• https://jrliratech-production.up.railway.app/produtos-embalagem\n• https://jrliratech-production.up.railway.app/auditagem-divergencias\n• https://jrliratech-production.up.railway.app/validades-em-risco\n• https://jrliratech-production.up.railway.app/aguardando-devolucao`;
-      await enviarWhatsapp(ADMIN_WHATSAPP, msg);
+      const corpo = `${total} pendência(s):\n${linhas}${linhaDivs}${linhaVals}${linhaDevs}${linhaEmbNfe}${linhaEmbPend}${linhaSync}`.replace(/\*/g, '');
+      // Notifica todos os admins via in-app
+      const { criarNotificacao } = require('./src/routes/notificacoes');
+      const adminsRows = await dbQuery(`SELECT id FROM rh_usuarios WHERE perfil='admin' AND ativo=TRUE`);
+      for (const a of adminsRows) {
+        await criarNotificacao({
+          destinatario_tipo: 'usuario', destinatario_id: a.id,
+          tipo: 'alerta_pendente',
+          titulo: `🔔 ${total} pendência(s)`,
+          corpo,
+          url: '/'
+        });
+      }
       // marca como notificado (incrementa contador)
       await dbQuery(`
         UPDATE alertas_admin
            SET notificado_em = NOW(), notificacoes_enviadas = COALESCE(notificacoes_enviadas,0) + 1
          WHERE resolvido_em IS NULL
       `);
-      console.log(`[alertas] notificou ${total} pendência(s) via WhatsApp`);
+      console.log(`[alertas] in-app: ${total} pendência(s) → ${adminsRows.length} admin(s)`);
     } catch (e) {
       console.error('[alertas notificar] falha:', e.message);
     }

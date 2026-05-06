@@ -30,7 +30,8 @@ button:hover { background: #0284c7; }
 .logout-btn:hover { color: #94a3b8; }
 
 /* ── CARDS COMPACTOS ── */
-.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(155px, 1fr)); gap: 12px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+@media (min-width: 1700px) { .cards { grid-template-columns: repeat(8, 1fr); } }
 .card { background: #1e293b; border-radius: 12px; padding: 22px 16px; display: flex; flex-direction: column; align-items: center; gap: 12px; cursor: pointer; text-decoration: none; color: inherit; border: 1px solid transparent; transition: background .2s, border-color .2s; text-align: center; }
 .card:hover { background: #273549; border-color: #334155; }
 .card .ic { background: #0f2a3f; border-radius: 10px; padding: 12px; display: flex; align-items: center; justify-content: center; }
@@ -93,19 +94,23 @@ const TODOS_CARDS = [
   { href: '/ponto',             icon: 'clock',           title: 'Controle de Ponto',   desc: 'Importação iPonto',               perfis: ['rh'] },
   { href: '/notas-cadastro',    icon: 'file-text',       title: 'Notas Fornecedores',  desc: 'Cadastro de NF-e dos fornecedores', perfis: ['cadastro'] },
   { href: '/notas-transferencias-cadastro', icon: 'truck', title: 'Notas Transferências', desc: 'Cadastro de transferências CD e entre lojas', perfis: ['cadastro'] },
-  { href: '/notas-estoque',     icon: 'package',         title: 'Notas — Estoque',     desc: 'Conferência às cegas',            perfis: ['estoque'] },
+  { href: '/notas-estoque',     icon: 'package',         title: 'Notas — Estoque',     desc: 'Conferência às cegas (fornecedor)', perfis: ['estoque'] },
+  { href: '/notas-distribuidora', icon: 'truck',         title: 'Distribuidora',       desc: 'Conferência de transferências CD/entre lojas', perfis: ['estoque'] },
   { href: '/notas-auditoria',   icon: 'clipboard-check', title: 'Notas — Auditoria',   desc: 'Fechamento de notas',             perfis: ['auditor'] },
   { href: '/fornecedores',      icon: 'building-2',      title: 'Fornecedores',        desc: 'Cadastro e aprovações',           perfis: ['comprador'] },
   { href: '/pedidos-comprador', icon: 'shopping-cart',   title: 'Pedidos',             desc: 'Validação e PDF',                 perfis: ['comprador'] },
   { href: '/auditoria-pedidos', icon: 'shield-check',    title: 'Auditoria de Pedidos',desc: 'Liberar pedidos acima da sugestão', perfis: [] },
-  { href: '/notas-comprador',   icon: 'file-check',      title: 'NF-e',                desc: 'Importar XMLs e vincular pedidos',perfis: ['comprador'] },
+  { href: '/notas-comprador',   icon: 'file-check',      title: 'NF-e Fornecedor',     desc: 'Importar XMLs e vincular pedidos',perfis: ['comprador'] },
+  { href: '/notas-cd',          icon: 'truck',           title: 'Transferências CD',   desc: 'Acompanhar transferências CD e entre lojas', perfis: ['comprador'] },
   { href: '/sugestao-compras',  icon: 'trending-up',     title: 'Sugestão de Compras', desc: 'Reposição proativa por fornecedor', perfis: ['comprador'] },
   { href: '/contas-receber',    icon: 'receipt',         title: 'Contas a Receber',    desc: 'Devoluções e bonificações',       perfis: ['comprador'] },
   { href: '/usuarios',          icon: 'shield',          title: 'Usuários',            desc: 'Perfis de acesso',                perfis: [] },
   { href: '/produtos-embalagem',icon: 'box',             title: 'Cadastro CD',         desc: 'Auditoria de quantidade por embalagem e Códigos de Barra', perfis: [] },
+  { href: '/embalagens-fornecedor', icon: 'package-search', title: 'Embalagens Fornecedor', desc: 'Sugestões de qtd por caixa vindas das NF-e', perfis: [] },
   { href: '/auditagem-divergencias',icon:'alert-triangle',title:'Divergências CD',     desc:'Faltas/sobras na conferência — tratar com CD ou devolução', perfis: [] },
   { href: '/validades-em-risco', icon: 'calendar-clock',  title: 'Validades em Risco',  desc: 'Análise por giro — liberar ou devolução', perfis: [] },
   { href: '/aguardando-devolucao', icon: 'undo-2',         title: 'Aguardando Devolução', desc: 'Anexar XML de devolução pro CD ou fornecedor', perfis: ['cadastro'] },
+  { href: '/devolucoes-divergencias', icon: 'trending-up', title: 'Divergências Devolução', desc: 'Totalizador NF de devolução vs valor esperado por fornecedor / loja / mês', perfis: [] },
 ];
 
 function renderCards(perfil) {
@@ -139,5 +144,6 @@ function sair() {
 
 if (getToken()) mostrarDashboard(localStorage.getItem('jrlira_nome') || '', localStorage.getItem('jrlira_perfil') || '');
 </script>
+<script src="/js/notificacoes.js"></script>
 </body>
 </html>

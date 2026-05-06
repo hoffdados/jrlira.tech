@@ -6,6 +6,7 @@ const jwt = require('jsonwebtoken');
 const { compradorOuAdmin, JWT_SECRET } = require('../auth');
 const { enviarEmail } = require('../mailer');
 const { enviarWhatsapp } = require('../whatsapp');
+const { criarNotificacao } = require('./notificacoes');
 
 const APP_URL = process.env.APP_URL || 'https://jrliratech-production.up.railway.app';
 
@@ -40,8 +41,22 @@ function authPdf(req, res, next) {
 router.get('/', compradorOuAdmin, async (req, res) => {
   try {
     const { status, fornecedor_cnpj } = req.query;
-    const params = [], conds = ["p.status != 'rascunho'"];
-    if (status)          { params.push(status);                                               conds.push(`p.status=$${params.length}`); }
+    const params = [], conds = [];
+    // Esconde rascunho por default, EXCETO quando o filtro pede explicitamente.
+    // Quando pedem rascunho, retorna SÓ os criados via /sugestao-compras (criado_por_comprador NOT NULL)
+    if (status === 'rascunho') {
+      conds.push("p.status='rascunho'");
+      conds.push("p.criado_por_comprador IS NOT NULL");
+    } else if (status && status.includes(',')) {
+      const lista = status.split(',').map(s => s.trim()).filter(Boolean);
+      const placeholders = lista.map(s => { params.push(s); return `$${params.length}`; });
+      conds.push(`p.status IN (${placeholders.join(',')})`);
+    } else if (status) {
+      params.push(status);
+      conds.push(`p.status=$${params.length}`);
+    } else {
+      conds.push("p.status != 'rascunho'");
+    }
     if (fornecedor_cnpj) { params.push(fornecedor_cnpj.replace(/\D/g,'')); conds.push(`REGEXP_REPLACE(f.cnpj,'\\D','','g')=$${params.length}`); }
     const where = 'WHERE ' + conds.join(' AND ');
     const rows = await dbQuery(
@@ -50,8 +65,8 @@ router.get('/', compradorOuAdmin, async (req, res) => {
               p.editado_na_auditoria, p.auditado_por, p.auditado_em,
               p.cancelado_em, p.cancelado_por, p.motivo_cancelamento,
               p.faturado_em, p.faturado_por, p.numero_nf_faturada,
-              p.loja_id,
-              f.razao_social as fornecedor_nome, f.fantasia as fornecedor_fantasia,
+              p.loja_id, p.criado_por_comprador,
+              f.razao_social as fornecedor_nome, f.fantasia as fornecedor_fantasia, f.cnpj as fornecedor_cnpj,
               v.nome as vendedor_nome, v.email as vendedor_email,
               l.nome as loja_nome, n.numero_nota
        FROM pedidos p
@@ -75,6 +90,7 @@ router.get('/fornecedores-com-historico', compradorOuAdmin, async (req, res) => 
       `WITH cnpjs_loja AS (
          SELECT DISTINCT REGEXP_REPLACE(fornecedor_cnpj, '\\D', '', 'g') AS cnpj_num
          FROM compras_historico WHERE loja_id = $1
+           AND COALESCE(tipo_entrada, 'compra') = 'compra'
        )
        SELECT * FROM (
          SELECT DISTINCT ON (f.cnpj) f.id, f.razao_social, f.fantasia, f.cnpj
@@ -102,6 +118,7 @@ router.get('/sugestao', compradorOuAdmin, async (req, res) => {
         FROM compras_historico
         WHERE REGEXP_REPLACE(fornecedor_cnpj, '\\D', '', 'g') = $1
           AND loja_id = $2
+          AND COALESCE(tipo_entrada, 'compra') = 'compra'
       ),
       pe_fallback AS (
         SELECT DISTINCT ON (codigobarra) codigobarra, descricao, custoorigem
@@ -116,6 +133,7 @@ router.get('/sugestao', compradorOuAdmin, async (req, res) => {
         WHERE loja_id = $2
           AND data_venda >= CURRENT_DATE - INTERVAL '90 days'
           AND codigobarra IN (SELECT codigobarra FROM eans_forn)
+          AND COALESCE(tipo_saida, 'venda') = 'venda'
         GROUP BY codigobarra
       ),
       transito AS (
@@ -134,6 +152,7 @@ router.get('/sugestao', compradorOuAdmin, async (req, res) => {
         FROM compras_historico
         WHERE loja_id = $2
           AND REGEXP_REPLACE(fornecedor_cnpj, '\\D', '', 'g') = $1
+          AND COALESCE(tipo_entrada, 'compra') = 'compra'
         GROUP BY codigobarra
       )
       SELECT
@@ -162,6 +181,29 @@ router.get('/sugestao', compradorOuAdmin, async (req, res) => {
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
+// PATCH /api/pedidos/:id/atribuir-vendedor — vincula vendedor a um pedido (usado em rascunhos da sugestão)
+router.patch('/:id/atribuir-vendedor', compradorOuAdmin, async (req, res) => {
+  try {
+    const { vendedor_id } = req.body || {};
+    if (!vendedor_id) return res.status(400).json({ erro: 'vendedor_id obrigatório' });
+    const [ped] = await dbQuery('SELECT status, fornecedor_id FROM pedidos WHERE id=$1', [req.params.id]);
+    if (!ped) return res.status(404).json({ erro: 'Pedido não encontrado' });
+    // Verifica se vendedor pertence ao fornecedor (por id ou cnpj)
+    const [v] = await dbQuery(
+      `SELECT v.id FROM vendedores v
+         JOIN fornecedores f ON f.id = $2
+        WHERE v.id = $1
+          AND (v.fornecedor_id = f.id
+               OR REGEXP_REPLACE(COALESCE(v.fornecedor_cnpj,''),'\\D','','g')
+                = REGEXP_REPLACE(COALESCE(f.cnpj,''),'\\D','','g'))`,
+      [vendedor_id, ped.fornecedor_id]
+    );
+    if (!v) return res.status(400).json({ erro: 'Vendedor não pertence ao fornecedor deste pedido' });
+    await dbQuery('UPDATE pedidos SET vendedor_id=$1 WHERE id=$2', [vendedor_id, req.params.id]);
+    res.json({ ok: true, vendedor_id });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
 // POST /api/pedidos/de-sugestao
 router.post('/de-sugestao', compradorOuAdmin, async (req, res) => {
   try {
@@ -169,10 +211,11 @@ router.post('/de-sugestao', compradorOuAdmin, async (req, res) => {
     if (!fornecedor_id || !loja_id || !itens?.length) return res.status(400).json({ erro: 'Campos obrigatórios faltando' });
 
     const numero_pedido = `SUG-${Date.now()}`;
+    const criadoPor = req.usuario?.nome || req.usuario?.usuario || null;
     const [ped] = await dbQuery(
-      `INSERT INTO pedidos (numero_pedido, fornecedor_id, loja_id, status, condicao_pagamento, observacoes)
-       VALUES ($1,$2,$3,'rascunho',$4,$5) RETURNING id`,
-      [numero_pedido, fornecedor_id, loja_id, condicao_pagamento || 28, observacoes || null]
+      `INSERT INTO pedidos (numero_pedido, fornecedor_id, loja_id, status, condicao_pagamento, observacoes, criado_por_comprador)
+       VALUES ($1,$2,$3,'rascunho',$4,$5,$6) RETURNING id`,
+      [numero_pedido, fornecedor_id, loja_id, condicao_pagamento ?? 28, observacoes || null, criadoPor]
     );
 
     let valor_total = 0;
@@ -260,6 +303,7 @@ router.get('/:id', compradorOuAdmin, async (req, res) => {
           LIMIT 1
         ) f ON true
         WHERE ch.codigobarra = ANY($1) AND ch.loja_id = (SELECT loja_id FROM pedidos WHERE id=$2)
+          AND COALESCE(ch.tipo_entrada, 'compra') = 'compra'
         ORDER BY ch.codigobarra, ch.data_entrada DESC
       `, [codigos_h, req.params.id]);
       for (const x of r) historicoPrecos[x.codigobarra] = {
@@ -395,7 +439,8 @@ async function calcularSugestoes(pedido_id) {
     );
     const [vendas] = await dbQuery(
       `SELECT COALESCE(SUM(qtd_vendida),0) AS total_90d FROM vendas_historico
-       WHERE codigobarra=$1 AND loja_id=$2 AND data_venda >= CURRENT_DATE - INTERVAL '90 days'`,
+       WHERE codigobarra=$1 AND loja_id=$2 AND data_venda >= CURRENT_DATE - INTERVAL '90 days'
+         AND COALESCE(tipo_saida, 'venda') = 'venda'`,
       [it.codigo_barras, ped[0].loja_id]
     );
     const media_dia = parseFloat(vendas?.total_90d || 0) / 90;
@@ -497,11 +542,19 @@ router.put('/:id/validar', compradorOuAdmin, async (req, res) => {
            condicao_pagamento=$2, observacoes=$3,
            status='aguardando_auditoria'
          WHERE id=$1`,
-        [req.params.id, condicao_pagamento || pedido.condicao_pagamento, observacoes ?? pedido.observacoes]
+        [req.params.id, condicao_pagamento ?? pedido.condicao_pagamento, observacoes ?? pedido.observacoes]
       );
-      // WhatsApp ao vendedor
-      const pedAud = await dbQuery(`SELECT p.*, l.nome as loja_nome, v.telefone as vendedor_tel FROM pedidos p LEFT JOIN lojas l ON l.id=p.loja_id LEFT JOIN vendedores v ON v.id=p.vendedor_id WHERE p.id=$1`, [req.params.id]);
-      if (pedAud[0]?.vendedor_tel) enviarWhatsapp(pedAud[0].vendedor_tel, msgWhatsApp(pedAud[0], 'aguardando_auditoria'));
+      // Notifica vendedor in-app
+      const pedAud = await dbQuery(`SELECT p.id, p.numero_pedido, p.vendedor_id, l.nome as loja_nome FROM pedidos p LEFT JOIN lojas l ON l.id=p.loja_id WHERE p.id=$1`, [req.params.id]);
+      if (pedAud[0]?.vendedor_id) {
+        criarNotificacao({
+          destinatario_tipo: 'vendedor', destinatario_id: pedAud[0].vendedor_id,
+          tipo: 'pedido_em_analise',
+          titulo: `Pedido ${pedAud[0].numero_pedido} em análise`,
+          corpo: `${pedAud[0].loja_nome || ''} — pedido enviado pra auditoria do administrador.`,
+          url: '/vendedor.html'
+        });
+      }
 
       return res.json({
         ok: true, status: 'aguardando_auditoria',
@@ -516,7 +569,7 @@ router.put('/:id/validar', compradorOuAdmin, async (req, res) => {
          condicao_pagamento=$2, observacoes=$3,
          status='validado', validado_em=NOW(), validado_por=$4
        WHERE id=$1`,
-      [req.params.id, condicao_pagamento || pedido.condicao_pagamento, observacoes ?? pedido.observacoes, req.usuario.nome]
+      [req.params.id, condicao_pagamento ?? pedido.condicao_pagamento, observacoes ?? pedido.observacoes, req.usuario.nome]
     );
 
     const pedidoAtualizado = await dbQuery('SELECT * FROM pedidos WHERE id=$1', [req.params.id]);
@@ -531,9 +584,15 @@ router.put('/:id/validar', compradorOuAdmin, async (req, res) => {
         [{ filename: `pedido-${pedido.numero_pedido}.pdf`, content: pdfBuffer }]
       );
     }
-    // WhatsApp
-    if (pedido.vendedor_tel) {
-      enviarWhatsapp(pedido.vendedor_tel, msgWhatsApp({ ...pedidoAtualizado[0], ...pedido }, 'validado'));
+    // Notifica vendedor in-app
+    if (pedido.vendedor_id) {
+      criarNotificacao({
+        destinatario_tipo: 'vendedor', destinatario_id: pedido.vendedor_id,
+        tipo: 'pedido_validado',
+        titulo: `Pedido ${pedido.numero_pedido} validado ✅`,
+        corpo: `${pedido.loja_nome || ''} — pode faturar (prazo 48h).`,
+        url: '/vendedor.html'
+      });
     }
 
     res.json({ ok: true, status: 'validado' });
@@ -558,8 +617,8 @@ router.post('/:id/rejeitar', compradorOuAdmin, async (req, res) => {
   try {
     const { motivo } = req.body;
     const ped = await dbQuery(
-      `SELECT p.id, p.status, p.numero_pedido, l.nome as loja_nome, v.telefone as vendedor_tel
-       FROM pedidos p LEFT JOIN lojas l ON l.id=p.loja_id LEFT JOIN vendedores v ON v.id=p.vendedor_id
+      `SELECT p.id, p.status, p.numero_pedido, p.vendedor_id, l.nome as loja_nome
+       FROM pedidos p LEFT JOIN lojas l ON l.id=p.loja_id
        WHERE p.id=$1`,
       [req.params.id]
     );
@@ -569,8 +628,14 @@ router.post('/:id/rejeitar', compradorOuAdmin, async (req, res) => {
       `UPDATE pedidos SET status='rejeitado', rejeitado_por=$1, rejeitado_em=NOW(), motivo_rejeicao=$2 WHERE id=$3`,
       [req.usuario.nome, motivo || null, req.params.id]
     );
-    if (ped[0].vendedor_tel) {
-      enviarWhatsapp(ped[0].vendedor_tel, msgWhatsApp({ ...ped[0], motivo_rejeicao: motivo }, 'rejeitado'));
+    if (ped[0].vendedor_id) {
+      criarNotificacao({
+        destinatario_tipo: 'vendedor', destinatario_id: ped[0].vendedor_id,
+        tipo: 'pedido_rejeitado',
+        titulo: `Pedido ${ped[0].numero_pedido} rejeitado ❌`,
+        corpo: `${ped[0].loja_nome || ''}${motivo ? ` — Motivo: ${motivo}` : ''}`,
+        url: '/vendedor.html'
+      });
     }
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ erro: e.message }); }
@@ -623,10 +688,16 @@ router.post('/:id/auditar/aprovar', compradorOuAdmin, async (req, res) => {
         [{ filename: `pedido-${ped[0].numero_pedido}.pdf`, content: pdfBuffer }]
       );
     }
-    // WhatsApp ao vendedor
-    const v = await dbQuery('SELECT v.telefone, l.nome as loja_nome FROM vendedores v JOIN pedidos p ON p.vendedor_id=v.id LEFT JOIN lojas l ON l.id=p.loja_id WHERE p.id=$1', [req.params.id]);
-    if (v[0]?.telefone) {
-      enviarWhatsapp(v[0].telefone, msgWhatsApp({ ...pedAtu[0], ...ped[0], loja_nome: v[0].loja_nome }, 'validado'));
+    // Notifica vendedor in-app
+    if (ped[0].vendedor_id) {
+      const lojaRow = await dbQuery('SELECT l.nome FROM pedidos p LEFT JOIN lojas l ON l.id=p.loja_id WHERE p.id=$1', [req.params.id]);
+      criarNotificacao({
+        destinatario_tipo: 'vendedor', destinatario_id: ped[0].vendedor_id,
+        tipo: 'pedido_validado',
+        titulo: `Pedido ${ped[0].numero_pedido} aprovado pelo admin ✅`,
+        corpo: `${lojaRow[0]?.nome || ''} — pode faturar (prazo 48h).`,
+        url: '/vendedor.html'
+      });
     }
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ erro: e.message }); }
@@ -693,7 +764,8 @@ router.get('/:id/analise', compradorOuAdmin, async (req, res) => {
         `SELECT COALESCE(SUM(qtd_vendida),0) AS total_90d,
                 MAX(data_venda) AS ultima_venda
          FROM vendas_historico
-         WHERE codigobarra=$1 AND loja_id=$2 AND data_venda >= CURRENT_DATE - INTERVAL '90 days'`,
+         WHERE codigobarra=$1 AND loja_id=$2 AND data_venda >= CURRENT_DATE - INTERVAL '90 days'
+           AND COALESCE(tipo_saida, 'venda') = 'venda'`,
         [ean, loja_id]
       );
 
@@ -709,6 +781,7 @@ router.get('/:id/analise', compradorOuAdmin, async (req, res) => {
            LIMIT 1
          ) f ON true
          WHERE ch.codigobarra=$1 AND ch.loja_id=$2
+           AND COALESCE(ch.tipo_entrada, 'compra') = 'compra'
          ORDER BY ch.data_entrada DESC LIMIT 5`,
         [ean, loja_id]
       );
@@ -828,7 +901,7 @@ function gerarPDF(pedido, itens) {
     doc.fillColor(COR.texto).font('Helvetica-Bold').fontSize(11);
     doc.text(numFmt, X, y + 12, { width: 195 });
     doc.text(fmtData(pedido.validado_em || pedido.enviado_em), X + 200, y + 12);
-    doc.text(`${pedido.condicao_pagamento || '—'} dias`, X + 380, y + 12);
+    doc.text(pedido.condicao_pagamento === 0 ? 'À vista' : (pedido.condicao_pagamento ? `${pedido.condicao_pagamento} dias` : '—'), X + 380, y + 12);
 
     y += 38;
     doc.moveTo(X, y).lineTo(R, y).strokeColor(COR.borda).stroke();
@@ -1047,7 +1120,10 @@ function gerarPDF(pedido, itens) {
   });
 }
 
-function templatePedidoEmail({ pedido }) {
+function templatePedidoEmail({ pedido, disclaimer }) {
+  const aviso = disclaimer
+    ? `<p style="background:#fef3c7;border-left:4px solid #f59e0b;color:#78350f;padding:10px 12px;font-size:13px;margin:0 0 16px;border-radius:4px"><strong>⚠ ${disclaimer}</strong></p>`
+    : '';
   return `
 <!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"></head>
 <body style="margin:0;padding:0;background:#f4f4f4;font-family:Arial,sans-serif">
@@ -1059,12 +1135,13 @@ function templatePedidoEmail({ pedido }) {
   <p style="color:rgba(255,255,255,.85);margin:4px 0 0;font-size:13px">Pedido de Compra Aprovado</p>
 </td></tr>
 <tr><td style="padding:28px 32px">
+  ${aviso}
   <p style="color:#333;font-size:14px">Olá, <strong>${pedido.vendedor_nome}</strong>!</p>
   <p style="color:#555;font-size:13px">Seu pedido <strong>${pedido.numero_pedido}</strong> foi validado pela equipe de compras. O PDF com o pedido está em anexo.</p>
   <table width="100%" style="background:#f8f8f8;border-radius:8px;padding:16px;margin:16px 0;font-size:13px">
     <tr><td><strong>Fornecedor:</strong> ${pedido.razao_social || pedido.fantasia}</td></tr>
     <tr><td><strong>Loja:</strong> ${pedido.loja_nome}</td></tr>
-    <tr><td><strong>Condição:</strong> ${pedido.condicao_pagamento} dias — cota única</td></tr>
+    <tr><td><strong>Condição:</strong> ${pedido.condicao_pagamento === 0 ? 'À vista' : `${pedido.condicao_pagamento} dias — cota única`}</td></tr>
     <tr><td><strong>Valor Total:</strong> R$ ${parseFloat(pedido.valor_total||0).toFixed(2).replace('.',',')}</td></tr>
   </table>
   <p style="color:#c00;font-size:12px;font-weight:bold">⚠ Boleto sempre em cota única — é proibido parcelar.</p>
@@ -1073,4 +1150,69 @@ function templatePedidoEmail({ pedido }) {
 </body></html>`;
 }
 
+// POST /api/pedidos/reenviar-emails  body: { ids?: int[], desde?: ISOdate, ate?: ISOdate, disclaimer?: string }
+// Reenvia email com PDF pra pedidos validados (default: validados hoje).
+router.post('/reenviar-emails', compradorOuAdmin, async (req, res) => {
+  try {
+    if (req.usuario.perfil !== 'admin') return res.status(403).json({ erro: 'Apenas admin' });
+    const { ids, desde, ate } = req.body || {};
+    const disclaimer = req.body?.disclaimer || 'Caso este pedido já tenha sido faturado, favor desconsiderar este email.';
+
+    let where = `p.status='validado' AND v.email IS NOT NULL AND v.email <> ''`;
+    const params = [];
+    if (Array.isArray(ids) && ids.length) {
+      params.push(ids);
+      where += ` AND p.id = ANY($${params.length}::int[])`;
+    } else {
+      const di = desde || new Date().toISOString().slice(0,10);
+      params.push(di);
+      where += ` AND p.validado_em >= $${params.length}::date`;
+      if (ate) { params.push(ate); where += ` AND p.validado_em < $${params.length}::date + INTERVAL '1 day'`; }
+    }
+
+    const rows = await dbQuery(
+      `SELECT p.*,
+              COALESCE(f.razao_social, f2.razao_social) AS razao_social,
+              COALESCE(f.fantasia, f2.fantasia) AS fantasia,
+              COALESCE(f.cnpj, p.fornecedor_cnpj_snapshot, f2.cnpj) AS fornecedor_cnpj,
+              v.nome as vendedor_nome, v.email as vendedor_email, v.telefone as vendedor_tel,
+              l.nome as loja_nome, l.cnpj as loja_cnpj
+         FROM pedidos p
+         LEFT JOIN fornecedores f ON f.id=p.fornecedor_id
+         LEFT JOIN vendedores v ON v.id=p.vendedor_id
+         LEFT JOIN lojas l ON l.id=p.loja_id
+         LEFT JOIN LATERAL (
+           SELECT razao_social, fantasia, cnpj FROM fornecedores
+            WHERE p.fornecedor_id IS NULL AND v.fornecedor_cnpj IS NOT NULL
+              AND REGEXP_REPLACE(cnpj,'\\D','','g') = REGEXP_REPLACE(v.fornecedor_cnpj,'\\D','','g')
+            LIMIT 1
+         ) f2 ON TRUE
+        WHERE ${where}
+        ORDER BY p.validado_em ASC`,
+      params
+    );
+
+    const enviados = [];
+    const falhas = [];
+    for (const ped of rows) {
+      try {
+        const itens = await dbQuery('SELECT * FROM itens_pedido WHERE pedido_id=$1 ORDER BY id', [ped.id]);
+        const pdf = await gerarPDF(ped, itens);
+        await enviarEmail(
+          ped.vendedor_email,
+          `Pedido ${ped.numero_pedido} validado — JR Lira (reenvio)`,
+          templatePedidoEmail({ pedido: ped, disclaimer }),
+          [{ filename: `pedido-${ped.numero_pedido}.pdf`, content: pdf }]
+        );
+        enviados.push({ id: ped.id, numero_pedido: ped.numero_pedido, email: ped.vendedor_email });
+      } catch (e) {
+        falhas.push({ id: ped.id, numero_pedido: ped.numero_pedido, erro: e.message });
+      }
+    }
+    res.json({ ok: true, total: rows.length, enviados: enviados.length, falhas: falhas.length, detalhe: { enviados, falhas } });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
 module.exports = router;
+module.exports.gerarPDF = gerarPDF;
+module.exports.templatePedidoEmail = templatePedidoEmail;

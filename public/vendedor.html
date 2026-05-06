@@ -117,6 +117,7 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:9px 1
       <label>Condição de pagamento *</label>
       <select id="condicaoPgto" style="margin-bottom:4px">
         <option value="">Selecione...</option>
+        <option value="0">À vista</option>
         <option value="7">7 dias</option>
         <option value="14">14 dias</option>
         <option value="21">21 dias</option>
@@ -479,7 +480,7 @@ async function carregarMeusPedidos() {
             <span class="pedido-num">${p.numero_pedido || '#' + p.id}</span>
             <span class="pedido-status s-${p.status}">${STATUS[p.status] || p.status}</span>
           </div>
-          <div style="font-size:12px;color:#94a3b8">${p.loja_nome || '—'} &nbsp;|&nbsp; ${p.condicao_pagamento || '?'} dias &nbsp;|&nbsp; R$ ${parseFloat(p.valor_total||0).toFixed(2).replace('.',',')}</div>
+          <div style="font-size:12px;color:#94a3b8">${p.loja_nome || '—'} &nbsp;|&nbsp; ${p.condicao_pagamento === 0 ? 'À vista' : (p.condicao_pagamento ? p.condicao_pagamento + ' dias' : '?')} &nbsp;|&nbsp; R$ ${parseFloat(p.valor_total||0).toFixed(2).replace('.',',')}</div>
           <div style="font-size:11px;color:#475569;margin-top:2px">${p.enviado_em ? 'Enviado em ' + new Date(p.enviado_em).toLocaleDateString('pt-BR') : 'Rascunho — não enviado'}</div>
           ${motivoLinha}${nfLinha}${prazoLinha}
         </div>
@@ -556,7 +557,7 @@ async function continuarRascunho(id) {
     renderItens();
     document.getElementById('lojaId').value = ped.loja_id || '';
     document.getElementById('precoValidoAte').value = ped.preco_valido_ate ? ped.preco_valido_ate.substring(0,10) : '';
-    document.getElementById('condicaoPgto').value = ped.condicao_pagamento || '';
+    document.getElementById('condicaoPgto').value = ped.condicao_pagamento ?? '';
     document.getElementById('observacoes').value = ped.observacoes || '';
     abrirTab('novo');
     showMsg('Rascunho carregado. Continue de onde parou.', 'ok');
@@ -631,5 +632,6 @@ if (TOKEN_VEND) {
   iniciarApp(nome, forn);
 }
 </script>
+<script src="/js/notificacoes.js"></script>
 </body>
 </html>
