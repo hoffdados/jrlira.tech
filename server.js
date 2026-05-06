@@ -1787,8 +1787,7 @@ initDB().then(() => {
   setTimeout(alertaSemanal, 120 * 1000); // 2 min após startup
   setInterval(alertaSemanal, 7 * 24 * 60 * 60 * 1000); // semanal
 
-  // Lembretes de faturamento (seg-sex 08, 12 e 16h)
-  const { enviarWhatsapp } = require('./src/whatsapp');
+  // Lembretes de faturamento (seg-sex 08, 12 e 16h) — via email
   const HORARIOS_LEMBRETE = [8, 12, 16];
   let ultimaHoraExecutada = null;
 
@@ -1799,30 +1798,36 @@ initDB().then(() => {
     if (dow === 0 || dow === 6) return; // sab/dom
     if (!HORARIOS_LEMBRETE.includes(hora)) return;
     const chave = `${agora.toDateString()}-${hora}`;
-    if (ultimaHoraExecutada === chave) return; // evita duplicação na mesma hora
+    if (ultimaHoraExecutada === chave) return;
     ultimaHoraExecutada = chave;
 
     try {
+      const { enviarEmail } = require('./src/mailer');
       const { rows } = await pool.query(`
-        SELECT v.nome AS vendedor_nome, v.telefone,
+        SELECT v.id AS vendedor_id, v.nome AS vendedor_nome, v.email,
                array_agg(p.numero_pedido ORDER BY p.validado_em) AS pedidos,
                array_agg(EXTRACT(EPOCH FROM (NOW() - p.validado_em))/3600 ORDER BY p.validado_em) AS horas_decorridas
         FROM pedidos p
         JOIN vendedores v ON v.id = p.vendedor_id
         WHERE p.status = 'validado'
           AND p.faturado_em IS NULL
-          AND v.telefone IS NOT NULL AND v.telefone <> ''
-        GROUP BY v.id, v.nome, v.telefone
+          AND v.email IS NOT NULL AND v.email <> ''
+        GROUP BY v.id, v.nome, v.email
       `);
       for (const r of rows) {
         const pedidos = r.pedidos.slice(0, 10);
-        const linhas = pedidos.map((p, i) => `• ${p}  (há ${Math.round(r.horas_decorridas[i])}h)`);
-        const extras = r.pedidos.length > 10 ? `\n... e mais ${r.pedidos.length - 10} pedido(s)` : '';
-        const msg = `🔔 *Lembrete de faturamento*\n\nOlá, ${r.vendedor_nome}! Você tem pedido(s) validado(s) aguardando faturamento:\n\n${linhas.join('\n')}${extras}\n\n⏰ Prazo: 48h após validação.\nApós esse tempo o pedido vira *ATRASADO* e fica sujeito a nova validação.\n\n⚠ Não fature sem o pedido validado — risco de recusa da NF na SEFA, EVITE transtornos e prejuízos.`;
-        enviarWhatsapp(r.telefone, msg);
-        await pool.query(`UPDATE pedidos SET ultimo_lembrete_em=NOW() WHERE vendedor_id IN (SELECT id FROM vendedores WHERE telefone=$1) AND status='validado' AND faturado_em IS NULL`, [r.telefone]);
+        const linhas = pedidos.map((p, i) => `<li><b>${p}</b> — há ${Math.round(r.horas_decorridas[i])}h</li>`);
+        const extras = r.pedidos.length > 10 ? `<p>... e mais ${r.pedidos.length - 10} pedido(s)</p>` : '';
+        const html = `<p>Olá, <b>${r.vendedor_nome}</b>!</p>
+<p>Você tem pedido(s) validado(s) aguardando faturamento:</p>
+<ul>${linhas.join('')}</ul>${extras}
+<p>⏰ Prazo: <b>48h após validação</b>. Após esse tempo o pedido vira <b>ATRASADO</b> e fica sujeito a nova validação.</p>
+<p>⚠ <b>Não fature sem o pedido validado</b> — risco de recusa da NF na SEFA. Evite transtornos e prejuízos.</p>`;
+        enviarEmail(r.email, `[JR Lira] Lembrete de faturamento — ${r.pedidos.length} pedido(s) pendente(s)`, html)
+          .catch(e => console.error('[cron-faturamento] email falhou', r.email, e.message));
+        await pool.query(`UPDATE pedidos SET ultimo_lembrete_em=NOW() WHERE vendedor_id=$1 AND status='validado' AND faturado_em IS NULL`, [r.vendedor_id]);
       }
-      if (rows.length) console.log(`[cron-faturamento] lembretes ${hora}h: ${rows.length} vendedor(es)`);
+      if (rows.length) console.log(`[cron-faturamento] lembretes ${hora}h por email: ${rows.length} vendedor(es)`);
     } catch (err) { console.error('[cron-faturamento] erro:', err.message); }
   }
 
@@ -1889,6 +1894,12 @@ initDB().then(() => {
   // Cron horário: notifica admin via WhatsApp dos alertas pendentes (agregado).
   // Reenvia a cada hora até resolver. enviarWhatsapp já foi importado acima.
   const ADMIN_WHATSAPP = process.env.ADMIN_WHATSAPP || '93991001102';
+  // Admin pra receber emails de alerta. Fallback: primeiro admin com email no rh_usuarios.
+  async function emailsAdmin() {
+    if (process.env.ADMIN_EMAIL) return [process.env.ADMIN_EMAIL];
+    const r = await dbQuery(`SELECT email FROM rh_usuarios WHERE perfil='admin' AND ativo=TRUE AND email IS NOT NULL AND email<>'' ORDER BY id`);
+    return r.map(x => x.email);
+  }
   // Monitor SLA: verifica se sync de cada loja×tabela está atrasado em horário comercial.
   // Usa lojas.ativo=TRUE como fonte de verdade — alerta também quando a loja NÃO TEM linha
   // (caso clássico do KTR sobrescrevendo loja_id, que sumia do agrupamento).
@@ -2025,10 +2036,19 @@ initDB().then(() => {
          LIMIT 5
       `);
       if (!top.length) return;
-      const lista = top.map((u, i) => `${i+1}º ${u.validado_por} — *${u.qtd}*`).join('\n');
-      const msg = `🏆 *Top semana — Embalagens Fornecedor*\n_(últimos 7 dias)_\n\n${lista}\n\n👑 Parabéns ao primeiro! Continuem firmes — cada validação evita erro de custo.\n\n📦 https://jrliratech-production.up.railway.app/embalagens-fornecedor`;
-      await enviarWhatsapp(ADMIN_WHATSAPP, msg);
-      console.log('[gamificacao] top semana enviado');
+      const { enviarEmail } = require('./src/mailer');
+      const lista = top.map((u, i) => `<li>${i+1}º <b>${u.validado_por}</b> — ${u.qtd}</li>`).join('');
+      const html = `<h2>🏆 Top semana — Embalagens Fornecedor</h2>
+<p><i>(últimos 7 dias)</i></p>
+<ol>${lista}</ol>
+<p>👑 Parabéns ao primeiro! Continuem firmes — cada validação evita erro de custo.</p>
+<p><a href="https://jrliratech-production.up.railway.app/embalagens-fornecedor">Abrir painel</a></p>`;
+      const destinos = await emailsAdmin();
+      for (const e of destinos) {
+        enviarEmail(e, '[JR Lira] 🏆 Top semana — Embalagens Fornecedor', html)
+          .catch(err => console.error('[gamificacao] email falhou', e, err.message));
+      }
+      console.log(`[gamificacao] top semana enviado (email): ${destinos.length} admin(s)`);
     } catch (e) { console.error('[gamificacao]', e.message); }
   }
   setInterval(notificarTopSemanaEmbalagens, 60 * 60 * 1000);
