@@ -556,6 +556,10 @@
         <stream_name>qtd_vendida</stream_name>
       </field>
       <field>
+        <column_name>tipo_saida</column_name>
+        <stream_name>tipo_saida</stream_name>
+      </field>
+      <field>
         <column_name>loja_id</column_name>
         <stream_name>loja_id</stream_name>
       </field>
@@ -588,11 +592,24 @@
     <connection>EcoCentauro_Local</connection>
     <sql>  SELECT
     PG.CODIGOBARRA                                             AS codigobarra,
-    PED.DATAEFE                                               AS data_venda,
+    PED.DATAEFE                                                AS data_venda,
+    CAST(CASE
+      WHEN NAT.GERAFINANCEIRO = 'S'                            THEN 'venda'
+      WHEN UPPER(NAT.DESCRICAO) LIKE '%AVARIA%'
+        OR UPPER(NAT.DESCRICAO) LIKE '%VENCIDO%'
+        OR UPPER(NAT.DESCRICAO) LIKE '%DETERIORA%'             THEN 'avaria'
+      WHEN UPPER(NAT.DESCRICAO) LIKE '%TRANSFER%'              THEN 'transferencia_saida'
+      WHEN UPPER(NAT.DESCRICAO) LIKE '%PRODU%'                 THEN 'producao'
+      WHEN UPPER(NAT.DESCRICAO) LIKE '%BONIFICA%'
+        OR UPPER(NAT.DESCRICAO) LIKE '%DOACAO%'
+        OR UPPER(NAT.DESCRICAO) LIKE '%BRINDE%'                THEN 'bonificacao'
+      WHEN UPPER(NAT.DESCRICAO) LIKE '%DESPESA%'               THEN 'consumo_interno'
+      ELSE 'outras_internas'
+    END AS VARCHAR(30))                                        AS tipo_saida,
     SUM(
       (PROD.QTDE - COALESCE(PROD.QTDEDEVOLVIDA, 0))
       * COALESCE(PG_VEND.QTDEEMBALAGEM, 1)
-    )                                                         AS qtd_vendida
+    )                                                          AS qtd_vendida
   FROM TVENPRODUTO PROD
   JOIN TVENPEDIDO       PED      ON PROD.PEDIDO           = PED.CODIGO
   JOIN TVENREGISTRO     REG      ON PROD.PEDIDO           = REG.IDPEDIDO
@@ -600,11 +617,24 @@
   JOIN TESTPRODUTOGERAL PG       ON PG.CODIGO             = PROD.PRODUTOPRINCIPAL
   JOIN TESTPRODUTOGERAL PG_VEND  ON PG_VEND.CODIGO        = PROD.PRODUTO
   WHERE PED.STATUS = 'EFE'
-    AND NAT.GERAFINANCEIRO   = 'S'
     AND NAT.MOVIMENTAESTOQUE = 'S'
+    AND NAT.DESCRICAO NOT LIKE '%*%'
     AND PROD.EMPRESA = 01
-    AND PED.DATAEFE >= CAST('2025-07-01' AS DATE)
-  GROUP BY PG.CODIGOBARRA, PED.DATAEFE</sql>
+    AND PED.DATAEFE &gt;= CAST('2025-01-01' AS DATE)
+  GROUP BY PG.CODIGOBARRA, PED.DATAEFE,
+    CAST(CASE
+      WHEN NAT.GERAFINANCEIRO = 'S'                            THEN 'venda'
+      WHEN UPPER(NAT.DESCRICAO) LIKE '%AVARIA%'
+        OR UPPER(NAT.DESCRICAO) LIKE '%VENCIDO%'
+        OR UPPER(NAT.DESCRICAO) LIKE '%DETERIORA%'             THEN 'avaria'
+      WHEN UPPER(NAT.DESCRICAO) LIKE '%TRANSFER%'              THEN 'transferencia_saida'
+      WHEN UPPER(NAT.DESCRICAO) LIKE '%PRODU%'                 THEN 'producao'
+      WHEN UPPER(NAT.DESCRICAO) LIKE '%BONIFICA%'
+        OR UPPER(NAT.DESCRICAO) LIKE '%DOACAO%'
+        OR UPPER(NAT.DESCRICAO) LIKE '%BRINDE%'                THEN 'bonificacao'
+      WHEN UPPER(NAT.DESCRICAO) LIKE '%DESPESA%'               THEN 'consumo_interno'
+      ELSE 'outras_internas'
+    END AS VARCHAR(30))</sql>
     <limit>0</limit>
     <lookup/>
     <execute_each_row>N</execute_each_row>

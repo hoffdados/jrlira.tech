@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const { pool } = require('./src/db');
+const { pool, query: dbQuery } = require('./src/db');
 
 const app = express();
 
@@ -36,9 +36,11 @@ app.use('/api/cr', require('./src/routes/contas-receber'));
 app.use('/api/acordos', require('./src/routes/acordos'));
 app.use('/api/ultrasyst', require('./src/routes/ultrasyst'));
 app.use('/api/produtos-embalagem', require('./src/routes/produtos_embalagem'));
+app.use('/api/embalagens-fornecedor', require('./src/routes/embalagens_fornecedor'));
 app.use('/api/auditagem-divergencias', require('./src/routes/auditagem_divergencias'));
 app.use('/api/validades-em-risco', require('./src/routes/validades_em_risco'));
 app.use('/api/devolucoes', require('./src/routes/devolucoes'));
+app.use('/api/perdas', require('./src/routes/perdas'));
 app.use('/api/sync-status', require('./src/routes/sync_status'));
 
 // ── PÁGINAS ───────────────────────────────────────────────────────
@@ -60,9 +62,13 @@ app.get('/auditoria-pedidos', (req, res) => res.sendFile(path.join(__dirname, 'p
 app.get('/vendedor-cadastro', (req, res) => res.sendFile(path.join(__dirname, 'public/vendedor-cadastro.html')));
 app.get('/vendedor', (req, res) => res.sendFile(path.join(__dirname, 'public/vendedor.html')));
 app.get('/notas-comprador', (req, res) => res.sendFile(path.join(__dirname, 'public/notas-comprador.html')));
+app.get('/notas-cd', (req, res) => res.sendFile(path.join(__dirname, 'public/notas-cd.html')));
+app.get('/notas-distribuidora', (req, res) => res.sendFile(path.join(__dirname, 'public/notas-distribuidora.html')));
 app.get('/sugestao-compras', (req, res) => res.sendFile(path.join(__dirname, 'public/sugestao-compras.html')));
 app.get('/contas-receber', (req, res) => res.sendFile(path.join(__dirname, 'public/contas-receber.html')));
 app.get('/produtos-embalagem', (req, res) => res.sendFile(path.join(__dirname, 'public/produtos-embalagem.html')));
+app.get('/embalagens-fornecedor', (req, res) => res.sendFile(path.join(__dirname, 'public/embalagens-fornecedor.html')));
+app.get('/acordo-extrato', (req, res) => res.sendFile(path.join(__dirname, 'public/acordo-extrato.html')));
 app.get('/auditagem-divergencias', (req, res) => res.sendFile(path.join(__dirname, 'public/auditagem-divergencias.html')));
 app.get('/validades-em-risco', (req, res) => res.sendFile(path.join(__dirname, 'public/validades-em-risco.html')));
 app.get('/nota-historico', (req, res) => res.sendFile(path.join(__dirname, 'public/nota-historico.html')));
@@ -626,8 +632,394 @@ async function initDB() {
          ADD COLUMN IF NOT EXISTS qtd_tributavel NUMERIC(12,4),
          ADD COLUMN IF NOT EXISTS un_tributavel VARCHAR(10),
          ADD COLUMN IF NOT EXISTS qtd_por_caixa_nfe INTEGER,
-         ADD COLUMN IF NOT EXISTS qtd_por_caixa_confianca VARCHAR(10),
+         ADD COLUMN IF NOT EXISTS qtd_por_caixa_confianca VARCHAR(10)`);
+    await runMigration(client, '20260504_itens_nota_preco_unitario_caixa',
+      `ALTER TABLE itens_nota
          ADD COLUMN IF NOT EXISTS preco_unitario_caixa NUMERIC(12,4)`);
+    await runMigration(client, '20260504_itens_nota_qtd_em_unidades',
+      `ALTER TABLE itens_nota
+         ADD COLUMN IF NOT EXISTS qtd_em_unidades NUMERIC(14,4)`);
+    await runMigration(client, '20260505_itens_nota_cprod_fornecedor',
+      `ALTER TABLE itens_nota
+         ADD COLUMN IF NOT EXISTS cprod_fornecedor VARCHAR(60)`);
+    await runMigration(client, '20260505_eans_fornecedor',
+      `CREATE TABLE IF NOT EXISTS eans_fornecedor (
+         id SERIAL PRIMARY KEY,
+         fornecedor_cnpj VARCHAR(20) NOT NULL,
+         fornecedor_nome VARCHAR(200),
+         cprod_fornecedor VARCHAR(60),
+         descricao_normalizada TEXT,
+         ean_validado VARCHAR(20) NOT NULL,
+         associado_em TIMESTAMP DEFAULT NOW(),
+         associado_por VARCHAR(150),
+         atualizado_em TIMESTAMP DEFAULT NOW()
+       )`);
+    await runMigration(client, '20260505_eans_fornecedor_uniq_cprod',
+      `CREATE UNIQUE INDEX IF NOT EXISTS eans_fornecedor_cprod_uniq
+         ON eans_fornecedor (fornecedor_cnpj, cprod_fornecedor)
+         WHERE cprod_fornecedor IS NOT NULL`);
+    await runMigration(client, '20260505_eans_fornecedor_uniq_desc',
+      `CREATE UNIQUE INDEX IF NOT EXISTS eans_fornecedor_desc_uniq
+         ON eans_fornecedor (fornecedor_cnpj, descricao_normalizada)
+         WHERE cprod_fornecedor IS NULL AND descricao_normalizada IS NOT NULL`);
+
+    // Índices funcionais pra queries que usam NULLIF(LTRIM(codigobarra,'0'),'')
+    // Beneficia: jrlira-tech (acordos.js, notas.js, sync_ultrasyst.js) e acougue-senhas (validade-dashboard).
+    // Sem CONCURRENTLY porque migrations podem rodar em transação implícita do driver.
+    await runMigration(client, '20260505_idx_vh_barcode_norm',
+      `CREATE INDEX IF NOT EXISTS idx_vh_barcode_norm_loja_data
+         ON vendas_historico ((NULLIF(LTRIM(codigobarra,'0'),'')), loja_id, data_venda DESC)`);
+    await runMigration(client, '20260505_idx_ch_barcode_norm',
+      `CREATE INDEX IF NOT EXISTS idx_ch_barcode_norm_loja_data
+         ON compras_historico ((NULLIF(LTRIM(codigobarra,'0'),'')), loja_id, data_entrada DESC)`);
+
+    // Devolução com valor real do XML (pode divergir do esperado calculado pelo sistema)
+    await runMigration(client, '20260505_devolucoes_valor_xml',
+      `ALTER TABLE devolucoes
+         ADD COLUMN IF NOT EXISTS valor_xml NUMERIC(14,2),
+         ADD COLUMN IF NOT EXISTS valor_xml_vprod NUMERIC(14,2),
+         ADD COLUMN IF NOT EXISTS valor_xml_vst NUMERIC(14,2)`);
+    await runMigration(client, '20260505_devolucoes_diferenca_valor',
+      `ALTER TABLE devolucoes
+         ADD COLUMN IF NOT EXISTS diferenca_valor NUMERIC(14,2)
+           GENERATED ALWAYS AS (COALESCE(valor_xml,0) - COALESCE(valor_total,0)) STORED`);
+
+    // Saídas com classificação (venda/avaria/transferencia/producao/bonificacao/consumo_interno).
+    // Pentaho TVENPEDIDO traz tipo_saida; backend filtra 'venda' por padrão pra média_dia.
+    await runMigration(client, '20260506_vendas_historico_tipo_saida',
+      `ALTER TABLE vendas_historico
+         ADD COLUMN IF NOT EXISTS tipo_saida VARCHAR(30)`);
+    // Backfill desabilitado (UPDATE em ~5M linhas estoura statement_timeout do Supabase).
+    // Filtros usam COALESCE(tipo_saida,'venda')='venda' — NULL é tratado como venda automaticamente.
+    // Pra reativar, rodar manual em chunks de 100k em janela de baixo uso.
+    await runMigration(client, '20260506_backfill_tipo_saida_venda',
+      `SELECT 1`);
+    // Índice em tabela grande gera carga pesada na criação — adiar.
+    // Os filtros já usam idx_vh_barcode_norm_loja_data + COALESCE; performance aceitável sem este índice.
+    await runMigration(client, '20260506_idx_vh_tipo_saida',
+      `SELECT 1`);
+    // Trigger UPSERT atualizado pra incluir tipo_saida na chave de dedup
+    // (avaria + venda do mesmo dia/produto não devem colidir)
+    await runMigration(client, '20260506_trim_skip_dup_vendas_tipo',
+      `CREATE OR REPLACE FUNCTION trim_skip_dup_vendas() RETURNS TRIGGER AS $trg$
+       BEGIN
+         NEW.codigobarra := NULLIF(LTRIM(COALESCE(NEW.codigobarra,''),'0'),'');
+         NEW.tipo_saida  := COALESCE(NEW.tipo_saida, 'venda');
+         IF EXISTS (
+           SELECT 1 FROM vendas_historico
+            WHERE loja_id = NEW.loja_id
+              AND codigobarra = NEW.codigobarra
+              AND data_venda = NEW.data_venda
+              AND COALESCE(tipo_saida,'venda') = NEW.tipo_saida
+         ) THEN
+           UPDATE vendas_historico
+              SET qtd_vendida = NEW.qtd_vendida, sincronizado_em = NOW()
+            WHERE loja_id = NEW.loja_id
+              AND codigobarra = NEW.codigobarra
+              AND data_venda = NEW.data_venda
+              AND COALESCE(tipo_saida,'venda') = NEW.tipo_saida;
+           RETURN NULL;
+         END IF;
+         RETURN NEW;
+       END;
+       $trg$ LANGUAGE plpgsql;`);
+
+    // Devolução de compra emitida pela loja — sync via Pentaho (TESTDEVOLUCAO + TESTDEVOLUCAOPRODUTO)
+    await runMigration(client, '20260506_devolucoes_compra_historico',
+      `CREATE TABLE IF NOT EXISTS devolucoes_compra_historico (
+         id SERIAL PRIMARY KEY,
+         loja_id INTEGER NOT NULL,
+         devolucao_codigo INTEGER NOT NULL,
+         fornecedor_codigo VARCHAR(20),
+         fornecedor_cnpj VARCHAR(20),
+         fornecedor_nome VARCHAR(200),
+         natureza_codigo VARCHAR(10),
+         data_devolucao TIMESTAMP,
+         data_nfe DATE,
+         chave_nfe VARCHAR(44),
+         numero_nfe VARCHAR(20),
+         serie_nfe VARCHAR(10),
+         valor_total NUMERIC(14,2),
+         chave_nfe_compra_original VARCHAR(44),
+         sincronizado_em TIMESTAMPTZ DEFAULT NOW(),
+         UNIQUE (loja_id, devolucao_codigo)
+       )`);
+    await runMigration(client, '20260506_devolucoes_compra_itens_historico',
+      `CREATE TABLE IF NOT EXISTS devolucoes_compra_itens_historico (
+         id SERIAL PRIMARY KEY,
+         loja_id INTEGER NOT NULL,
+         devolucao_codigo INTEGER NOT NULL,
+         produto_codigo VARCHAR(20),
+         codigobarra VARCHAR(20),
+         qtd NUMERIC(14,3),
+         preco_unitario NUMERIC(14,4),
+         valor_total NUMERIC(14,2),
+         sincronizado_em TIMESTAMPTZ DEFAULT NOW()
+       )`);
+    await runMigration(client, '20260506_idx_dch_chave_nfe',
+      `CREATE INDEX IF NOT EXISTS idx_dch_chave_nfe ON devolucoes_compra_historico (chave_nfe)`);
+    await runMigration(client, '20260506_idx_dch_fornecedor',
+      `CREATE INDEX IF NOT EXISTS idx_dch_fornecedor_data
+         ON devolucoes_compra_historico (fornecedor_cnpj, data_devolucao DESC)`);
+    await runMigration(client, '20260506_idx_dch_loja_data',
+      `CREATE INDEX IF NOT EXISTS idx_dch_loja_data
+         ON devolucoes_compra_historico (loja_id, data_devolucao DESC)`);
+    await runMigration(client, '20260506_idx_dchi_loja_codigo',
+      `CREATE INDEX IF NOT EXISTS idx_dchi_loja_codigo
+         ON devolucoes_compra_itens_historico (loja_id, devolucao_codigo)`);
+    await runMigration(client, '20260506_idx_dchi_codigobarra',
+      `CREATE INDEX IF NOT EXISTS idx_dchi_codigobarra
+         ON devolucoes_compra_itens_historico ((NULLIF(LTRIM(codigobarra,'0'),'')))`);
+
+    // UNIQUE em itens (suporta dedup quando Pentaho roda 2x)
+    await runMigration(client, '20260506_dchi_uniq',
+      `CREATE UNIQUE INDEX IF NOT EXISTS uniq_dchi_loja_dev_prod
+         ON devolucoes_compra_itens_historico (loja_id, devolucao_codigo, produto_codigo)`);
+
+    // Triggers UPSERT silenciosos pras 2 novas tabelas (mesmo padrão de vendas/compras_historico)
+    await runMigration(client, '20260506_trg_dch_upsert',
+      `CREATE OR REPLACE FUNCTION dch_upsert() RETURNS TRIGGER AS $trg$
+       BEGIN
+         IF EXISTS (
+           SELECT 1 FROM devolucoes_compra_historico
+            WHERE loja_id = NEW.loja_id AND devolucao_codigo = NEW.devolucao_codigo
+         ) THEN
+           UPDATE devolucoes_compra_historico
+              SET fornecedor_codigo = NEW.fornecedor_codigo,
+                  fornecedor_cnpj   = NEW.fornecedor_cnpj,
+                  fornecedor_nome   = NEW.fornecedor_nome,
+                  natureza_codigo   = NEW.natureza_codigo,
+                  data_devolucao    = NEW.data_devolucao,
+                  data_nfe          = NEW.data_nfe,
+                  chave_nfe         = NEW.chave_nfe,
+                  numero_nfe        = NEW.numero_nfe,
+                  serie_nfe         = NEW.serie_nfe,
+                  valor_total       = NEW.valor_total,
+                  chave_nfe_compra_original = NEW.chave_nfe_compra_original,
+                  sincronizado_em   = NOW()
+            WHERE loja_id = NEW.loja_id AND devolucao_codigo = NEW.devolucao_codigo;
+           RETURN NULL;
+         END IF;
+         RETURN NEW;
+       END;
+       $trg$ LANGUAGE plpgsql;
+       DROP TRIGGER IF EXISTS trg_dch_upsert ON devolucoes_compra_historico;
+       CREATE TRIGGER trg_dch_upsert BEFORE INSERT ON devolucoes_compra_historico
+         FOR EACH ROW EXECUTE FUNCTION dch_upsert();`);
+
+    await runMigration(client, '20260506_trg_dchi_upsert',
+      `CREATE OR REPLACE FUNCTION dchi_upsert() RETURNS TRIGGER AS $trg$
+       BEGIN
+         NEW.codigobarra := NULLIF(LTRIM(COALESCE(NEW.codigobarra,''),'0'),'');
+         IF EXISTS (
+           SELECT 1 FROM devolucoes_compra_itens_historico
+            WHERE loja_id = NEW.loja_id
+              AND devolucao_codigo = NEW.devolucao_codigo
+              AND produto_codigo = NEW.produto_codigo
+         ) THEN
+           UPDATE devolucoes_compra_itens_historico
+              SET codigobarra     = NEW.codigobarra,
+                  qtd             = NEW.qtd,
+                  preco_unitario  = NEW.preco_unitario,
+                  valor_total     = NEW.valor_total,
+                  sincronizado_em = NOW()
+            WHERE loja_id = NEW.loja_id
+              AND devolucao_codigo = NEW.devolucao_codigo
+              AND produto_codigo = NEW.produto_codigo;
+           RETURN NULL;
+         END IF;
+         RETURN NEW;
+       END;
+       $trg$ LANGUAGE plpgsql;
+       DROP TRIGGER IF EXISTS trg_dchi_upsert ON devolucoes_compra_itens_historico;
+       CREATE TRIGGER trg_dchi_upsert BEFORE INSERT ON devolucoes_compra_itens_historico
+         FOR EACH ROW EXECUTE FUNCTION dchi_upsert();`);
+
+    // Entradas com classificação (compra/transferencia_entrada/bonificacao_recebida/devolucao_venda).
+    // Backend filtra 'compra' por padrão pra não duplicar transferência interna como compra real.
+    await runMigration(client, '20260506_compras_historico_tipo_entrada',
+      `ALTER TABLE compras_historico
+         ADD COLUMN IF NOT EXISTS tipo_entrada VARCHAR(30)`);
+    await runMigration(client, '20260506_backfill_tipo_entrada_compra',
+      `UPDATE compras_historico SET tipo_entrada='compra' WHERE tipo_entrada IS NULL`);
+    await runMigration(client, '20260506_idx_ch_tipo_entrada',
+      `CREATE INDEX IF NOT EXISTS idx_ch_tipo_entrada_loja_data
+         ON compras_historico (tipo_entrada, loja_id, data_entrada DESC)`);
+    // Trigger UPSERT atualizado pra considerar tipo_entrada na chave de dedup
+    // (compra de fornecedor + transferência interna podem ter mesmo numeronfe entre lojas)
+    await runMigration(client, '20260506_trim_skip_dup_compras_tipo',
+      `CREATE OR REPLACE FUNCTION trim_skip_dup_compras() RETURNS TRIGGER AS $trg$
+       BEGIN
+         NEW.codigobarra := NULLIF(LTRIM(COALESCE(NEW.codigobarra,''),'0'),'');
+         NEW.tipo_entrada := COALESCE(NEW.tipo_entrada, 'compra');
+         IF NEW.codigobarra IS NOT NULL AND EXISTS (
+           SELECT 1 FROM compras_historico
+            WHERE loja_id = NEW.loja_id
+              AND codigobarra = NEW.codigobarra
+              AND numeronfe = NEW.numeronfe
+              AND COALESCE(tipo_entrada,'compra') = NEW.tipo_entrada
+         ) THEN
+           RETURN NULL;
+         END IF;
+         RETURN NEW;
+       END;
+       $trg$ LANGUAGE plpgsql;`);
+
+    // KTRs Firebird emitiam tipo_xxx com padding (CASE → CHAR(N) right-padded). Triggers comparavam AS IS,
+    // então 'compra' vs 'compra               ' não dedupavam → 130k duplicatas em L1/L2. Fix: TRIM no NEW.
+    await runMigration(client, '20260506_trim_skip_dup_vendas_v3_trim_tipo',
+      `CREATE OR REPLACE FUNCTION trim_skip_dup_vendas() RETURNS TRIGGER AS $trg$
+       BEGIN
+         NEW.codigobarra := NULLIF(LTRIM(COALESCE(NEW.codigobarra,''),'0'),'');
+         NEW.tipo_saida  := TRIM(COALESCE(NEW.tipo_saida, 'venda'));
+         IF EXISTS (
+           SELECT 1 FROM vendas_historico
+            WHERE loja_id = NEW.loja_id
+              AND codigobarra = NEW.codigobarra
+              AND data_venda = NEW.data_venda
+              AND COALESCE(tipo_saida,'venda') = NEW.tipo_saida
+         ) THEN
+           UPDATE vendas_historico
+              SET qtd_vendida = NEW.qtd_vendida, sincronizado_em = NOW()
+            WHERE loja_id = NEW.loja_id
+              AND codigobarra = NEW.codigobarra
+              AND data_venda = NEW.data_venda
+              AND COALESCE(tipo_saida,'venda') = NEW.tipo_saida;
+           RETURN NULL;
+         END IF;
+         RETURN NEW;
+       END;
+       $trg$ LANGUAGE plpgsql;`);
+
+    await runMigration(client, '20260506_trim_skip_dup_compras_v3_trim_tipo',
+      `CREATE OR REPLACE FUNCTION trim_skip_dup_compras() RETURNS TRIGGER AS $trg$
+       BEGIN
+         NEW.codigobarra := NULLIF(LTRIM(COALESCE(NEW.codigobarra,''),'0'),'');
+         NEW.tipo_entrada := TRIM(COALESCE(NEW.tipo_entrada, 'compra'));
+         IF NEW.codigobarra IS NOT NULL AND EXISTS (
+           SELECT 1 FROM compras_historico
+            WHERE loja_id = NEW.loja_id
+              AND codigobarra = NEW.codigobarra
+              AND numeronfe = NEW.numeronfe
+              AND COALESCE(tipo_entrada,'compra') = NEW.tipo_entrada
+         ) THEN
+           RETURN NULL;
+         END IF;
+         RETURN NEW;
+       END;
+       $trg$ LANGUAGE plpgsql;`);
+
+    // Índice único pra prevenir duplicação física em compras_historico.
+    // (vendas já tem uniq em loja_id+codigobarra+data_venda, mas compras só tinha pkey em id)
+    await runMigration(client, '20260506_compras_historico_dedup_unique',
+      `CREATE UNIQUE INDEX IF NOT EXISTS compras_historico_dedup_unique
+         ON compras_historico (loja_id, numeronfe, codigobarra, data_entrada, fornecedor_cnpj)`);
+
+    // View consolidada: avarias internas + devoluções (Pentaho histórico) + devoluções (jrlira-tech recentes)
+    // Deduplicação por chave_nfe quando ambas fontes têm o mesmo registro.
+    await runMigration(client, '20260506_vw_perdas_consolidadas',
+      `CREATE OR REPLACE VIEW vw_perdas_consolidadas AS
+         SELECT 'avaria'::text AS origem,
+                vh.loja_id,
+                vh.codigobarra,
+                NULL::varchar AS fornecedor_cnpj,
+                NULL::varchar AS fornecedor_nome,
+                vh.data_venda::date AS data,
+                vh.qtd_vendida AS qtd,
+                NULL::numeric AS valor_total,
+                NULL::varchar AS chave_nfe
+           FROM vendas_historico vh
+          WHERE vh.tipo_saida = 'avaria'
+         UNION ALL
+         SELECT 'devolucao_compra'::text AS origem,
+                d.loja_id,
+                NULL::varchar AS codigobarra,
+                d.fornecedor_cnpj,
+                d.fornecedor_nome,
+                d.data_devolucao::date AS data,
+                NULL::numeric AS qtd,
+                d.valor_total,
+                d.chave_nfe
+           FROM devolucoes_compra_historico d`);
+    await runMigration(client, '20260504_pedidos_criado_por_comprador',
+      `ALTER TABLE pedidos
+         ADD COLUMN IF NOT EXISTS criado_por_comprador VARCHAR(150)`);
+    await runMigration(client, '20260504_backfill_criado_por_sug',
+      `UPDATE pedidos SET criado_por_comprador = 'sugestao'
+         WHERE status='rascunho' AND numero_pedido LIKE 'SUG-%' AND criado_por_comprador IS NULL`);
+
+    // Embalagens vindas de NF-e fornecedor — separadas das embalagens CD (produtos_embalagem)
+    await runMigration(client, '20260504_embalagens_fornecedor',
+      `CREATE TABLE IF NOT EXISTS embalagens_fornecedor (
+         id SERIAL PRIMARY KEY,
+         ean VARCHAR(20) NOT NULL,
+         descricao VARCHAR(300),
+         fornecedor_cnpj VARCHAR(20),
+         fornecedor_nome VARCHAR(200),
+         qtd_por_caixa INTEGER,
+         qtd_sugerida_nfe INTEGER,
+         qtd_sugerida_nfe_em TIMESTAMPTZ,
+         qtd_sugerida_nfe_nota_id INTEGER,
+         qtd_sugerida_nfe_confianca VARCHAR(10),
+         status VARCHAR(20) NOT NULL DEFAULT 'pendente_validacao',
+         validado_em TIMESTAMPTZ,
+         validado_por VARCHAR(150),
+         observacao TEXT,
+         criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+         atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+         CHECK (status IN ('pendente_validacao','validado','ignorado'))
+       )`);
+    await runMigration(client, '20260504_embalagens_fornecedor_uniq',
+      `CREATE UNIQUE INDEX IF NOT EXISTS uniq_embalagens_fornecedor
+         ON embalagens_fornecedor(ean, COALESCE(fornecedor_cnpj,''))`);
+    await runMigration(client, '20260504_idx_embalagens_fornecedor_pendentes',
+      `CREATE INDEX IF NOT EXISTS idx_embalagens_fornecedor_pendentes
+         ON embalagens_fornecedor(criado_em DESC) WHERE status = 'pendente_validacao'`);
+    // Aceita registro sem EAN — chave alternativa por (descricao_normalizada, fornecedor_cnpj)
+    await runMigration(client, '20260504_emb_fornecedor_ean_nullable',
+      `ALTER TABLE embalagens_fornecedor ALTER COLUMN ean DROP NOT NULL;
+       ALTER TABLE embalagens_fornecedor ADD COLUMN IF NOT EXISTS descricao_normalizada VARCHAR(300);
+       DROP INDEX IF EXISTS uniq_embalagens_fornecedor;
+       CREATE UNIQUE INDEX IF NOT EXISTS uniq_emb_fornecedor_ean
+         ON embalagens_fornecedor(ean, COALESCE(fornecedor_cnpj,'')) WHERE ean IS NOT NULL;
+       CREATE UNIQUE INDEX IF NOT EXISTS uniq_emb_fornecedor_desc
+         ON embalagens_fornecedor(descricao_normalizada, COALESCE(fornecedor_cnpj,''))
+         WHERE ean IS NULL AND descricao_normalizada IS NOT NULL`);
+    // Log de alterações de embalagem (auditoria)
+    await runMigration(client, '20260504_emb_fornecedor_log',
+      `CREATE TABLE IF NOT EXISTS embalagens_fornecedor_log (
+         id SERIAL PRIMARY KEY,
+         embalagem_id INTEGER REFERENCES embalagens_fornecedor(id) ON DELETE SET NULL,
+         ean VARCHAR(20),
+         descricao TEXT,
+         fornecedor_cnpj VARCHAR(20),
+         fornecedor_nome VARCHAR(200),
+         qtd_anterior INTEGER,
+         qtd_novo INTEGER NOT NULL,
+         origem VARCHAR(30) NOT NULL,
+         nota_id INTEGER,
+         item_nota_id INTEGER,
+         alterado_por VARCHAR(150),
+         alterado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+       )`);
+    await runMigration(client, '20260504_idx_emb_fornecedor_log_nota',
+      `CREATE INDEX IF NOT EXISTS idx_emb_fornecedor_log_nota
+         ON embalagens_fornecedor_log(nota_id)`);
+
+    // Re-classifica status_preco com a nova taxonomia (maior/menor/auditagem) — backfill 1x
+    await runMigration(client, '20260504_status_preco_taxonomia',
+      `UPDATE itens_nota
+          SET status_preco = CASE
+            WHEN custo_fabrica IS NULL THEN 'sem_cadastro'
+            WHEN ABS(preco_unitario_nota - custo_fabrica) <= 0.01 THEN 'igual'
+            WHEN custo_fabrica > 0
+              AND ABS(preco_unitario_nota - custo_fabrica) / custo_fabrica > 0.15
+              THEN 'auditagem'
+            WHEN preco_unitario_nota > custo_fabrica THEN 'maior'
+            ELSE 'menor'
+          END
+        WHERE status_preco IN ('divergente','igual')
+          AND preco_unitario_nota IS NOT NULL`);
     await runMigration(client, '20260504_produtos_embalagem_sugestao_nfe',
       `ALTER TABLE produtos_embalagem
          ADD COLUMN IF NOT EXISTS qtd_sugerida_nfe INTEGER,
@@ -1450,23 +1842,36 @@ initDB().then(() => {
   // Cron horário: notifica admin via WhatsApp dos alertas pendentes (agregado).
   // Reenvia a cada hora até resolver. enviarWhatsapp já foi importado acima.
   const ADMIN_WHATSAPP = process.env.ADMIN_WHATSAPP || '93991001102';
-  // Monitor SLA: verifica se sync de cada loja×tabela está atrasado >1h em horário comercial
+  // Monitor SLA: verifica se sync de cada loja×tabela está atrasado em horário comercial.
+  // Usa lojas.ativo=TRUE como fonte de verdade — alerta também quando a loja NÃO TEM linha
+  // (caso clássico do KTR sobrescrevendo loja_id, que sumia do agrupamento).
   async function verificarSlaSync() {
     const hora = new Date().getHours();
     if (hora < 7 || hora >= 22) return []; // só alerta em horário comercial
     const TABELAS = [
       { nome: 'vendas_historico', col: 'sincronizado_em', max_atraso: 60 * 60 * 1000 },
-      { nome: 'compras_historico', col: 'sincronizado_em', max_atraso: 4 * 60 * 60 * 1000 }, // 4h (rola menos)
+      { nome: 'compras_historico', col: 'sincronizado_em', max_atraso: 4 * 60 * 60 * 1000 },
       { nome: 'produtos_externo', col: 'sincronizado_em', max_atraso: 4 * 60 * 60 * 1000 },
     ];
+    const lojas = await dbQuery(`SELECT id FROM lojas WHERE ativo = TRUE ORDER BY id`);
+    const lojasIds = lojas.map(l => l.id);
     const atrasos = [];
     for (const t of TABELAS) {
       const r = await dbQuery(
-        `SELECT loja_id, MAX(${t.col}) AS ult, EXTRACT(EPOCH FROM (NOW()-MAX(${t.col})))::int AS seg
-           FROM ${t.nome} GROUP BY loja_id ORDER BY loja_id`
+        `SELECT l.id AS loja_id,
+                MAX(x.${t.col}) AS ult,
+                EXTRACT(EPOCH FROM (NOW()-MAX(x.${t.col})))::int AS seg
+           FROM lojas l
+           LEFT JOIN ${t.nome} x ON x.loja_id = l.id
+          WHERE l.id = ANY($1::int[])
+          GROUP BY l.id ORDER BY l.id`,
+        [lojasIds]
       );
       for (const row of r) {
-        if (!row.ult) continue;
+        if (!row.ult) {
+          atrasos.push(`L${row.loja_id} ${t.nome}: SEM REGISTROS (sync gravando em outra loja?)`);
+          continue;
+        }
         const atrasoMs = (row.seg || 0) * 1000;
         if (atrasoMs > t.max_atraso) {
           const horas = Math.floor(atrasoMs / 3600000);
@@ -1504,14 +1909,8 @@ initDB().then(() => {
       `);
       const embs = await dbQuery(`
         SELECT
-          COUNT(*) FILTER (
-            WHERE qtd_sugerida_nfe IS NOT NULL
-              AND (qtd_embalagem IS NULL OR qtd_embalagem <> qtd_sugerida_nfe)
-          )::int AS sugestao_nfe,
-          COUNT(*) FILTER (
-            WHERE ativo_no_cd = TRUE AND status <> 'validado'
-          )::int AS pendentes_validacao
-          FROM produtos_embalagem
+          (SELECT COUNT(*) FROM embalagens_fornecedor WHERE status = 'pendente_validacao')::int AS sugestao_nfe,
+          (SELECT COUNT(*) FROM produtos_embalagem WHERE ativo_no_cd = TRUE AND status <> 'validado')::int AS pendentes_validacao
       `);
       const totalDiv = divs[0]?.qtd || 0;
       const totalVal = vals[0]?.qtd || 0;
@@ -1532,10 +1931,10 @@ initDB().then(() => {
         ? `\n• ${totalDev} devolução(ões) aguardando XML — R$ ${Number(devs[0].valor_dev).toLocaleString('pt-BR',{minimumFractionDigits:2})}`
         : '';
       const linhaEmbNfe = totalEmbNfe
-        ? `\n• ${totalEmbNfe} embalagem(ns) com sugestão NF-e divergente — revisar`
+        ? `\n• ${totalEmbNfe} embalagem(ns) FORNECEDOR pendente(s) — /embalagens-fornecedor`
         : '';
       const linhaEmbPend = totalEmbPend
-        ? `\n• ${totalEmbPend} embalagem(ns) ativa(s) sem qtd validada`
+        ? `\n• ${totalEmbPend} embalagem(ns) CD ativa(s) sem qtd validada`
         : '';
       const linhaSync = atrasosSync.length
         ? `\n\n⚠️ *SYNC ATRASADO:*\n${atrasosSync.map(a => '• ' + a).join('\n')}`
@@ -1556,6 +1955,36 @@ initDB().then(() => {
   // Primeiro tick em 5min após boot, depois a cada 1h
   setTimeout(notificarAlertasPendentes, 5 * 60 * 1000);
   setInterval(notificarAlertasPendentes, 60 * 60 * 1000);
+
+  // Top da semana de embalagens — segunda-feira de manhã (toda hora checa, dispara só uma vez)
+  let topSemanaEnviado = null;
+  async function notificarTopSemanaEmbalagens() {
+    try {
+      const agora = new Date();
+      const dia = agora.getDay(); // 0=domingo, 1=segunda
+      const hora = agora.getHours();
+      if (dia !== 1 || hora < 8 || hora >= 12) return;
+      const chave = agora.toISOString().slice(0,10);
+      if (topSemanaEnviado === chave) return;
+      topSemanaEnviado = chave;
+      const top = await dbQuery(`
+        SELECT validado_por, COUNT(*)::int AS qtd
+          FROM embalagens_fornecedor
+         WHERE status = 'validado'
+           AND validado_por IS NOT NULL
+           AND validado_em >= CURRENT_DATE - INTERVAL '7 days'
+         GROUP BY validado_por
+         ORDER BY qtd DESC
+         LIMIT 5
+      `);
+      if (!top.length) return;
+      const lista = top.map((u, i) => `${i+1}º ${u.validado_por} — *${u.qtd}*`).join('\n');
+      const msg = `🏆 *Top semana — Embalagens Fornecedor*\n_(últimos 7 dias)_\n\n${lista}\n\n👑 Parabéns ao primeiro! Continuem firmes — cada validação evita erro de custo.\n\n📦 https://jrliratech-production.up.railway.app/embalagens-fornecedor`;
+      await enviarWhatsapp(ADMIN_WHATSAPP, msg);
+      console.log('[gamificacao] top semana enviado');
+    } catch (e) { console.error('[gamificacao]', e.message); }
+  }
+  setInterval(notificarTopSemanaEmbalagens, 60 * 60 * 1000);
 
   // Limpeza diária de órfãos em produtos_externo (registros sem update há mais de 7 dias).
   // Como sync é incremental (UPSERT, sem DELETE prévio), produtos removidos no Firebird

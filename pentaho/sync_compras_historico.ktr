@@ -91,7 +91,18 @@
   P2.CODIGOBARRA             AS codigobarra,
   P.QTDE                     AS qtd_comprada,
   P.CUSTOTOTAL               AS custo_total,
-  F2.CPFCNPJ                 AS fornecedor_cnpj
+  F2.CPFCNPJ                 AS fornecedor_cnpj,
+  CAST(CASE
+    WHEN UPPER(N.DESCRICAO) LIKE '%TRANSFER%'                     THEN 'transferencia_entrada'
+    WHEN UPPER(N.DESCRICAO) LIKE '%DEVOLU%' AND UPPER(N.DESCRICAO) LIKE '%VENDA%'
+                                                                    THEN 'devolucao_venda'
+    WHEN N.GERAFINANCEIRO = 'N' AND (
+         UPPER(N.DESCRICAO) LIKE '%BONIFICA%'
+      OR UPPER(N.DESCRICAO) LIKE '%DOACAO%'
+      OR UPPER(N.DESCRICAO) LIKE '%BRINDE%')                       THEN 'bonificacao_recebida'
+    WHEN N.GERAFINANCEIRO = 'S'                                    THEN 'compra'
+    ELSE 'outras_entradas'
+  END AS VARCHAR(30))         AS tipo_entrada
 FROM TESTNFE AS B
 JOIN TESTNFEPROD P          ON B.CODIGOID   = P.CODIGOID
 JOIN TPAGFORNECEDOR AS F2   ON B.FORNECEDOR = F2.CODIGO
@@ -100,8 +111,9 @@ JOIN TESTPRODUTOGERAL AS P2 ON P.PRODUTO    = P2.PRODUTOPRINCIPAL
                             AND P2.CODIGO   = P2.PRODUTOPRINCIPAL
 WHERE (B.STATUS = 'VA' OR B.STATUS = 'FA')
   AND (N.MOVIMENTAESTOQUE = 'S' OR F2.CPFCNPJ = '17764296000209')
+  AND N.DESCRICAO NOT LIKE '%*%'
   AND B.EMPRESA = 01
-  AND B.DATAENTRADA &gt; CAST('2025-07-01' AS DATE)</sql>
+  AND B.DATAENTRADA &gt;= CAST('2025-01-01' AS DATE)</sql>
     <limit>0</limit>
     <lookup/>
     <execute_each_row>N</execute_each_row>
@@ -208,6 +220,10 @@ if (isNaN(loja_id) || loja_id &lt; 1 || loja_id &gt; 100) {
       <field>
         <column_name>fornecedor_cnpj</column_name>
         <stream_name>fornecedor_cnpj</stream_name>
+      </field>
+      <field>
+        <column_name>tipo_entrada</column_name>
+        <stream_name>tipo_entrada</stream_name>
       </field>
       <field>
         <column_name>loja_id</column_name>
