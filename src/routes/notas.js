@@ -976,8 +976,8 @@ router.patch('/:id/itens/:itemId/remap-ean', autenticar, async (req, res) => {
               )
          )
          UPDATE itens_nota i
-            SET ean_validado = $6,
-                custo_fabrica = COALESCE((SELECT custoorigem FROM produtos_externo WHERE codigobarra=$6 AND loja_id=n.loja_id LIMIT 1), $7),
+            SET ean_validado = $6::text,
+                custo_fabrica = COALESCE((SELECT custoorigem FROM produtos_externo WHERE codigobarra=$6::text AND loja_id=n.loja_id LIMIT 1), $7::numeric),
                 produto_novo = FALSE,
                 ean_fonte = CASE WHEN $4::text IS NOT NULL THEN 'cprod_assoc' ELSE 'desc_assoc' END
            FROM notas_entrada n
