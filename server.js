@@ -359,6 +359,9 @@ async function initDB() {
     await client.query(`ALTER TABLE notas_entrada ADD COLUMN IF NOT EXISTS tot_voutro  DECIMAL(14,2)`).catch(() => {});
     // breakdown fiscal por item
     await client.query(`ALTER TABLE itens_nota ADD COLUMN IF NOT EXISTS ean_fonte    VARCHAR(10)`).catch(() => {});
+    // 'cprod_assoc' tem 11 chars — extender pra 30 (era 10 originalmente)
+    await runMigration(client, '20260506_ean_fonte_alter_30',
+      `ALTER TABLE itens_nota ALTER COLUMN ean_fonte TYPE VARCHAR(30)`);
     await client.query(`ALTER TABLE itens_nota ADD COLUMN IF NOT EXISTS vprod        DECIMAL(14,4)`).catch(() => {});
     await client.query(`ALTER TABLE itens_nota ADD COLUMN IF NOT EXISTS vdesc_item   DECIMAL(14,4)`).catch(() => {});
     await client.query(`ALTER TABLE itens_nota ADD COLUMN IF NOT EXISTS vfrete_item  DECIMAL(14,4)`).catch(() => {});
@@ -914,6 +917,50 @@ async function initDB() {
     await runMigration(client, '20260506_compras_historico_dedup_unique',
       `CREATE UNIQUE INDEX IF NOT EXISTS compras_historico_dedup_unique
          ON compras_historico (loja_id, numeronfe, codigobarra, data_entrada, fornecedor_cnpj)`);
+
+    // V4: triggers fazem UPSERT real (UPDATE quando chave física já existe). Necessário pra
+    // reclassificar tipo_xxx historico — KTR antigo deixou tudo como 'compra'/'venda', e o KTR
+    // novo só inseriria movs novos. Com UPSERT, o sync re-extrai tudo desde 2025-01-01 e
+    // reclassifica linhas existentes automaticamente.
+    await runMigration(client, '20260506_trim_skip_dup_vendas_v4_upsert',
+      `CREATE OR REPLACE FUNCTION trim_skip_dup_vendas() RETURNS TRIGGER AS $trg$
+       BEGIN
+         NEW.codigobarra := NULLIF(LTRIM(COALESCE(NEW.codigobarra,''),'0'),'');
+         NEW.tipo_saida  := TRIM(COALESCE(NEW.tipo_saida, 'venda'));
+         IF NEW.codigobarra IS NULL THEN RETURN NEW; END IF;
+         UPDATE vendas_historico
+            SET qtd_vendida = NEW.qtd_vendida,
+                tipo_saida  = NEW.tipo_saida,
+                sincronizado_em = NOW()
+          WHERE loja_id = NEW.loja_id
+            AND codigobarra = NEW.codigobarra
+            AND data_venda = NEW.data_venda;
+         IF FOUND THEN RETURN NULL; END IF;
+         RETURN NEW;
+       END;
+       $trg$ LANGUAGE plpgsql;`);
+
+    await runMigration(client, '20260506_trim_skip_dup_compras_v4_upsert',
+      `CREATE OR REPLACE FUNCTION trim_skip_dup_compras() RETURNS TRIGGER AS $trg$
+       BEGIN
+         NEW.codigobarra := NULLIF(LTRIM(COALESCE(NEW.codigobarra,''),'0'),'');
+         NEW.tipo_entrada := TRIM(COALESCE(NEW.tipo_entrada, 'compra'));
+         IF NEW.codigobarra IS NULL THEN RETURN NEW; END IF;
+         UPDATE compras_historico
+            SET tipo_entrada = NEW.tipo_entrada,
+                qtd_comprada = NEW.qtd_comprada,
+                custo_total  = NEW.custo_total,
+                data_emissao = NEW.data_emissao,
+                sincronizado_em = NOW()
+          WHERE loja_id = NEW.loja_id
+            AND numeronfe = NEW.numeronfe
+            AND codigobarra = NEW.codigobarra
+            AND data_entrada = NEW.data_entrada
+            AND COALESCE(fornecedor_cnpj,'') = COALESCE(NEW.fornecedor_cnpj,'');
+         IF FOUND THEN RETURN NULL; END IF;
+         RETURN NEW;
+       END;
+       $trg$ LANGUAGE plpgsql;`);
 
     // View consolidada: avarias internas + devoluções (Pentaho histórico) + devoluções (jrlira-tech recentes)
     // Deduplicação por chave_nfe quando ambas fontes têm o mesmo registro.
