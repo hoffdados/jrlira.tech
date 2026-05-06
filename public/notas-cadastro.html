@@ -41,20 +41,30 @@ nav .btn-nav:hover{background:#0284c7}
 .nh-field span{font-size:14px;color:#e2e8f0}
 .nh-actions{margin-top:16px;display:flex;gap:10px;align-items:center}
 table{width:100%;border-collapse:collapse;font-size:13px}
-thead th{background:#1e293b;padding:10px 12px;text-align:left;color:#94a3b8;font-weight:600;border-bottom:1px solid #334155;white-space:nowrap}
+thead{position:sticky;top:0;z-index:5}
+thead th{background:#1e293b;padding:10px 12px;text-align:center;color:#94a3b8;font-weight:600;border-bottom:1px solid #334155;white-space:nowrap}
+thead th:nth-child(1),thead th:nth-child(2),thead th:nth-child(3){text-align:left}
+tbody td{text-align:center}
+tbody td:nth-child(1),tbody td:nth-child(2),tbody td:nth-child(3){text-align:left}
 tbody tr{border-bottom:1px solid #1e293b}
 tbody tr:hover{background:#1a2744}
 tbody tr.novo-prod{background:#1a1033}
 tbody tr.novo-prod:hover{background:#211240}
 td{padding:9px 12px;vertical-align:middle}
 .badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700}
-.b-igual{background:#14532d;color:#4ade80}
+.b-igual{background:#1e3a8a;color:#bfdbfe}
 .b-divergente{background:#431407;color:#f97316}
+.b-maior{background:#7f1d1d;color:#ffffff;font-weight:700}
+.b-menor{background:#14532d;color:#4ade80}
+.b-auditagem{background:#92400e;color:#fef3c7;font-weight:700}
 .b-sem_cadastro,.b-novo{background:#2e1065;color:#a78bfa}
 .b-importada{background:#1e3a5f;color:#60a5fa}
 .b-em_conferencia{background:#1a4731;color:#34d399}
 .b-em_auditoria{background:#451a03;color:#fbbf24}
 .b-fechada{background:#1e293b;color:#64748b}
+.b-validada{background:#14532d;color:#4ade80}
+.b-aguardando_devolucao{background:#7f1d1d;color:#fca5a5}
+.b-aguardando_admin_validade{background:#451a03;color:#fbbf24}
 .b-em_validacao_comercial{background:#312e81;color:#a5b4fc}
 .b-aguardando_estoque{background:#1a4731;color:#34d399}
 .b-cd{background:#0c4a6e;color:#7dd3fc}
@@ -104,7 +114,23 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 1
 <div class="layout">
   <div class="sidebar">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-      <h3 style="margin-bottom:0">Notas</h3>
+      <h3 style="margin-bottom:0">Notas <span id="totNotas" style="color:#64748b;font-weight:400;font-size:12px"></span></h3>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
+      <select id="fStatus" onchange="carregarNotas()" style="padding:8px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:12px">
+        <option value="pendentes" selected>Pendentes (sem fechadas/validadas)</option>
+        <option value="">Todas</option>
+        <option value="em_validacao_cadastro">Em validação cadastro</option>
+        <option value="em_validacao_comercial">Em validação comercial</option>
+        <option value="aguardando_estoque">Aguardando estoque</option>
+        <option value="em_conferencia">Em conferência</option>
+        <option value="em_auditoria">Em auditoria</option>
+        <option value="aguardando_admin_validade">Aguard. admin (validade)</option>
+        <option value="aguardando_devolucao">Aguard. devolução</option>
+        <option value="validada">Validada (devolução enviada)</option>
+        <option value="fechada">Fechada</option>
+      </select>
+      <input id="fBusca" placeholder="🔎 NF, fornecedor, CNPJ..." oninput="filtrarLocal()" style="padding:8px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:12px">
     </div>
     <div id="listaNota"><p class="empty">Carregando...</p></div>
   </div>
@@ -137,7 +163,8 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 1
             <button class="btn-success" onclick="aprovarEmergencial()" style="background:#0ea5e9">✓ Aprovar Emergencial → Cadastro</button>
           </div>
           <button id="btnExcluir" class="btn-outline" onclick="excluirNota()" style="display:none;border-color:#ef4444;color:#ef4444">✕ Excluir Nota</button>
-          <button id="btnRelatorio" class="btn-outline" onclick="imprimirRelatorio()" style="display:none">🖨 Imprimir Relatório</button>
+          <button id="btnDevolucao" class="btn-success" onclick="abrirDevolucao()" style="display:none;background:#dc2626">📦 Anexar Devolução</button>
+          <button id="btnRelatorio" class="btn-outline" onclick="imprimirRelatorio()" style="display:none">🖨 Vida da Nota</button>
           <span id="statusMsg" style="font-size:13px;color:#64748b"></span>
         </div>
       </div>
@@ -156,21 +183,24 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 1
         </div>
       </div>
 
-      <div style="overflow-x:auto">
+      <div style="overflow:auto;max-height:calc(100vh - 380px)">
       <table id="tabelaItens" style="min-width:1100px">
         <thead>
           <tr>
             <th>#</th>
             <th>Descrição</th>
             <th>EAN / Fonte</th>
-            <th style="text-align:right">Qtd</th>
-            <th style="text-align:right;border-left:1px solid #334155">V.Prod</th>
-            <th style="text-align:right">IPI</th>
-            <th style="text-align:right">ICMS ST</th>
-            <th style="text-align:right">Outros</th>
-            <th style="text-align:right;border-left:1px solid #334155;color:#38bdf8">=&nbsp;Preço Nota</th>
-            <th style="text-align:right">Custo Nota</th>
-            <th style="text-align:center">Status</th>
+            <th>Qtd</th>
+            <th>Emb</th>
+            <th>Qtd UN</th>
+            <th style="border-left:1px solid #334155">V.Prod</th>
+            <th>IPI</th>
+            <th>ICMS ST</th>
+            <th>Outros</th>
+            <th style="border-left:1px solid #334155;color:#38bdf8">=&nbsp;Preço NF</th>
+            <th title="Custo origem (custoorigem do Pentaho)">Custo NF</th>
+            <th title="Itens com devolução em aberto">Devolução</th>
+            <th>Status</th>
             <th>Ação</th>
           </tr>
         </thead>
@@ -210,39 +240,66 @@ function showMsg(txt, tipo = 'ok') {
   setTimeout(() => el.style.display = 'none', 5000);
 }
 
+let notasCache = [];
+
 async function carregarNotas() {
   try {
-    // Tela de Notas Fornecedores: só NF-e que comprador já tratou (com pedido vinculado ou emergencial aprovada)
-    const notas = await fetchApi('/api/notas?origem=nfe&tratado_comprador=1');
-    const el = document.getElementById('listaNota');
-    if (!notas.length) { el.innerHTML = '<p class="empty" style="padding:24px 0">Nenhuma nota importada</p>'; return; }
-    el.innerHTML = notas.map(n => {
-      const isCd = n.origem === 'cd';
-      const titulo = isCd
-        ? `📦 Transf. CD ${n.cd_mov_codi || n.numero_nota}`
-        : `NF ${n.numero_nota}/${n.serie || ''}`;
-      return `
-      <div class="nota-card" id="card-${n.id}" onclick="abrirNota(${n.id})">
-        <div class="nc-num">${titulo}</div>
-        <div class="nc-forn">${n.fornecedor_nome}</div>
-        <div class="nc-info">${fmtData(n.data_emissao)} · ${fmtMoeda(n.valor_total)}</div>
-        <div class="nc-tags">
-          ${isCd ? '<span class="badge b-cd">CD</span>' : ''}
-          <span class="badge b-${n.status}">${labelStatus(n.status)}</span>
-          ${n.total_novos > 0 ? `<span class="badge b-novo">★ ${n.total_novos} novo(s)</span>` : ''}
-          ${n.total_divergentes > 0 ? `<span class="badge b-divergente">⚠ ${n.total_divergentes} div.</span>` : ''}
-        </div>
-      </div>`;
-    }).join('');
+    const status = document.getElementById('fStatus')?.value || 'pendentes';
+    const params = new URLSearchParams({ origem: 'nfe', tratado_comprador: '1' });
+    if (status && status !== 'pendentes') params.set('status', status);
+    let notas = await fetchApi('/api/notas?' + params.toString());
+    // 'pendentes' = filtro fake — esconde fechadas/validadas
+    if (status === 'pendentes') notas = notas.filter(n => n.status !== 'fechada' && n.status !== 'validada');
+    // Ordena mais nova → mais antiga (importado_em desc)
+    notas.sort((a, b) => new Date(b.importado_em || 0) - new Date(a.importado_em || 0));
+    notasCache = notas;
+    renderListaNotas();
   } catch (e) { showMsg(e.message, 'err'); }
 }
+
+function renderListaNotas() {
+  const el = document.getElementById('listaNota');
+  const q = (document.getElementById('fBusca')?.value || '').trim().toLowerCase();
+  const filtradas = q
+    ? notasCache.filter(n =>
+        (n.numero_nota || '').toLowerCase().includes(q) ||
+        (n.fornecedor_nome || '').toLowerCase().includes(q) ||
+        (n.fornecedor_cnpj || '').replace(/\D/g, '').includes(q.replace(/\D/g, '')))
+    : notasCache;
+  document.getElementById('totNotas').textContent = `(${filtradas.length})`;
+  if (!filtradas.length) { el.innerHTML = '<p class="empty" style="padding:24px 0">Nenhuma nota</p>'; return; }
+  el.innerHTML = filtradas.map(n => {
+    const isCd = n.origem === 'cd';
+    const titulo = isCd
+      ? `📦 Transf. CD ${n.cd_mov_codi || n.numero_nota}`
+      : `NF ${n.numero_nota}/${n.serie || ''}`;
+    return `
+    <div class="nota-card" id="card-${n.id}" onclick="abrirNota(${n.id})">
+      <div class="nc-num">${titulo}</div>
+      <div class="nc-forn">${n.fornecedor_nome || '—'}</div>
+      <div class="nc-info">${fmtData(n.data_emissao)} · ${fmtMoeda(n.valor_total)}</div>
+      <div class="nc-tags">
+        ${isCd ? '<span class="badge b-cd">CD</span>' : ''}
+        <span class="badge b-${n.status}">${labelStatus(n.status)}</span>
+        ${n.total_novos > 0 ? `<span class="badge b-novo">★ ${n.total_novos} novo(s)</span>` : ''}
+        ${n.total_divergentes > 0 ? `<span class="badge b-divergente">⚠ ${n.total_divergentes} div.</span>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function filtrarLocal() { renderListaNotas(); }
 
 function labelStatus(s) {
   return {
     importada: 'Importada', em_validacao_cadastro: 'Validação Cadastro',
     em_conferencia: 'Em Conferência', em_auditoria: 'Em Auditoria',
-    fechada: 'Fechada', em_validacao_comercial: 'Validação Comercial',
-    aguardando_estoque: 'Aguardando Estoque'
+    fechada: 'Fechada', validada: 'Validada',
+    em_validacao_comercial: 'Validação Comercial',
+    aguardando_estoque: 'Aguardando Estoque',
+    aguardando_admin_validade: 'Aguard. validade',
+    aguardando_devolucao: 'Aguard. devolução',
+    emergencial_pendente: 'Emergencial pend.'
   }[s] || s;
 }
 
@@ -275,17 +332,53 @@ async function abrirNota(id) {
     wrapLib.style.display = nota.status === 'em_validacao_cadastro' ? 'flex' : 'none';
     document.getElementById('wrapEmergencial').style.display = (isAdmin && nota.status === 'emergencial_pendente') ? 'flex' : 'none';
     document.getElementById('btnExcluir').style.display = ['importada','em_validacao_cadastro'].includes(nota.status) ? 'inline-block' : 'none';
-    document.getElementById('btnRelatorio').style.display = nota.status === 'fechada' ? 'inline-block' : 'none';
+    document.getElementById('btnRelatorio').style.display = ['fechada','validada','aguardando_admin_validade','aguardando_devolucao','em_auditoria','em_conferencia'].includes(nota.status) ? 'inline-block' : 'none';
+    document.getElementById('btnDevolucao').style.display = nota.status === 'aguardando_devolucao' ? 'inline-block' : 'none';
     document.getElementById('statusMsg').textContent =
       nota.status === 'importada'             ? 'Aguardando liberação pelo comprador' :
       nota.status === 'em_validacao_cadastro' ? '' :
       nota.status === 'em_conferencia'        ? 'Aguardando conferência do estoque' :
       nota.status === 'em_auditoria'          ? 'Em auditoria' :
+      nota.status === 'validada'              ? `Validada em ${fmtData(nota.validada_em)} (devolução enviada)` :
       nota.status === 'fechada'               ? `Fechada em ${fmtData(nota.fechado_em)}` : '';
 
     renderTotais(nota);
+    await aplicarDevolucao(nota);
     renderItens(itens, nota.status);
   } catch (e) { showMsg(e.message, 'err'); }
+}
+
+async function aplicarDevolucao(nota) {
+  if (!['aguardando_devolucao','fechada','validada'].includes(nota.status)) return;
+  try {
+    const r = await fetchApi(`/api/devolucoes?nota_id=${nota.id}`);
+    const dev = (r.rows || []).find(x => x.status === 'aguardando') || (r.rows || [])[0];
+    if (!dev) return;
+    const valorDev = parseFloat(dev.valor_total) || 0;
+    const valorNF = parseFloat(nota.valor_total) || 0;
+    const liquido = Math.max(0, valorNF - valorDev);
+    const grid = document.getElementById('totaisGrid');
+    if (grid) {
+      grid.insertAdjacentHTML('beforeend', `
+        <div style="background:#3f0f0f;border-radius:6px;padding:8px 10px;border:1px solid #dc2626" title="Valor a abater (NF de devolução)">
+          <div style="font-size:10px;color:#fca5a5;text-transform:uppercase">− Devolução</div>
+          <div style="font-size:13px;font-weight:700;color:#f87171">${fmtMoeda(valorDev)}</div>
+        </div>
+        <div style="background:#0f172a;border-radius:6px;padding:8px 10px;border:1px solid #4ade80" title="Valor da NF abatido pelo valor da devolução">
+          <div style="font-size:10px;color:#4ade80;text-transform:uppercase">= Valor Líquido</div>
+          <div style="font-size:13px;font-weight:700;color:#4ade80">${fmtMoeda(liquido)}</div>
+        </div>`);
+    }
+    const sm = document.getElementById('statusMsg');
+    if (sm && nota.status === 'aguardando_devolucao') {
+      sm.innerHTML = `<span style="color:#fbbf24">⚠ Devolução pendente — ${dev.qtd_itens||0} item(ns), ${fmtMoeda(valorDev)}. Use o botão "📦 Anexar Devolução" pra subir XML/PDF.</span>`;
+    }
+  } catch {}
+}
+
+function abrirDevolucao() {
+  if (!notaAtualId) return;
+  window.open(`/aguardando-devolucao?nota=${notaAtualId}`, '_blank');
 }
 
 function renderTotais(nota) {
@@ -346,6 +439,8 @@ function renderItens(itens, status) {
   tbody.innerHTML = itens.map(item => {
     const isNovo = item.produto_novo;
     const qtd = parseFloat(item.quantidade);
+    const qtdEmb = parseInt(item.qtd_por_caixa_nfe) || null;
+    const qtdUn = parseFloat(item.qtd_em_unidades) || (qtdEmb ? qtd * qtdEmb : qtd);
     const custo = item.custo_fabrica != null ? fmtMoeda(item.custo_fabrica) : '—';
     const statusBadge = `<span class="badge b-${item.status_preco}">${labelPreco(item.status_preco, isNovo)}</span>`;
 
@@ -369,24 +464,49 @@ function renderItens(itens, status) {
     // V.Prod por unidade = (vProd - vDesc) / qtd
     const vprodUn = (parseFloat(item.vprod||0) - parseFloat(item.vdesc_item||0)) / qtd;
 
-    const acao = (isNovo && status === 'importada') ? `
+    const podeEditarEAN = ['importada','emergencial_pendente','em_validacao_cadastro'].includes(status);
+    const eanAtualVal = String(item.ean_validado || item.ean_nota || item.ean_trib || '').replace(/[^0-9]/g, '');
+    const acaoLabel = isNovo ? 'Associar' : 'Atualizar';
+    const acao = podeEditarEAN ? `
       <div class="ean-remap">
-        <input type="text" id="ean-${item.id}" placeholder="EAN cadastro">
-        <button class="btn-primary btn-sm" onclick="remapearEAN(${item.id})">Associar</button>
-      </div>` : (item.validado_cadastro ? `<span style="color:#4ade80;font-size:12px">✓ Associado</span>` : '—');
+        <input type="text" id="ean-${item.id}" placeholder="EAN cadastro" value="${eanAtualVal}">
+        <button class="btn-primary btn-sm" onclick="remapearEAN(${item.id})">${acaoLabel}</button>
+      </div>${item.validado_cadastro ? '<div style="color:#4ade80;font-size:11px;margin-top:2px">✓ Associado</div>' : ''}` : (item.validado_cadastro ? `<span style="color:#4ade80;font-size:12px">✓ Associado</span>` : '—');
 
-    return `<tr class="${isNovo ? 'novo-prod' : ''}">
+    const conf = item.qtd_por_caixa_confianca;
+    const confBadge = conf === 'manual' ? '✋' : conf === 'cadastrada' ? '📌' : conf === 'alta' ? '✓' : conf === 'media' ? '?' : conf === 'baixa' ? '⚠' : '';
+    const podeEditarEmb = ['importada','emergencial_pendente','em_validacao_cadastro','em_validacao_comercial','aguardando_estoque'].includes(status);
+    const embAtual = qtdEmb || 1;
+    const embCell = podeEditarEmb
+      ? `<input type="number" min="1" value="${embAtual}" style="width:55px;background:#0f172a;border:1px solid #334155;color:#7dd3fc;text-align:center;border-radius:4px;padding:3px;font-weight:700" onchange="ajustarEmbCadastro(${item.id}, this)" title="Confiança: ${conf || 'default'}"> ${confBadge}`
+      : `<span style="color:#7dd3fc;font-weight:700">${embAtual}</span> ${confBadge}`;
+    const qtdUnCell = `<span style="color:${qtdEmb ? '#4ade80' : '#94a3b8'};font-weight:${qtdEmb ? '700' : '400'}" data-qtd-un>${qtdUn % 1 === 0 ? qtdUn.toFixed(0) : qtdUn.toFixed(3)}</span>`;
+
+    const dev = item.devolucao_pendente;
+    const devCell = dev
+      ? `<div style="font-size:11px;line-height:1.4">
+           <div style="color:#0f172a;font-weight:700">${parseFloat(dev.qtd_total).toFixed(0)} un${dev.qtd_caixas ? ` (${dev.qtd_caixas} cx)` : ''}</div>
+           <div style="color:#1e293b">${fmtMoeda(dev.valor_total)}</div>
+           <div style="color:#64748b;font-size:10px">${dev.origem_tipo === 'auditagem_divergencia' ? 'auditoria' : dev.origem_tipo}</div>
+         </div>`
+      : '<span style="color:#475569">—</span>';
+    const trStyle = dev ? 'style="background:#fef3c7;color:#0f172a"' : '';
+    const trClass = isNovo ? 'novo-prod' : '';
+    return `<tr class="${trClass}" data-item="${item.id}" ${trStyle}>
       <td>${item.numero_item}</td>
       <td>${item.descricao_nota}${isNovo ? ' <span style="color:#a78bfa;font-size:11px">★NOVO</span>' : ''}</td>
       <td style="font-family:monospace;font-size:11px;line-height:1.6">${eanNota}${eanTrib}${fonte}</td>
-      <td style="text-align:right">${qtd % 1 === 0 ? qtd.toFixed(0) : qtd.toFixed(3)}</td>
-      <td style="text-align:right;border-left:1px solid #1e293b"><span style="color:#94a3b8">${fmtMoeda(vprodUn)}</span></td>
-      <td style="text-align:right">${fmtU(item,'vipi')}</td>
-      <td style="text-align:right">${fmtU(item,'vst')}</td>
-      <td style="text-align:right">${outrosCell}</td>
-      <td style="text-align:right;border-left:1px solid #1e293b;font-weight:700;color:#e2e8f0">${fmtMoeda(item.preco_unitario_nota)}</td>
-      <td style="text-align:right">${custo}</td>
-      <td style="text-align:center">${statusBadge}</td>
+      <td style="color:#94a3b8">${qtd % 1 === 0 ? qtd.toFixed(0) : qtd.toFixed(3)}</td>
+      <td>${embCell}</td>
+      <td>${qtdUnCell}</td>
+      <td style="border-left:1px solid #1e293b"><span style="color:#94a3b8">${fmtMoeda(vprodUn)}</span></td>
+      <td>${fmtU(item,'vipi')}</td>
+      <td>${fmtU(item,'vst')}</td>
+      <td>${outrosCell}</td>
+      <td style="border-left:1px solid #1e293b;font-weight:700;color:#e2e8f0" data-preco-un>${fmtMoeda(item.preco_unitario_nota)}</td>
+      <td>${custo}</td>
+      <td>${devCell}</td>
+      <td>${statusBadge}</td>
       <td>${acao}</td>
     </tr>`;
   }).join('');
@@ -394,7 +514,14 @@ function renderItens(itens, status) {
 
 function labelPreco(s, isNovo) {
   if (isNovo) return '★ NOVO';
-  return { igual: '✓ IGUAL', divergente: '⚠ DIVERGENTE', sem_cadastro: 'SEM CADASTRO' }[s] || s;
+  return {
+    igual: '= IGUAL',
+    maior: '▲ MAIOR',
+    menor: '▼ MENOR',
+    auditagem: '⚠ AUDITAGEM',
+    divergente: '⚠ DIVERGENTE',
+    sem_cadastro: 'SEM CADASTRO'
+  }[s] || s;
 }
 
 async function remapearEAN(itemId) {
@@ -402,7 +529,8 @@ async function remapearEAN(itemId) {
   if (!ean) { showMsg('Informe o EAN', 'err'); return; }
   try {
     const r = await fetchApi(`/api/notas/${notaAtualId}/itens/${itemId}/remap-ean`, 'PATCH', { ean_novo: ean });
-    showMsg(`EAN associado. Status preço: ${r.status_preco}`, 'ok');
+    const extra = r.retroaplicados > 0 ? ` (+${r.retroaplicados} item${r.retroaplicados>1?'s':''} em outras notas)` : '';
+    showMsg(`EAN associado. Status preço: ${r.status_preco}${extra}`, 'ok');
     abrirNota(notaAtualId);
   } catch (e) { showMsg(e.message, 'err'); }
 }
@@ -439,8 +567,34 @@ async function excluirNota() {
   } catch (e) { showMsg(e.message, 'err'); }
 }
 
+async function ajustarEmbCadastro(itemId, input) {
+  const qtd = parseInt(input.value);
+  if (!qtd || qtd < 1) { input.value = 1; return; }
+  input.style.background = '#0e3a4f';
+  try {
+    const r = await fetchApi(`/api/notas/${notaAtualId}/itens/${itemId}/embalagem`, 'PATCH', { qtd_por_caixa: qtd });
+    const tr = input.closest('tr');
+    const qtdUnEl = tr.querySelector('[data-qtd-un]');
+    const precoEl = tr.querySelector('[data-preco-un]');
+    if (qtdUnEl) {
+      qtdUnEl.textContent = r.qtd_em_unidades % 1 === 0 ? r.qtd_em_unidades.toFixed(0) : r.qtd_em_unidades.toFixed(3);
+      qtdUnEl.style.color = qtd > 1 ? '#4ade80' : '#94a3b8';
+      qtdUnEl.style.fontWeight = qtd > 1 ? '700' : '400';
+    }
+    if (precoEl) precoEl.textContent = fmtMoeda(r.preco_unitario_nota);
+    input.style.background = '#0f172a';
+    input.style.borderColor = '#16a34a';
+    setTimeout(() => { input.style.borderColor = '#334155'; }, 1500);
+    showMsg(`Emb ${qtd} salva. Próximas NFs deste produto+fornecedor virão prontas.`, 'ok');
+  } catch (e) {
+    input.style.background = '#3a0e0e';
+    showMsg('Erro: ' + e.message, 'err');
+  }
+}
+
 async function imprimirRelatorio() {
-  window.print();
+  if (!notaAtualId) return;
+  window.open('/nota-historico?id=' + notaAtualId, '_blank');
 }
 
 carregarNotas();

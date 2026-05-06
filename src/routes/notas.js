@@ -876,7 +876,20 @@ router.get('/:id', autenticar, async (req, res) => {
           'lotes', (SELECT json_agg(json_build_object('lote', l.lote, 'validade', l.validade, 'quantidade', l.quantidade))
                     FROM conferencia_lotes l WHERE l.conferencia_id = c.id)
         ) ORDER BY c.rodada) FROM conferencias_estoque c WHERE c.item_id = i.id) AS conferencias,
-        (SELECT row_to_json(a.*) FROM auditoria_itens a WHERE a.item_id = i.id) AS auditoria
+        (SELECT row_to_json(a.*) FROM auditoria_itens a WHERE a.item_id = i.id) AS auditoria,
+        (SELECT json_build_object(
+            'devolucao_id', di.devolucao_id,
+            'qtd_caixas', di.qtd_caixas,
+            'qtd_total', di.qtd_total,
+            'valor_total', di.valor_total,
+            'origem_tipo', di.origem_tipo,
+            'devolucao_status', dv.status
+          )
+           FROM devolucoes_itens di
+           JOIN devolucoes dv ON dv.id = di.devolucao_id
+          WHERE di.item_nota_id = i.id
+            AND dv.status NOT IN ('cancelada','enviada','concluida')
+          ORDER BY di.id DESC LIMIT 1) AS devolucao_pendente
       FROM itens_nota i
       ${isTransfCD ? `LEFT JOIN produtos_embalagem pe ON pe.mat_codi = i.cd_pro_codi` : ''}
       WHERE i.nota_id = $1
