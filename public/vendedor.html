@@ -235,11 +235,22 @@ function abrirTab(tab) {
 async function carregarLojas() {
   try {
     const r = await fetch(`${API}/api/vendedores/lojas`, { headers: authHeaders() });
+    if (r.status === 401) {
+      showMsg('Sessão expirada. Faça login novamente.', 'err');
+      sair();
+      return;
+    }
     const lojas = await r.json();
+    if (!Array.isArray(lojas)) {
+      showMsg('Falha ao carregar lojas: ' + (lojas.erro || 'resposta inválida'), 'err');
+      return;
+    }
     const sel = document.getElementById('lojaId');
     sel.innerHTML = '<option value="">Selecione...</option>' +
       lojas.map(l => `<option value="${l.id}">${l.nome}</option>`).join('');
-  } catch {}
+  } catch (e) {
+    showMsg('Erro de conexão ao carregar lojas.', 'err');
+  }
 }
 
 // ── PRODUTO ───────────────────────────────────────────────────────
