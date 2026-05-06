@@ -113,7 +113,7 @@ WHERE (B.STATUS = 'VA' OR B.STATUS = 'FA')
   AND (N.MOVIMENTAESTOQUE = 'S' OR F2.CPFCNPJ = '17764296000209')
   AND N.DESCRICAO NOT LIKE '%*%'
   AND B.EMPRESA = 01
-  AND B.DATAENTRADA &gt;= CAST('2025-01-01' AS DATE)</sql>
+  AND B.DATAENTRADA &gt;= CAST('${DATA_CORTE}' AS DATE)</sql>
     <limit>0</limit>
     <lookup/>
     <execute_each_row>N</execute_each_row>
