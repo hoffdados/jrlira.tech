@@ -566,7 +566,7 @@
       </field>
       <field>
         <column_name>id_tabela_preco</column_name>
-        <stream_name>id_tabela_preco</stream_name>
+        <stream_name>ID_TABELA_PRECO</stream_name>
       </field>
       <field>
         <column_name>loja_id</column_name>
@@ -617,7 +617,7 @@
       WHEN UPPER(NAT.DESCRICAO) LIKE '%DESPESA%'               THEN 'consumo_interno'
       ELSE 'outras_internas'
     END AS VARCHAR(30))                                        AS tipo_saida,
-    PROD.IDTABELAPRECO                                         AS id_tabela_preco,
+    PROD.IDTABELAPRECO                                         AS ID_TABELA_PRECO,
     SUM(
       (PROD.QTDE - COALESCE(PROD.QTDEDEVOLVIDA, 0))
       * COALESCE(PG_VEND.QTDEEMBALAGEM, 1)
@@ -711,6 +711,29 @@
         <origin>Leitura Vendas</origin>
         <comments>QTD_VENDIDA</comments>
         <conversion_Mask>######0.0###################;-######0.0###################</conversion_Mask>
+        <decimal_symbol>.</decimal_symbol>
+        <grouping_symbol/>
+        <currency_symbol/>
+        <trim_type>none</trim_type>
+        <case_insensitive>N</case_insensitive>
+        <collator_disabled>Y</collator_disabled>
+        <collator_strength>0</collator_strength>
+        <sort_descending>N</sort_descending>
+        <output_padding>N</output_padding>
+        <date_format_lenient>N</date_format_lenient>
+        <date_format_locale>pt_BR</date_format_locale>
+        <date_format_timezone>America/Sao_Paulo</date_format_timezone>
+        <lenient_string_to_number>N</lenient_string_to_number>
+      </value-meta>
+      <value-meta>
+        <type>Integer</type>
+        <storagetype>normal</storagetype>
+        <name>ID_TABELA_PRECO</name>
+        <length>11</length>
+        <precision>0</precision>
+        <origin>Leitura Vendas</origin>
+        <comments>ID_TABELA_PRECO</comments>
+        <conversion_Mask>#</conversion_Mask>
         <decimal_symbol>.</decimal_symbol>
         <grouping_symbol/>
         <currency_symbol/>
