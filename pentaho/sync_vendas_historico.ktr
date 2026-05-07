@@ -565,6 +565,10 @@
         <stream_name>tipo_saida</stream_name>
       </field>
       <field>
+        <column_name>id_tabela_preco</column_name>
+        <stream_name>id_tabela_preco</stream_name>
+      </field>
+      <field>
         <column_name>loja_id</column_name>
         <stream_name>loja_id</stream_name>
       </field>
@@ -613,6 +617,7 @@
       WHEN UPPER(NAT.DESCRICAO) LIKE '%DESPESA%'               THEN 'consumo_interno'
       ELSE 'outras_internas'
     END AS VARCHAR(30))                                        AS tipo_saida,
+    PROD.IDTABELAPRECO                                         AS id_tabela_preco,
     SUM(
       (PROD.QTDE - COALESCE(PROD.QTDEDEVOLVIDA, 0))
       * COALESCE(PG_VEND.QTDEEMBALAGEM, 1)
@@ -628,7 +633,7 @@
     AND NAT.DESCRICAO NOT LIKE '%*%'
     AND PROD.EMPRESA = 01
     AND PED.DATAEFE &gt;= CAST('${DATA_CORTE}' AS DATE)
-  GROUP BY PG.CODIGOBARRA, PED.DATAEFE,
+  GROUP BY PG.CODIGOBARRA, PED.DATAEFE, PROD.IDTABELAPRECO,
     CAST(CASE
       WHEN NAT.GERAFINANCEIRO = 'S'                            THEN 'venda'
       WHEN UPPER(NAT.DESCRICAO) LIKE '%AVARIA%'
