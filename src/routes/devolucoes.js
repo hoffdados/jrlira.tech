@@ -54,7 +54,11 @@ function extrairDadosXml(parsed) {
   const numero = ide.nNF || '';
   const data = (ide.dhEmi || ide.dEmi || '').slice(0, 10);
   const chave = parsed?.nfeProc?.protNFe?.infProt?.chNFe || (nfe.$ && nfe.$.Id ? nfe.$.Id.replace(/^NFe/, '') : null);
-  return { numero, data, chave, destCnpj };
+  const tot = nfe.total?.ICMSTot || {};
+  const vNF = parseFloat(tot.vNF) || 0;
+  const vProd = parseFloat(tot.vProd) || 0;
+  const vST = parseFloat(tot.vST) || 0;
+  return { numero, data, chave, destCnpj, vNF, vProd, vST };
 }
 
 async function notificarVendedor(devolucaoId) {
@@ -150,6 +154,7 @@ router.get('/', autenticar, async (req, res) => {
     const params = [];
     if (req.query.status) { params.push(req.query.status); where.push(`d.status = $${params.length}`); }
     if (req.query.loja_id) { params.push(req.query.loja_id); where.push(`d.loja_id = $${params.length}`); }
+    if (req.query.nota_id) { params.push(req.query.nota_id); where.push(`d.nota_id = $${params.length}::int`); }
     const whereSql = where.join(' AND ');
 
     const stats = await query(
@@ -170,6 +175,94 @@ router.get('/', autenticar, async (req, res) => {
       params
     );
     res.json({ ...stats[0], rows });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
+// GET /api/devolucoes/divergencias — agregação de diferenças (XML vs esperado)
+//   query: agrupar=fornecedor|loja|mes  ; loja_id=  ; fornecedor_cnpj=  ; de=YYYY-MM-DD  ; ate=YYYY-MM-DD
+// IMPORTANTE: definir antes de '/:id' pra não cair em router.get('/:id')
+router.get('/divergencias', autenticar, async (req, res) => {
+  if (bloquearSeNaoPermitido(req, res)) return;
+  try {
+    const agrupar = String(req.query.agrupar || 'fornecedor').toLowerCase();
+    const params = [];
+    const conds = [`d.status = 'enviada'`, `d.valor_xml IS NOT NULL`];
+    if (req.query.loja_id) { params.push(req.query.loja_id); conds.push(`d.loja_id = $${params.length}::int`); }
+    if (req.query.fornecedor_cnpj) {
+      params.push(req.query.fornecedor_cnpj.replace(/\D/g, ''));
+      conds.push(`REGEXP_REPLACE(d.destinatario_cnpj,'\\D','','g') = $${params.length}`);
+    }
+    if (req.query.de)  { params.push(req.query.de);  conds.push(`d.enviada_em >= $${params.length}::date`); }
+    if (req.query.ate) { params.push(req.query.ate); conds.push(`d.enviada_em <  ($${params.length}::date + INTERVAL '1 day')`); }
+    const where = conds.join(' AND ');
+
+    let groupCol, groupLabel;
+    if (agrupar === 'loja') {
+      groupCol = `d.loja_id::text`;
+      groupLabel = `(SELECT nome FROM lojas WHERE id = d.loja_id)`;
+    } else if (agrupar === 'mes') {
+      groupCol = `to_char(d.enviada_em,'YYYY-MM')`;
+      groupLabel = groupCol;
+    } else {
+      groupCol = `REGEXP_REPLACE(d.destinatario_cnpj,'\\D','','g')`;
+      groupLabel = `MAX(d.destinatario_nome)`;
+    }
+
+    const rows = await query(
+      `SELECT ${groupCol} AS chave, ${groupLabel} AS rotulo,
+              COUNT(*)::int AS qtd_devolucoes,
+              COALESCE(SUM(d.valor_total),0)::numeric(14,2) AS total_esperado,
+              COALESCE(SUM(d.valor_xml),0)::numeric(14,2) AS total_xml,
+              COALESCE(SUM(d.diferenca_valor),0)::numeric(14,2) AS total_diferenca,
+              COUNT(*) FILTER (WHERE ABS(COALESCE(d.diferenca_valor,0)) >= 0.01)::int AS qtd_com_divergencia
+         FROM devolucoes d
+        WHERE ${where}
+        GROUP BY ${groupCol}
+        ORDER BY ABS(COALESCE(SUM(d.diferenca_valor),0)) DESC, total_xml DESC
+        LIMIT 200`,
+      params
+    );
+
+    const totais = await query(
+      `SELECT COUNT(*)::int AS qtd_devolucoes,
+              COALESCE(SUM(d.valor_total),0)::numeric(14,2) AS total_esperado,
+              COALESCE(SUM(d.valor_xml),0)::numeric(14,2) AS total_xml,
+              COALESCE(SUM(d.diferenca_valor),0)::numeric(14,2) AS total_diferenca,
+              COUNT(*) FILTER (WHERE ABS(COALESCE(d.diferenca_valor,0)) >= 0.01)::int AS qtd_com_divergencia
+         FROM devolucoes d
+        WHERE ${where}`,
+      params
+    );
+
+    res.json({ agrupar, total: totais[0], rows });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
+// GET /api/devolucoes/divergencias/lista — devoluções individuais com divergência (drill-down)
+router.get('/divergencias/lista', autenticar, async (req, res) => {
+  if (bloquearSeNaoPermitido(req, res)) return;
+  try {
+    const params = [];
+    const conds = [`d.status = 'enviada'`, `d.valor_xml IS NOT NULL`, `ABS(COALESCE(d.diferenca_valor,0)) >= 0.01`];
+    if (req.query.loja_id) { params.push(req.query.loja_id); conds.push(`d.loja_id = $${params.length}::int`); }
+    if (req.query.fornecedor_cnpj) {
+      params.push(req.query.fornecedor_cnpj.replace(/\D/g, ''));
+      conds.push(`REGEXP_REPLACE(d.destinatario_cnpj,'\\D','','g') = $${params.length}`);
+    }
+    if (req.query.de)  { params.push(req.query.de);  conds.push(`d.enviada_em >= $${params.length}::date`); }
+    if (req.query.ate) { params.push(req.query.ate); conds.push(`d.enviada_em <  ($${params.length}::date + INTERVAL '1 day')`); }
+    const rows = await query(
+      `SELECT d.id, d.nota_id, d.loja_id, d.destinatario_cnpj, d.destinatario_nome,
+              d.valor_total, d.valor_xml, d.diferenca_valor,
+              d.xml_numero_nf, d.enviada_em, n.numero_nota AS nota_origem_numero
+         FROM devolucoes d
+         JOIN notas_entrada n ON n.id = d.nota_id
+        WHERE ${conds.join(' AND ')}
+        ORDER BY ABS(COALESCE(d.diferenca_valor,0)) DESC
+        LIMIT 500`,
+      params
+    );
+    res.json({ rows });
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
@@ -234,11 +327,13 @@ router.post('/:id/upload-xml', autenticar, upload2, async (req, res) => {
               xml_anexado_em=NOW(), xml_anexado_por=$5,
               xml_content=$6, status='enviada',
               enviada_em=NOW(), enviada_por=$5,
-              pdf_content=$7, pdf_mime=$8, pdf_origem=$9
+              pdf_content=$7, pdf_mime=$8, pdf_origem=$9,
+              valor_xml=$10, valor_xml_vprod=$11, valor_xml_vst=$12
         WHERE id=$1`,
       [req.params.id, xmlInfo.chave, xmlInfo.numero, xmlInfo.data || null,
        req.usuario.nome || req.usuario.usuario, xmlText,
-       pdfBuf, pdfMime, pdfOrigem]
+       pdfBuf, pdfMime, pdfOrigem,
+       xmlInfo.vNF || null, xmlInfo.vProd || null, xmlInfo.vST || null]
     );
 
     // Notifica vendedor (se nota tem pedido_id)

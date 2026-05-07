@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NF-e — Comprador</title>
+<title>Transferências CD — Comprador</title>
 <link rel="stylesheet" href="/shared.css">
 <script src="/shared.js"></script>
 <style>
@@ -70,7 +70,7 @@ tbody tr:hover{background:#1a2744}
 <nav>
   <span class="brand">JR Lira Tech</span>
   <span style="color:#475569">/</span>
-  <span style="font-size:13px;color:#94a3b8">NF-e — Comprador</span>
+  <span style="font-size:13px;color:#94a3b8">Transferências CD / Entre lojas — Comprador</span>
   <span class="nav-user" id="nomeUsuario"></span>
   <button class="btn-nav" onclick="location.href='/'">← Início</button>
 </nav>
@@ -81,13 +81,15 @@ tbody tr:hover{background:#1a2744}
     <div class="sidebar-top">
       <select id="filtroStatus" onchange="carregarNotas()" style="flex:1;font-size:12px">
         <option value="">Todas</option>
-        <option value="importada">Importadas</option>
-        <option value="emergencial_pendente">Emergencial — Pendente</option>
-        <option value="em_validacao_cadastro">Em Validação Cadastro</option>
-        <option value="em_conferencia">Em Conferência</option>
-        <option value="fechada">Fechadas</option>
+        <option value="em_transito">Em trânsito</option>
+        <option value="recebida">Recebida</option>
+        <option value="em_conferencia">Em conferência</option>
+        <option value="conferida">Conferida</option>
+        <option value="auditagem">Em auditagem</option>
+        <option value="aguardando_devolucao">Aguardando devolução</option>
+        <option value="validada">Validadas</option>
       </select>
-      <button class="btn-primary btn-sm" onclick="abrirModalImport()">+ XML</button>
+      <label style="font-size:11px;color:#94a3b8;display:flex;align-items:center;gap:4px"><input type="checkbox" id="incluirValidadasCd" onchange="carregarNotas()" style="margin:0"> Incluir validadas</label>
     </div>
     <div class="sidebar-list" id="listaNotas"><div class="empty">Carregando...</div></div>
   </div>
@@ -197,7 +199,8 @@ async function carregarNotas() {
   const el = document.getElementById('listaNotas');
   el.innerHTML = '<div class="empty">Carregando...</div>';
   try {
-    const url = `/api/notas?origem=nfe${status ? '&status=' + status : ''}`;
+    const incluirVal = document.getElementById('incluirValidadasCd')?.checked ? '&incluir_validadas_cd=1' : '';
+    const url = `/api/notas?origem=cd,transferencia_loja${status ? '&status=' + status : ''}${incluirVal}`;
     const r = await apiFetch(`${API}${url}`);
     const notas = await r.json();
     if (!notas.length) { el.innerHTML = '<div class="empty">Nenhuma nota encontrada</div>'; return; }
@@ -311,28 +314,25 @@ async function renderAcoes(nota, itens) {
     </div>`;
 
   if (nota.status === 'importada' && !nota.pedido_id) {
-    // Inclui validado + faturado + aguardando_validacao — fornecedor pode ter CNPJs diferentes por filial/CD
+    // Busca todos os pedidos validados — fornecedor pode ter CNPJs diferentes por filial/CD
     let pedidosHtml = '<option value="">Carregando...</option>';
     try {
-      const r = await apiFetch(`${API}/api/pedidos?status=validado,faturado,aguardando_validacao`);
+      const r = await apiFetch(`${API}/api/pedidos?status=validado`);
       const pedidos = await r.json();
-      const ord = { faturado:0, validado:1, aguardando_validacao:2 };
-      pedidos.sort((a,b) => (ord[a.status] ?? 9) - (ord[b.status] ?? 9));
       pedidosHtml = pedidos.length
         ? pedidos.map(p => {
             const cnpjMatch = p.fornecedor_cnpj && nota.fornecedor_cnpj &&
               p.fornecedor_cnpj.replace(/\D/g,'') === nota.fornecedor_cnpj.replace(/\D/g,'');
-            const stTag = p.status === 'faturado' ? ' [FATURADO]' : (p.status === 'aguardando_validacao' ? ' [AG. VAL.]' : '');
-            const label = `${p.numero_pedido||'#'+p.id} — ${p.fornecedor_fantasia||p.fornecedor_nome||'—'} — ${p.loja_nome||''}${stTag}${cnpjMatch ? ' ✓' : ''}`;
+            const label = `${p.numero_pedido||'#'+p.id} — ${p.fornecedor_fantasia||p.fornecedor_nome||'—'} — ${p.loja_nome||''}${cnpjMatch ? ' ✓' : ''}`;
             return `<option value="${p.id}">${label}</option>`;
           }).join('')
-        : '<option value="">Nenhum pedido em aberto</option>';
+        : '<option value="">Nenhum pedido validado em aberto</option>';
     } catch { pedidosHtml = '<option value="">Erro ao buscar pedidos</option>'; }
 
     el.innerHTML = botoesBase + `
       <div class="card">
         <div class="card-title">Vincular a Pedido</div>
-        <p style="font-size:12px;color:#475569;margin-bottom:10px">Pedidos validados, faturados e aguardando validação são exibidos. Faturados aparecem primeiro. CNPJ coincidente: ✓.</p>
+        <p style="font-size:12px;color:#475569;margin-bottom:10px">Todos os pedidos validados em aberto são exibidos. Pedidos com CNPJ coincidente aparecem com ✓.</p>
         <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
           <select id="selPedido" style="flex:1"><option value="">-- selecione --</option>${pedidosHtml}</select>
           <button class="btn-primary" onclick="vincularPedido(this)">Vincular</button>
@@ -412,24 +412,13 @@ function renderItens(nota, itens) {
     if (dP != null && Math.abs(dP) > 1) divP++;
     if (dQ != null && Math.abs(dQ) > 0.001) divQ++;
 
-    const podeEditarEAN = ['importada','emergencial_pendente','em_validacao_cadastro'].includes(notaAtual.status);
-    const eanAtualVal = String(it.ean_validado || it.ean_trib || it.ean_nota || '').replace(/[^0-9]/g, '');
     const ean = it.ean_trib || it.ean_nota || '—';
     const eanSub = (it.ean_trib && it.ean_nota && it.ean_trib !== it.ean_nota)
       ? `<div style="font-size:10px;color:#475569">${it.ean_nota}</div>` : '';
     const fonteTag = it.ean_fonte === 'ean_trib'
       ? '<div style="font-size:10px;color:#fbbf24">via EANTrib</div>'
       : it.ean_fonte === 'ean_nota'
-      ? '<div style="font-size:10px;color:#4ade80">via EAN</div>'
-      : it.ean_fonte === 'cprod_assoc'
-      ? '<div style="font-size:10px;color:#a78bfa">via cProd assoc.</div>'
-      : it.ean_fonte === 'desc_assoc'
-      ? '<div style="font-size:10px;color:#a78bfa">via descrição assoc.</div>'
-      : it.ean_fonte === 'manual'
-      ? '<div style="font-size:10px;color:#38bdf8">manual</div>' : '';
-    const eanEdit = podeEditarEAN
-      ? `<div style="display:flex;gap:3px;margin-top:4px"><input type="text" id="ean-${it.id}" value="${eanAtualVal}" placeholder="EAN" style="width:110px;background:#0f172a;border:1px solid #334155;color:#7dd3fc;border-radius:4px;padding:3px 5px;font-size:11px;font-family:monospace"><button class="btn-primary" style="padding:2px 8px;font-size:11px" onclick="remapearEAN(${it.id}, this)">${it.produto_novo ? 'Associar' : 'Atualizar'}</button></div>`
-      : '';
+      ? '<div style="font-size:10px;color:#4ade80">via EAN</div>' : '';
 
     const rowBg = fp ? '#1a0505' : (Math.abs(dP??0)>1||Math.abs(dQ??0)>0.001) ? '#1a1200' : '';
 
@@ -457,7 +446,7 @@ function renderItens(nota, itens) {
     return `<tr style="${rowBg?'background:'+rowBg:''}" data-item="${it.id}">
       <td>${it.numero_item}</td>
       <td style="font-size:12px">${it.descricao_nota}</td>
-      <td style="font-family:monospace;font-size:11px;line-height:1.5">${ean}${eanSub}${fonteTag}${eanEdit}</td>
+      <td style="font-family:monospace;font-size:11px;line-height:1.5">${ean}${eanSub}${fonteTag}</td>
       <td style="text-align:center;color:#94a3b8">${qtdN%1===0?qtdN.toFixed(0):qtdN.toFixed(3)}</td>
       <td style="text-align:center">${embCell}</td>
       <td style="text-align:center;color:${embAtual>1?'#4ade80':'#94a3b8'};font-weight:${embAtual>1?'700':'400'}" data-qtd-un>${qtdUn%1===0?qtdUn.toFixed(0):qtdUn.toFixed(3)}</td>
@@ -474,25 +463,6 @@ function renderItens(nota, itens) {
     divP>0  ? `<span class="badge b-divergente">${divP} div.preço</span>` : '',
     divQ>0  ? `<span class="badge b-divergente">${divQ} div.qtd</span>` : '',
   ].join('');
-}
-
-// ── REMAP DE EAN ───────────────────────────────────────────────────
-async function remapearEAN(itemId, btn) {
-  const input = document.getElementById(`ean-${itemId}`);
-  const ean = (input?.value || '').trim();
-  if (!ean) { showMsg('Informe o EAN', 'err'); return; }
-  await withLoading(btn, async () => {
-    try {
-      const r = await apiFetch(`${API}/api/notas/${notaAtual.id}/itens/${itemId}/remap-ean`, {
-        method:'PATCH', body: JSON.stringify({ ean_novo: ean })
-      });
-      const d = await r.json();
-      if (!r.ok) return showMsg(d.erro || 'Erro ao associar EAN', 'err');
-      const extra = d.retroaplicados > 0 ? ` (+${d.retroaplicados} item${d.retroaplicados>1?'s':''} em outras notas)` : '';
-      showMsg(`EAN associado. Status preço: ${d.status_preco}${extra}`, 'ok');
-      abrirNota(notaAtual.id);
-    } catch (e) { showMsg('Erro ao associar EAN', 'err'); }
-  }, '...');
 }
 
 // ── AJUSTE DE EMBALAGEM (linha por linha) ─────────────────────────

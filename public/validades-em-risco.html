@@ -75,6 +75,14 @@ tbody td{padding:10px;vertical-align:top}
       <option value="4">L4 Floresta</option><option value="5">L5 São José</option><option value="6">L6 Santarém</option>
     </select>
     <input type="text" id="fQ" placeholder="Buscar descrição/EAN/MAT" oninput="debouncedCarregar()">
+    <select id="fOrd" onchange="reordenar()">
+      <option value="padrao" selected>Ordenação padrão</option>
+      <option value="cx_desc">📦 Caixas a devolver: maior → menor</option>
+      <option value="cx_asc">📦 Caixas a devolver: menor → maior</option>
+      <option value="rs_desc">💰 R$ a devolver: maior → menor</option>
+      <option value="rs_asc">💰 R$ a devolver: menor → maior</option>
+      <option value="venc_asc">📅 Validade: mais próxima primeiro</option>
+    </select>
   </div>
 
   <div id="lista"></div>
@@ -101,6 +109,7 @@ function fmtData(d){if(!d)return'—';return new Date(d).toLocaleDateString('pt-
 function fmtMoeda(v){return'R$ '+(parseFloat(v||0)).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}
 document.getElementById('nomeUsuario').textContent=localStorage.getItem('jrlira_nome')||'';
 
+let cacheRows=[];
 async function carregar(){
   const params=new URLSearchParams();
   ['fStatus','fLoja','fQ'].forEach(id=>{
@@ -110,8 +119,26 @@ async function carregar(){
   try{
     const r=await apiFetch('/api/validades-em-risco?'+params);
     const d=await r.json();
-    renderStats(d);renderLista(d.rows);
+    cacheRows=d.rows||[];
+    renderStats(d);
+    reordenar();
   }catch(e){alert('Erro: '+e.message)}
+}
+
+function getCx(r){
+  return r.qtd_em_risco_caixas != null
+    ? parseFloat(r.qtd_em_risco_caixas)
+    : Math.ceil(parseFloat(r.qtd_em_risco||0)/(parseFloat(r.qtd_embalagem)||1));
+}
+function reordenar(){
+  const ord=document.getElementById('fOrd').value;
+  const arr=cacheRows.slice();
+  if (ord==='cx_desc') arr.sort((a,b)=>getCx(b)-getCx(a));
+  else if (ord==='cx_asc') arr.sort((a,b)=>getCx(a)-getCx(b));
+  else if (ord==='rs_desc') arr.sort((a,b)=>parseFloat(b.valor_em_risco||0)-parseFloat(a.valor_em_risco||0));
+  else if (ord==='rs_asc') arr.sort((a,b)=>parseFloat(a.valor_em_risco||0)-parseFloat(b.valor_em_risco||0));
+  else if (ord==='venc_asc') arr.sort((a,b)=>parseInt(a.dias_ate_vencer||0)-parseInt(b.dias_ate_vencer||0));
+  renderLista(arr);
 }
 
 function renderStats(d){

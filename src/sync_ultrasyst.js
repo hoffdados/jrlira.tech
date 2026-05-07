@@ -158,6 +158,28 @@ async function inserirTransferencia(client, mov, lojaInfo, itens) {
     [nota_id, numero, proCodi, ean, desc, qtd, vuni, vtot, semCod]
   );
 
+  // Cruza com produtos_externo da loja destino: se houver match por EAN, popula
+  // custo_fabrica/status_preco/ean_validado pra não cair como 'sem_cadastro'.
+  await client.query(`
+    UPDATE itens_nota i
+       SET custo_fabrica = pe.custoorigem,
+           ean_validado = NULLIF(LTRIM(COALESCE(i.ean_nota,''),'0'),''),
+           ean_fonte = 'ean_nota',
+           produto_novo = FALSE,
+           status_preco = CASE
+             WHEN pe.custoorigem IS NULL OR i.preco_unitario_nota IS NULL OR i.preco_unitario_nota <= 0 THEN 'sem_cadastro'
+             WHEN ABS(i.preco_unitario_nota - pe.custoorigem) <= 0.01 THEN 'igual'
+             WHEN ABS(i.preco_unitario_nota - pe.custoorigem) > pe.custoorigem * 0.15 THEN 'auditagem'
+             WHEN i.preco_unitario_nota > pe.custoorigem THEN 'maior'
+             ELSE 'menor'
+           END
+      FROM produtos_externo pe
+     WHERE i.nota_id = $1
+       AND pe.loja_id = $2
+       AND NULLIF(LTRIM(pe.codigobarra,'0'),'') = NULLIF(LTRIM(COALESCE(i.ean_nota,''),'0'),'')
+       AND NULLIF(LTRIM(COALESCE(i.ean_nota,''),'0'),'') IS NOT NULL
+  `, [notaId, lojaInfo.id]);
+
   // Cria alertas de embalagem pendente: pra cada PRO_CODI deste item que NÃO esteja
   // 'validado' em produtos_embalagem, cria alerta vinculando a nota.
   const proCodisDistintos = [...new Set(proCodi.filter(Boolean))];
@@ -193,7 +215,8 @@ async function detectarProdutosNovosCD() {
   const todosCD = r.rows || [];
   if (!todosCD.length) return { novos: 0, ms: Date.now() - t0 };
 
-  const matCodis = todosCD.map(m => m.MAT_CODI);
+  const matCodis = todosCD.map(m => String(m.MAT_CODI || '').trim()).filter(Boolean);
+  if (!matCodis.length) return { novos: 0, ms: Date.now() - t0 };
   // Quais já existem em produtos_embalagem?
   const existentes = await dbQuery(
     `SELECT mat_codi FROM produtos_embalagem WHERE mat_codi = ANY($1::text[])`,
@@ -209,6 +232,8 @@ async function detectarProdutosNovosCD() {
   try {
     await client.query('BEGIN');
     for (const p of novos) {
+      const matCodi = String(p.MAT_CODI || '').trim();
+      if (!matCodi) continue;
       const desc = (p.MAT_DESC || '').trim();
       const eanCD = (p.EAN_CODI || '').trim() || null;
       const { qtd, confianca } = parseEmbalagem(desc);
@@ -216,17 +241,17 @@ async function detectarProdutosNovosCD() {
         `INSERT INTO produtos_embalagem
             (mat_codi, descricao_atual, qtd_sugerida, confianca_parser, status,
              ativo_no_cd, ean_principal_cd, ean_cd_synced_em, criado_em, atualizado_em)
-           VALUES ($1, $2, $3, $4, 'pendente_validacao', TRUE, $5, NOW(), NOW(), NOW())
+           VALUES ($1::text, $2::text, $3::int, $4::text, 'pendente_validacao', TRUE, $5::text, NOW(), NOW(), NOW())
            ON CONFLICT (mat_codi) DO NOTHING`,
-        [p.MAT_CODI, desc || null, qtd, confianca, eanCD]
+        [matCodi, desc || null, qtd, confianca, eanCD]
       );
       await client.query(
         `INSERT INTO alertas_admin (tipo, entidade, entidade_id, titulo, mensagem)
-           VALUES ('produto_novo_cd', 'mat_codi', $1,
-                   'Produto novo do CD: ' || $1,
-                   'Validar embalagem e EAN em /produtos-embalagem (descrição: ' || COALESCE($2,'sem desc') || ')')
+           VALUES ('produto_novo_cd', 'mat_codi', $1::text,
+                   'Produto novo do CD: ' || $1::text,
+                   'Validar embalagem e EAN em /produtos-embalagem (descrição: ' || COALESCE($2::text,'sem desc') || ')')
            ON CONFLICT (tipo, entidade, entidade_id) WHERE resolvido_em IS NULL DO NOTHING`,
-        [p.MAT_CODI, desc]
+        [matCodi, desc]
       );
     }
     await client.query('COMMIT');

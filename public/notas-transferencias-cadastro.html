@@ -55,7 +55,11 @@ nav .btn-nav:hover{background:#0284c7}
 .nh-field span{font-size:14px;color:#e2e8f0}
 .nh-actions{margin-top:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 table{width:100%;border-collapse:collapse;font-size:13px}
-thead th{background:#1e293b;padding:10px 12px;text-align:left;color:#94a3b8;font-weight:600;border-bottom:1px solid #334155;white-space:nowrap}
+thead{position:sticky;top:0;z-index:5}
+thead th{background:#1e293b;padding:10px 12px;text-align:center;color:#94a3b8;font-weight:600;border-bottom:1px solid #334155;white-space:nowrap}
+thead th:nth-child(1),thead th:nth-child(2),thead th:nth-child(3){text-align:left}
+tbody td{text-align:center}
+tbody td:nth-child(1),tbody td:nth-child(2),tbody td:nth-child(3){text-align:left}
 tbody tr{border-bottom:1px solid #1e293b}
 tbody tr:hover{background:#1a2744}
 td{padding:9px 12px;vertical-align:middle}

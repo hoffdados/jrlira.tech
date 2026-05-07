@@ -8,14 +8,16 @@
 <script src="/shared.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
-nav{background:#1e293b;padding:14px 24px;display:flex;align-items:center;gap:16px;border-bottom:1px solid #334155}
+html,body{height:100%}
+body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;overflow:hidden}
+nav{background:#1e293b;padding:14px 24px;display:flex;align-items:center;gap:16px;border-bottom:1px solid #334155;height:57px}
 .brand{font-size:16px;font-weight:700;color:#38bdf8}
 .nav-user{margin-left:auto;font-size:13px;color:#64748b}
 .btn-nav{background:#0ea5e9;color:#fff;border:none;padding:7px 14px;border-radius:6px;font-size:13px;cursor:pointer}
-.layout{display:grid;grid-template-columns:360px 1fr;min-height:calc(100vh - 57px)}
-.panel-left{border-right:1px solid #334155;overflow-y:auto}
-.panel-right{padding:20px;overflow-y:auto}
+.layout{display:grid;grid-template-columns:360px 1fr;height:calc(100vh - 57px)}
+.panel-left{border-right:1px solid #334155;overflow-y:auto;height:100%}
+.panel-right{padding:20px;overflow:auto;height:100%}
+.filter-bar{position:sticky;top:0;background:#0f172a;z-index:6}
 input,select{background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;padding:8px 12px;font-size:13px;width:100%}
 input:focus,select:focus{outline:none;border-color:#38bdf8}
 button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 14px;font-weight:600}
@@ -53,6 +55,7 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 1
 .msg-ok{background:#14532d;color:#4ade80}
 .msg-err{background:#450a0a;color:#f87171}
 table{width:100%;border-collapse:collapse;font-size:13px}
+thead{position:sticky;top:0;z-index:5}
 thead th{background:#0f172a;padding:8px 10px;text-align:center;color:#64748b;font-weight:600;border-bottom:1px solid #334155}
 thead th.al-left{text-align:left}
 tbody td{padding:8px 10px;border-bottom:1px solid #334155;vertical-align:middle;text-align:center}
@@ -91,8 +94,9 @@ tbody td.al-left{text-align:left}
     <div class="filter-bar" style="flex-direction:column;gap:6px">
       <input type="text" id="filtroBusca" placeholder="🔍 Buscar nº pedido / fornecedor..." oninput="filtrarPedidos()" style="width:100%">
       <div style="display:flex;gap:6px">
-        <select id="filtroStatus" onchange="filtrarPedidos()" style="flex:1">
+        <select id="filtroStatus" onchange="carregarPedidos()" style="flex:1">
           <option value="">Todos (exceto rascunho)</option>
+          <option value="rascunho">📝 Rascunhos (sugestão)</option>
           <option value="aguardando_validacao">Aguardando validação</option>
           <option value="aguardando_auditoria">Aguardando auditoria</option>
           <option value="validado">Validados</option>
@@ -137,6 +141,7 @@ tbody td.al-left{text-align:left}
             <div>
               <label style="font-size:12px;color:#64748b;margin-bottom:4px;display:block">Condição de pagamento</label>
               <select id="d-condicao" style="width:140px">
+                <option value="0">À vista</option>
                 <option value="7">7 dias</option>
                 <option value="14">14 dias</option>
                 <option value="21">21 dias</option>
@@ -153,16 +158,30 @@ tbody td.al-left{text-align:left}
               <input type="text" id="d-obs" placeholder="(opcional)">
             </div>
           </div>
+          <div id="boxVendedorRascunho" style="display:none;margin-top:10px;padding:10px;background:#0f172a;border:1px solid #38bdf8;border-radius:6px">
+            <label style="font-size:12px;color:#7dd3fc;margin-bottom:4px;display:block">📞 Vendedor que negociou este pedido</label>
+            <div style="display:flex;gap:8px;align-items:center">
+              <select id="d-vendedor" style="flex:1">
+                <option value="">— selecionar vendedor —</option>
+              </select>
+              <span id="d-vendedorAtual" style="font-size:11px;color:#94a3b8"></span>
+            </div>
+            <div style="font-size:11px;color:#64748b;margin-top:4px">Obrigatório pra confirmar — o sistema notifica o vendedor por email/WhatsApp.</div>
+          </div>
           <div class="aviso">⚠️ Boleto sempre em cota única — é proibido parcelar. Altere qtdes/preços se necessário antes de validar.</div>
         </div>
 
         <div class="card">
-          <div class="section-title" style="display:flex;align-items:center;gap:10px">
+          <div class="section-title" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
             Itens do Pedido
             <span id="contadorItens" style="font-size:11px;color:#475569"></span>
+            <label style="margin-left:12px;font-size:11px;color:#94a3b8;display:flex;align-items:center;gap:4px">
+              Sugestão para
+              <input type="number" id="diasSugestao" min="1" max="180" value="30" style="width:60px;padding:3px 6px;font-size:12px" oninput="atualizarDiasSugestao()">
+              dias
+            </label>
             <span style="margin-left:auto;font-size:11px;color:#475569">🔴 sem cobertura · 🟡 atenção · 🟢 ok · ✨ NOVO</span>
           </div>
-          <div style="overflow-x:auto">
           <table style="min-width:1100px">
             <thead>
               <tr>
@@ -183,7 +202,6 @@ tbody td.al-left{text-align:left}
             </thead>
             <tbody id="tbodyItens"></tbody>
           </table>
-          </div>
           <div style="text-align:right;margin-top:12px">
             <div style="font-size:12px;color:#64748b">Total do Pedido</div>
             <div class="total-val" id="d-total">R$ 0,00</div>
@@ -260,8 +278,7 @@ tbody td.al-left{text-align:left}
         </div>
         <div id="analiseCarregando" style="text-align:center;color:#475569;padding:32px">Clique em Atualizar para carregar a análise.</div>
         <div id="analiseTabela" style="display:none">
-          <div class="card" style="padding:0;overflow:hidden">
-            <div style="overflow-x:auto">
+          <div class="card" style="padding:0">
               <table id="tblAnalise" style="min-width:820px">
                 <thead>
                   <tr>
@@ -278,7 +295,6 @@ tbody td.al-left{text-align:left}
                 </thead>
                 <tbody id="tbodyAnalise"></tbody>
               </table>
-            </div>
           </div>
         </div>
       </div>
@@ -331,7 +347,9 @@ async function carregarPedidos() {
   const el = document.getElementById('listaPedidos');
   el.innerHTML = '<div style="color:#475569;text-align:center;padding:24px">Carregando...</div>';
   try {
-    const r = await apiFetch(`${API}/api/pedidos`);
+    const status = document.getElementById('filtroStatus')?.value || '';
+    const url = status ? `${API}/api/pedidos?status=${encodeURIComponent(status)}` : `${API}/api/pedidos`;
+    const r = await apiFetch(url);
     pedidosCache = await r.json();
     // Popula select de lojas (distintos do cache)
     const lojas = [...new Set(pedidosCache.map(p => p.loja_id).filter(Boolean))];
@@ -379,7 +397,7 @@ function filtrarPedidos() {
         <span class="badge ${classeStatus}">${labelStatus}</span>
       </div>
       <div class="p-forn">${escapeHtml(p.fornecedor_fantasia || p.fornecedor_nome || '—')}</div>
-      <div class="p-info">${escapeHtml(p.loja_nome||'—')} &nbsp;|&nbsp; ${escapeHtml(p.vendedor_nome||'—')} &nbsp;|&nbsp; R$ ${parseFloat(p.valor_total||0).toFixed(2).replace('.',',')}</div>
+      <div class="p-info">${escapeHtml(p.loja_nome||'—')} &nbsp;|&nbsp; ${p.status === 'rascunho' && p.criado_por_comprador ? '👤 ' + escapeHtml(p.criado_por_comprador) : escapeHtml(p.vendedor_nome||'—')} &nbsp;|&nbsp; R$ ${parseFloat(p.valor_total||0).toFixed(2).replace('.',',')}</div>
       <div class="p-info">${p.enviado_em ? 'Enviado: ' + new Date(p.enviado_em).toLocaleDateString('pt-BR') : ''}</div>
       ${nfLinha}${cancelLinha}
     </div>`;
@@ -411,7 +429,19 @@ async function selecionarPedido(id) {
   } catch { showMsg('Erro ao carregar pedido.', 'err'); }
 }
 
+function atualizarDiasSugestao() {
+  const v = parseInt(document.getElementById('diasSugestao')?.value);
+  if (Number.isFinite(v) && v >= 1) localStorage.setItem('jrlira_dias_sugestao', String(v));
+  if (pedidoAtual) renderDetalhe();
+}
+
 function renderDetalhe() {
+  const inputDias = document.getElementById('diasSugestao');
+  if (inputDias && !inputDias.dataset.init) {
+    const saved = parseInt(localStorage.getItem('jrlira_dias_sugestao'));
+    if (Number.isFinite(saved) && saved >= 1) inputDias.value = saved;
+    inputDias.dataset.init = '1';
+  }
   if (!pedidoAtual) return;
   const p = pedidoAtual;
   document.getElementById('d-num').textContent = p.numero_pedido || '#' + p.id;
@@ -433,21 +463,23 @@ function renderDetalhe() {
   document.getElementById('d-enviado').textContent = p.enviado_em ? new Date(p.enviado_em).toLocaleDateString('pt-BR') : '—';
   // Validade do preço
   const validadeEl = document.getElementById('d-validade');
+  const ehAdmin = (localStorage.getItem('jrlira_perfil') === 'admin');
   if (validadeEl) {
     if (p.preco_valido_ate) {
       const dt = new Date(p.preco_valido_ate);
       const hoje = new Date(); hoje.setHours(0,0,0,0);
       const expirou = dt < hoje;
-      validadeEl.innerHTML = `<span style="color:${expirou?'#f87171':'#4ade80'};font-weight:700">${dt.toLocaleDateString('pt-BR',{timeZone:'UTC'})}${expirou?' (expirou)':''}</span>`;
+      const sufixo = expirou ? (ehAdmin ? ' (expirou — admin pode revalidar)' : ' (expirou)') : '';
+      validadeEl.innerHTML = `<span style="color:${expirou?'#f87171':'#4ade80'};font-weight:700">${dt.toLocaleDateString('pt-BR',{timeZone:'UTC'})}${sufixo}</span>`;
     } else validadeEl.textContent = '—';
   }
-  document.getElementById('d-condicao').value = p.condicao_pagamento || 30;
+  document.getElementById('d-condicao').value = p.condicao_pagamento ?? 30;
   document.getElementById('d-obs').value = p.observacoes || '';
   // Mostra/oculta botões conforme status
   const btnRev = document.getElementById('btnRevalidar');
   if (btnRev) btnRev.style.display = p.status === 'atrasado' ? 'inline-block' : 'none';
   const btnVal = document.getElementById('btnValidar');
-  if (btnVal) btnVal.style.display = ['aguardando_validacao','validado'].includes(p.status) ? 'inline-block' : 'none';
+  if (btnVal) btnVal.style.display = ['rascunho','aguardando_validacao','validado'].includes(p.status) ? 'inline-block' : 'none';
   // PDF com token na URL (rota aceita ?token=)
   document.getElementById('btnPdf').href = `/api/pedidos/${p.id}/pdf?token=${encodeURIComponent(localStorage.getItem('jrlira_token') || '')}`;
 
@@ -484,7 +516,8 @@ function renderDetalhe() {
     totalGeral += tot;
     totalOriginal += qtdPed * precoPed;
 
-    const sugestao = (ana.media_dia || 0) > 0 ? Math.max(0, (30 * ana.media_dia) - (ana.estdisponivel || 0) - (ana.em_transito || 0)) : null;
+    const diasSug = parseInt(document.getElementById('diasSugestao')?.value) || 30;
+    const sugestao = (ana.media_dia || 0) > 0 ? Math.max(0, (diasSug * ana.media_dia) - (ana.estdisponivel || 0) - (ana.em_transito || 0)) : null;
     const flag = urgencia === 0 ? '🔴' : urgencia === 1 ? '🟡' : urgencia === 2 ? '✨' : '🟢';
     const corBgUrg = urgencia === 0 ? 'background:#1a0505' : (urgencia === 1 ? 'background:#1a1200' : '');
 
@@ -512,7 +545,7 @@ function renderDetalhe() {
               <td>${escapeHtml(a.fantasia || a.razao_social || '—')}</td>
               <td>${escapeHtml(a.vendedor_nome || '—')}</td>
               <td style="text-align:right;color:${dest};font-weight:700">R$ ${a.preco.toFixed(4).replace('.',',')}</td>
-              <td>${a.condicao_pagamento || '?'}d</td>
+              <td>${a.condicao_pagamento === 0 ? 'À vista' : (a.condicao_pagamento ? a.condicao_pagamento + 'd' : '?')}</td>
               <td>${a.preco_valido_ate ? new Date(a.preco_valido_ate).toLocaleDateString('pt-BR',{timeZone:'UTC'}) : '—'}</td>
             </tr>`;
           }).join('')}</tbody>
@@ -562,7 +595,33 @@ function renderDetalhe() {
   }
 
   const jaValidado = p.status === 'validado' || p.status === 'vinculado';
-  document.getElementById('btnValidar').textContent = jaValidado ? '✓ Re-validar e reenviar PDF' : '✓ Validar e enviar PDF ao fornecedor';
+  const ehRascunho = p.status === 'rascunho';
+  document.getElementById('btnValidar').textContent = ehRascunho
+    ? '✓ Confirmar pedido (alinhado com fornecedor)'
+    : (jaValidado ? '✓ Re-validar e reenviar PDF' : '✓ Validar e enviar PDF ao fornecedor');
+
+  // Box de seleção de vendedor (só aparece em rascunhos)
+  const box = document.getElementById('boxVendedorRascunho');
+  if (ehRascunho) {
+    box.style.display = 'block';
+    document.getElementById('d-vendedorAtual').textContent = p.vendedor_nome ? `atual: ${p.vendedor_nome}` : '(sem vendedor atribuído)';
+    carregarVendedoresFornecedor(p.fornecedor_id, p.vendedor_id);
+  } else {
+    box.style.display = 'none';
+  }
+}
+
+async function carregarVendedoresFornecedor(fornecedor_id, vendedor_atual_id) {
+  const sel = document.getElementById('d-vendedor');
+  if (!fornecedor_id) { sel.innerHTML = '<option value="">— sem fornecedor —</option>'; return; }
+  try {
+    const r = await apiFetch(`${API}/api/fornecedores/${fornecedor_id}/vendedores`);
+    const vs = await r.json();
+    sel.innerHTML = '<option value="">— selecionar vendedor —</option>' +
+      (vs || []).map(v => `<option value="${v.id}" ${vendedor_atual_id == v.id ? 'selected' : ''}>${escapeHtml(v.nome)}${v.email ? ' · ' + escapeHtml(v.email) : ''}</option>`).join('');
+  } catch (e) {
+    sel.innerHTML = '<option value="">erro ao carregar</option>';
+  }
 }
 
 let autoSaveTimer = null;
@@ -606,7 +665,7 @@ async function salvarRascunhoSilencioso() {
       method: 'PATCH',
       body: JSON.stringify({
         itens: itensPayload,
-        condicao_pagamento: parseInt(document.getElementById('d-condicao').value) || null,
+        condicao_pagamento: (() => { const v = parseInt(document.getElementById('d-condicao').value); return Number.isFinite(v) ? v : null; })(),
         observacoes: document.getElementById('d-obs').value.trim()
       })
     });
@@ -685,13 +744,37 @@ function calcularExcessosLocal() {
 async function validarPedido(btn) {
   if (!pedidoAtual) return;
 
+  const ehRascunho = pedidoAtual.status === 'rascunho';
+
+  // Se for rascunho, exige vendedor + atribui antes de validar
+  if (ehRascunho) {
+    const vendedorId = document.getElementById('d-vendedor').value;
+    if (!vendedorId) {
+      alert('Selecione o vendedor que negociou este pedido antes de confirmar.');
+      return;
+    }
+    if (vendedorId != pedidoAtual.vendedor_id) {
+      try {
+        const r = await apiFetch(`${API}/api/pedidos/${pedidoAtual.id}/atribuir-vendedor`, {
+          method: 'PATCH', body: JSON.stringify({ vendedor_id: parseInt(vendedorId) })
+        });
+        const d = await r.json();
+        if (!r.ok) { alert('Erro ao atribuir vendedor: ' + (d.erro || '')); return; }
+        pedidoAtual.vendedor_id = parseInt(vendedorId);
+      } catch (e) { alert('Erro ao atribuir vendedor: ' + e.message); return; }
+    }
+  }
+
   const excessos = calcularExcessosLocal();
   let justificativas = null;
   if (excessos.length) {
     justificativas = await pedirJustificativas(excessos);
     if (!justificativas) return; // cancelou
   } else {
-    if (!confirm('Validar pedido e enviar PDF ao fornecedor por e-mail?')) return;
+    const msgConfirm = ehRascunho
+      ? 'Confirmar pedido (alinhado com fornecedor)?\n\nO sistema vai notificar o vendedor por email/WhatsApp e gerar o PDF.\nQuando o XML chegar, é só fazer o vínculo em /notas-comprador.'
+      : 'Validar pedido e enviar PDF ao fornecedor por e-mail?';
+    if (!confirm(msgConfirm)) return;
   }
 
   const itensPayload = itensAtuais.map(i => ({

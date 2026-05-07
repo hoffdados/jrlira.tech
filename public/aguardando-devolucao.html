@@ -46,6 +46,7 @@ nav .btn-nav{background:#0ea5e9;color:#fff;border:none;padding:7px 14px;border-r
   <span class="brand">JR Lira Tech</span><span class="sep">/</span>
   <span class="page">Aguardando Devolução</span>
   <span class="user" id="nomeUsuario"></span>
+  <button class="btn-nav" onclick="location.href='/devolucoes-divergencias'">📊 Divergências</button>
   <button class="btn-nav" onclick="location.href='/'">← Início</button>
 </nav>
 
@@ -76,6 +77,8 @@ document.getElementById('nomeUsuario').textContent=localStorage.getItem('jrlira_
 async function carregar(){
   const params=new URLSearchParams();
   ['fStatus','fLoja'].forEach(id=>{const v=document.getElementById(id).value;if(v){const k={fStatus:'status',fLoja:'loja_id'}[id];params.set(k,v)}});
+  const notaQuery = new URLSearchParams(location.search).get('nota');
+  if (notaQuery) { params.set('nota_id', notaQuery); params.delete('status'); }
   try{
     const r=await apiFetch('/api/devolucoes?'+params);
     const d=await r.json();
@@ -144,7 +147,19 @@ async function renderDev(dv){
       </div>
       <div style="text-align:right">
         <span class="badge b-${dv.status}">${dv.status}</span>
-        <div style="font-size:14px;font-weight:700;color:#fbbf24;margin-top:4px">${fmtMoeda(dv.valor_total)}</div>
+        <div style="font-size:11px;color:#64748b;margin-top:6px">Esperado (sistema)</div>
+        <div style="font-size:14px;font-weight:700;color:#fbbf24">${fmtMoeda(dv.valor_total)}</div>
+        ${dv.valor_xml != null ? `
+          <div style="font-size:11px;color:#64748b;margin-top:4px">XML (fornecedor)</div>
+          <div style="font-size:14px;font-weight:700;color:#38bdf8">${fmtMoeda(dv.valor_xml)}</div>
+          ${(() => {
+            const dif = parseFloat(dv.diferenca_valor || 0);
+            if (Math.abs(dif) < 0.01) return '<div style="font-size:11px;color:#94a3b8;margin-top:4px">= sem divergência</div>';
+            const cor = dif > 0 ? '#f87171' : '#4ade80';
+            const seta = dif > 0 ? '▲' : '▼';
+            return `<div style="font-size:12px;font-weight:700;color:${cor};margin-top:4px">${seta} ${fmtMoeda(Math.abs(dif))}</div>`;
+          })()}
+        ` : ''}
       </div>
     </div>
     <div class="dev-itens">

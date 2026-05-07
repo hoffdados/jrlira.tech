@@ -642,6 +642,7 @@ function renderAcordos() {
         <th style="text-align:right">Valor confessado</th>
         <th style="text-align:right">Débito atual</th>
         <th>Status</th>
+        <th>Extrato</th>
       </tr></thead>
       <tbody>
         ${filtrados.map(a => `
@@ -657,6 +658,7 @@ function renderAcordos() {
             <td style="text-align:right;color:#fbbf24;font-weight:700">${fmtR(a.valor_confessado)}</td>
             <td style="text-align:right;color:${parseFloat(a.valor_debito_atual||0)>0?'#f87171':'#64748b'};font-weight:700">${fmtR(a.valor_debito_atual)}</td>
             <td><span class="acordos-status ${a.status}">${formatStatus(a.status)}</span></td>
+            <td><a href="/acordo-extrato?id=${a.id}" target="_blank" onclick="event.stopPropagation()" style="color:#7c3aed;text-decoration:none;font-weight:700;font-size:11px">📊 Extrato</a></td>
           </tr>`).join('')}
       </tbody>
     </table>`;

@@ -480,7 +480,7 @@ router.post('/pedido/:id/enviar', autVendedor, async (req, res) => {
     const p = rows[0];
     const itens = await dbQuery('SELECT id FROM itens_pedido WHERE pedido_id=$1', [p.id]);
     if (!itens.length) return res.status(400).json({ erro: 'Adicione ao menos um item antes de enviar' });
-    if (!p.condicao_pagamento) return res.status(400).json({ erro: 'Informe a condição de pagamento' });
+    if (p.condicao_pagamento == null) return res.status(400).json({ erro: 'Informe a condição de pagamento' });
 
     const numero_pedido = await gerarNumeroPedido(p.loja_id, p.loja_cnpj);
     await dbQuery(

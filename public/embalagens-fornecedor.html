@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Embalagens Fornecedor — JR Lira Tech</title>
+<link rel="stylesheet" href="/shared.css">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; padding: 24px; }
+.wrap { max-width: 1280px; margin: 0 auto; }
+.header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+.h-title { font-family: 'Segoe UI Black', sans-serif; font-weight: 900; font-size: 24px; color: #38bdf8; letter-spacing: -0.5px; }
+.h-back { font-size: 12px; color: #475569; text-decoration: none; }
+.h-back:hover { color: #94a3b8; }
+
+.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-bottom: 24px; }
+.stat { background: #1e293b; border-radius: 10px; padding: 16px; }
+.stat-label { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+.stat-value { font-size: 24px; font-weight: 700; margin-top: 4px; }
+.stat-value.warn { color: #fbbf24; }
+.stat-value.ok { color: #4ade80; }
+.stat-value.muted { color: #64748b; }
+
+.toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+.toolbar input, .toolbar select { padding: 8px 12px; background: #1e293b; border: 1px solid #334155; border-radius: 8px; color: #e2e8f0; font-size: 13px; min-width: 200px; }
+.toolbar button { padding: 8px 16px; background: #0ea5e9; border: none; border-radius: 8px; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; }
+.toolbar button.ghost { background: transparent; border: 1px solid #334155; color: #94a3b8; }
+.toolbar button:hover { opacity: 0.85; }
+
+.lista { background: #1e293b; border-radius: 12px; overflow: hidden; }
+.row { display: grid; grid-template-columns: 130px 1fr 200px 70px 80px 90px 200px; gap: 10px; padding: 12px 16px; border-bottom: 1px solid #1e3148; align-items: center; font-size: 12px; }
+.row.head { background: #0f2a3f; font-size: 11px; text-transform: uppercase; color: #64748b; letter-spacing: 0.5px; font-weight: 700; }
+.row:last-child { border-bottom: none; }
+.row.pendente { background: #1c2a3f; box-shadow: inset 3px 0 0 #38bdf8; }
+.row.ignorado { opacity: 0.5; }
+.code { font-family: 'Cascadia Code', 'Consolas', monospace; color: #94a3b8; font-size: 12px; }
+.desc { color: #cbd5e1; }
+.badge { display: inline-block; padding: 2px 7px; border-radius: 5px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+.b-pendente_validacao { background: #ca8a0444; color: #fbbf24; }
+.b-validado { background: #16a34a44; color: #4ade80; }
+.b-ignorado { background: #44444444; color: #94a3b8; }
+.b-alta { background: #16a34a44; color: #4ade80; }
+.b-media { background: #ca8a0444; color: #fbbf24; }
+.acoes { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.acoes button { padding: 5px 10px; font-size: 11px; border: none; border-radius: 6px; cursor: pointer; font-weight: 700; }
+.acoes .aceitar { background: #16a34a; color: #fff; }
+.acoes .salvar { background: #0ea5e9; color: #fff; }
+.acoes .ignorar { background: transparent; color: #64748b; border: 1px solid #334155; }
+.empty { padding: 60px; text-align: center; color: #64748b; font-size: 14px; }
+.paginador { display: flex; gap: 8px; justify-content: center; padding: 16px; }
+.paginador button { padding: 6px 14px; background: #1e293b; border: 1px solid #334155; color: #e2e8f0; border-radius: 6px; cursor: pointer; font-size: 12px; }
+.paginador button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.modal { position: fixed; top:0; left:0; right:0; bottom:0; width:100vw; height:100vh; background: rgba(0,0,0,0.7); display: none; align-items: center; justify-content: center; z-index: 1000; }
+.modal.show { display: flex !important; }
+.modal-box { background: #1e293b; border-radius: 12px; padding: 24px; width: 460px; max-width: 90vw; margin: auto; max-height: 90vh; overflow-y: auto; }
+.modal h3 { color: #38bdf8; margin-bottom: 16px; font-size: 18px; }
+.modal label { display: block; font-size: 11px; color: #94a3b8; text-transform: uppercase; margin-top: 12px; margin-bottom: 4px; letter-spacing: 0.5px; }
+.modal input, .modal textarea { width: 100%; padding: 8px 12px; background: #0f172a; border: 1px solid #334155; border-radius: 6px; color: #e2e8f0; }
+.modal-act { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+.modal-act button { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px; }
+.modal-act .cancel { background: transparent; color: #94a3b8; border: 1px solid #334155; }
+.modal-act .confirm { background: #0ea5e9; color: #fff; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="header">
+    <div>
+      <div class="h-title">📦 Embalagens — Fornecedor (NF-e)</div>
+      <a class="h-back" href="/">← voltar</a>
+      <a class="h-back" href="/produtos-embalagem" style="margin-left:12px">CD →</a>
+    </div>
+  </div>
+
+  <div class="stats" id="stats"></div>
+
+  <div id="rankingPanel" style="background:#1e293b;border-radius:12px;padding:16px;margin-bottom:16px;display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h3 style="color:#fbbf24;font-size:16px">🏆 Ranking — Coleta de Embalagens</h3>
+      <button onclick="document.getElementById('rankingBox').classList.toggle('show');this.textContent=this.textContent==='Ocultar'?'Mostrar':'Ocultar'" style="background:transparent;border:1px solid #334155;color:#94a3b8;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:11px">Ocultar</button>
+    </div>
+    <div id="rankingBox" class="show" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px"></div>
+  </div>
+
+  <div class="toolbar">
+    <select id="fStatus" onchange="carregar()">
+      <option value="pendente_validacao" selected>Pendentes</option>
+      <option value="validado">Validados</option>
+      <option value="ignorado">Ignorados</option>
+      <option value="">Todos</option>
+    </select>
+    <input id="fForn" placeholder="🔎 Fornecedor (CNPJ ou nome)" oninput="debouncedCarregar()">
+    <input id="fQ" placeholder="🔎 EAN ou descrição" oninput="debouncedCarregar()">
+    <button onclick="aceitarMassa()" title="Aceita todas pendentes com confiança ALTA">✓ Aceitar todas com confiança ALTA</button>
+    <button onclick="abrirCadastro()" style="background:#16a34a">+ Cadastrar embalagem</button>
+  </div>
+
+  <div class="lista" id="lista"></div>
+  <div class="paginador" id="paginador"></div>
+</div>
+
+<div class="modal" id="modalCadastro">
+  <div class="modal-box" style="width:600px;max-width:92vw">
+    <h3>+ Cadastrar embalagem</h3>
+    <div style="font-size:11px;color:#94a3b8;margin-bottom:8px">Útil pra fornecedores antigos que não vieram com qtd no XML.</div>
+    <label>EAN (código de barras)</label>
+    <input type="text" id="cadEan" placeholder="Ex: 7896005400029" oninput="buscarSugestaoCadastro()">
+    <div id="cadInfo" style="font-size:11px;color:#64748b;margin-top:4px;min-height:14px"></div>
+    <label>Descrição (opcional)</label>
+    <input type="text" id="cadDesc" placeholder="Auto-preenchido se EAN existir no histórico">
+    <label>Fornecedor — Nome</label>
+    <input type="text" id="cadFornNome" placeholder="Ex: CENTRO NORTE ATACADISTA FL02">
+    <label>Fornecedor — CNPJ (opcional, mas recomendado)</label>
+    <input type="text" id="cadFornCnpj" placeholder="Ex: 28955327000217">
+    <label>Quantidade por caixa</label>
+    <input type="number" id="cadQtd" min="1" placeholder="Ex: 12">
+    <label>Observação (opcional)</label>
+    <input type="text" id="cadObs">
+    <div class="modal-act">
+      <button class="cancel" onclick="document.getElementById('modalCadastro').classList.remove('show')">Cancelar</button>
+      <button class="confirm" onclick="salvarCadastro()">Cadastrar e validar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="modalEdit">
+  <div class="modal-box">
+    <h3>Definir quantidade por caixa</h3>
+    <div id="modalDesc" style="font-size:12px;color:#94a3b8;margin-bottom:8px"></div>
+    <div id="modalForn" style="font-size:11px;color:#64748b"></div>
+    <label>Quantidade por caixa</label>
+    <input type="number" id="modalQtd" min="1">
+    <label>Observação (opcional)</label>
+    <input type="text" id="modalObs">
+    <div class="modal-act">
+      <button class="cancel" onclick="fecharModal()">Cancelar</button>
+      <button class="confirm" onclick="salvarManual()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<script src="/shared.js"></script>
+<script>
+let pagina = 0;
+const POR_PAGINA = 50;
+let totalPagina = 0;
+let timer = null;
+let alvoEdicao = null;
+
+function debouncedCarregar() { clearTimeout(timer); timer = setTimeout(() => { pagina = 0; carregar(); }, 300); }
+
+async function carregar() {
+  const status = document.getElementById('fStatus').value;
+  const forn = document.getElementById('fForn').value.trim();
+  const q = document.getElementById('fQ').value.trim();
+  const params = new URLSearchParams();
+  if (status) params.set('status', status);
+  if (forn) params.set('fornecedor_cnpj', forn);
+  if (q) params.set('q', q);
+  params.set('limit', POR_PAGINA);
+  params.set('offset', pagina * POR_PAGINA);
+  try {
+    const r = await apiFetch(`/api/embalagens-fornecedor?${params}`);
+    const data = await r.json();
+    totalPagina = data.total;
+    renderLista(data.rows);
+    renderPaginador();
+  } catch (e) { alert('Erro: ' + e.message); }
+  carregarStats();
+  carregarRanking();
+}
+
+async function carregarRanking() {
+  try {
+    const r = await apiFetch('/api/embalagens-fornecedor/ranking');
+    const d = await r.json();
+    if (!d.total || !d.total.length) { document.getElementById('rankingPanel').style.display = 'none'; return; }
+    document.getElementById('rankingPanel').style.display = 'block';
+    const mesMap = Object.fromEntries((d.mes || []).map((m, i) => [m.validado_por, { pos: i+1, qtd: m.qtd }]));
+    const semanaMap = Object.fromEntries((d.semana || []).map(s => [s.validado_por, s.qtd]));
+    const html = d.total.slice(0, 12).map((u, i) => {
+      const mesInfo = mesMap[u.validado_por];
+      const semInfo = semanaMap[u.validado_por] || 0;
+      const corPos = i === 0 ? '#fbbf24' : i === 1 ? '#cbd5e1' : i === 2 ? '#d97706' : '#475569';
+      return `<div style="background:#0f172a;border-radius:8px;padding:12px;border-left:3px solid ${corPos}">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <span style="font-size:18px">${u.emoji}</span>
+          <strong style="color:#e2e8f0;font-size:14px">${escapeHtml(u.validado_por)}</strong>
+        </div>
+        <div style="font-size:11px;color:#94a3b8;display:grid;grid-template-columns:1fr 1fr;gap:4px">
+          <div><span style="color:#64748b">Total:</span> <strong style="color:#38bdf8">${u.total}</strong></div>
+          <div><span style="color:#64748b">Nível:</span> <strong style="color:#fbbf24">${u.nivel}</strong></div>
+          <div><span style="color:#64748b">Mês:</span> <strong style="color:#4ade80">${mesInfo ? mesInfo.qtd : 0}${mesInfo && mesInfo.pos <= 3 ? ' #' + mesInfo.pos : ''}</strong></div>
+          <div><span style="color:#64748b">Semana:</span> <strong>${semInfo}</strong></div>
+          <div><span style="color:#64748b">Streak:</span> <strong style="color:${u.streak_atual > 0 ? '#f97316' : '#475569'}">${u.streak_atual > 0 ? '🔥 ' + u.streak_atual + 'd' : '—'}</strong></div>
+          <div><span style="color:#64748b">Dias ativos:</span> <strong>${u.dias_ativos}</strong></div>
+        </div>
+      </div>`;
+    }).join('');
+    document.getElementById('rankingBox').innerHTML = html;
+  } catch {}
+}
+
+async function carregarStats() {
+  try {
+    const r = await apiFetch('/api/embalagens-fornecedor/stats');
+    const d = await r.json();
+    const m = Object.fromEntries((d.por_status || []).map(s => [s.status, s.qtd]));
+    const top = (d.top_fornecedores_pendentes || []).slice(0, 3);
+    document.getElementById('stats').innerHTML = `
+      <div class="stat"><div class="stat-label">Pendentes</div><div class="stat-value warn">${(m.pendente_validacao || 0).toLocaleString('pt-BR')}</div></div>
+      <div class="stat"><div class="stat-label">Validados</div><div class="stat-value ok">${(m.validado || 0).toLocaleString('pt-BR')}</div></div>
+      <div class="stat"><div class="stat-label">Ignorados</div><div class="stat-value muted">${(m.ignorado || 0).toLocaleString('pt-BR')}</div></div>
+      ${top.length ? `<div class="stat" style="grid-column:span 2"><div class="stat-label">Top fornecedores pendentes</div><div style="font-size:11px;line-height:1.5">${top.map(t => `${escapeHtml(t.fornecedor_nome)} (${t.qtd})`).join('<br>')}</div></div>` : ''}
+    `;
+  } catch {}
+}
+
+function renderLista(rows) {
+  const el = document.getElementById('lista');
+  if (!rows.length) { el.innerHTML = '<div class="empty">Nenhum item.</div>'; return; }
+  let html = `<div class="row head">
+    <div>EAN</div><div>Descrição</div><div>Fornecedor</div>
+    <div>Qtd val.</div><div>Sug NF-e</div><div>Status</div><div>Ações</div>
+  </div>`;
+  for (const r of rows) {
+    const cls = r.status === 'pendente_validacao' ? 'pendente' : (r.status === 'ignorado' ? 'ignorado' : '');
+    const conf = r.qtd_sugerida_nfe_confianca ? `<span class="badge b-${r.qtd_sugerida_nfe_confianca}">${r.qtd_sugerida_nfe_confianca}</span>` : '';
+    const sug = r.qtd_sugerida_nfe != null ? `${r.qtd_sugerida_nfe} ${conf}` : '—';
+    const acoes = r.status === 'pendente_validacao'
+      ? `${r.qtd_sugerida_nfe != null ? `<button class="aceitar" onclick="aceitarSug(${r.id}, ${r.qtd_sugerida_nfe})">📥 Aceitar ${r.qtd_sugerida_nfe}</button>` : ''}
+         <button class="salvar" onclick='editar(${JSON.stringify(r)})'>Manual</button>
+         <button class="ignorar" onclick="ignorar(${r.id})" title="Ignorar sugestão">✕</button>`
+      : `<button class="ignorar" onclick='editar(${JSON.stringify(r)})'>Edit</button>`;
+    html += `<div class="row ${cls}">
+      <div class="code">${escapeHtml(r.ean || '—')}</div>
+      <div class="desc">${escapeHtml(r.descricao || '—')}</div>
+      <div style="font-size:11px;color:#94a3b8">${escapeHtml(r.fornecedor_nome || '—')}<br><span class="code" style="font-size:10px">${escapeHtml(r.fornecedor_cnpj || '')}</span></div>
+      <div style="text-align:center;font-weight:700">${r.qtd_por_caixa != null ? r.qtd_por_caixa : '—'}</div>
+      <div style="text-align:center">${sug}</div>
+      <div><span class="badge b-${r.status}">${r.status.replace('_', ' ')}</span></div>
+      <div class="acoes">${acoes}</div>
+    </div>`;
+  }
+  el.innerHTML = html;
+}
+
+function renderPaginador() {
+  const totalPaginas = Math.ceil(totalPagina / POR_PAGINA);
+  const el = document.getElementById('paginador');
+  if (totalPaginas <= 1) { el.innerHTML = `<div style="font-size:12px;color:#64748b">Total: ${totalPagina}</div>`; return; }
+  el.innerHTML = `
+    <button onclick="pagina=Math.max(0,pagina-1);carregar()" ${pagina === 0 ? 'disabled' : ''}>← Anterior</button>
+    <span style="padding:6px 12px;font-size:12px;color:#94a3b8">Pág. ${pagina+1} de ${totalPaginas} (${totalPagina} itens)</span>
+    <button onclick="pagina=Math.min(totalPaginas-1,pagina+1);carregar()" ${pagina+1 >= totalPaginas ? 'disabled' : ''}>Próximo →</button>
+  `;
+}
+
+async function aceitarSug(id, qtd) {
+  if (!confirm(`Validar qtd ${qtd} (vinda da NF-e do fornecedor)?`)) return;
+  try {
+    const r = await apiFetch(`/api/embalagens-fornecedor/${id}/aceitar-sugestao`, { method: 'POST' });
+    if (!r.ok) throw new Error((await r.json()).erro);
+    carregar();
+  } catch (e) { alert('Erro: ' + e.message); }
+}
+
+async function ignorar(id) {
+  if (!confirm('Ignorar esta sugestão?')) return;
+  try {
+    const r = await apiFetch(`/api/embalagens-fornecedor/${id}/ignorar`, { method: 'POST' });
+    if (!r.ok) throw new Error((await r.json()).erro);
+    carregar();
+  } catch (e) { alert('Erro: ' + e.message); }
+}
+
+function editar(row) {
+  alvoEdicao = row;
+  document.getElementById('modalDesc').textContent = row.descricao || '—';
+  document.getElementById('modalForn').textContent = `${row.fornecedor_nome || ''} ${row.fornecedor_cnpj || ''}`.trim();
+  document.getElementById('modalQtd').value = row.qtd_por_caixa || row.qtd_sugerida_nfe || 1;
+  document.getElementById('modalObs').value = row.observacao || '';
+  document.getElementById('modalEdit').classList.add('show');
+}
+
+function fecharModal() { document.getElementById('modalEdit').classList.remove('show'); alvoEdicao = null; }
+
+async function salvarManual() {
+  if (!alvoEdicao) return;
+  const qtd = parseInt(document.getElementById('modalQtd').value);
+  const obs = document.getElementById('modalObs').value.trim();
+  if (!qtd || qtd < 1) { alert('Quantidade inválida'); return; }
+  try {
+    const r = await apiFetch(`/api/embalagens-fornecedor/${alvoEdicao.id}/validar`, {
+      method: 'POST', body: JSON.stringify({ qtd_por_caixa: qtd, observacao: obs || null })
+    });
+    if (!r.ok) throw new Error((await r.json()).erro);
+    fecharModal();
+    carregar();
+  } catch (e) { alert('Erro: ' + e.message); }
+}
+
+function abrirCadastro() {
+  document.getElementById('cadEan').value = '';
+  document.getElementById('cadDesc').value = '';
+  document.getElementById('cadFornNome').value = '';
+  document.getElementById('cadFornCnpj').value = '';
+  document.getElementById('cadQtd').value = '';
+  document.getElementById('cadObs').value = '';
+  document.getElementById('cadInfo').textContent = '';
+  document.getElementById('modalCadastro').classList.add('show');
+}
+
+let cadTimer = null;
+function buscarSugestaoCadastro() {
+  clearTimeout(cadTimer);
+  const ean = document.getElementById('cadEan').value.trim().replace(/\D/g, '').replace(/^0+/, '');
+  if (!ean || ean.length < 8) { document.getElementById('cadInfo').textContent = ''; return; }
+  cadTimer = setTimeout(async () => {
+    try {
+      const r = await apiFetch(`/api/embalagens-fornecedor/lookup?q=${encodeURIComponent(ean)}`);
+      const arr = await r.json();
+      if (arr.length) {
+        const top = arr[0];
+        document.getElementById('cadInfo').innerHTML = `🔎 Achei no histórico: <strong>${escapeHtml((top.descricao || '').trim())}</strong> · ${escapeHtml(top.fornecedor_nome || '?')} ${top.fornecedor_cnpj ? '('+top.fornecedor_cnpj+')' : ''}`;
+        if (!document.getElementById('cadDesc').value) document.getElementById('cadDesc').value = (top.descricao || '').trim();
+        if (!document.getElementById('cadFornNome').value) document.getElementById('cadFornNome').value = top.fornecedor_nome || '';
+        if (!document.getElementById('cadFornCnpj').value) document.getElementById('cadFornCnpj').value = top.fornecedor_cnpj || '';
+      } else {
+        document.getElementById('cadInfo').textContent = 'EAN não encontrado no histórico — preencha manualmente.';
+      }
+    } catch {}
+  }, 400);
+}
+
+async function salvarCadastro() {
+  const ean = document.getElementById('cadEan').value.trim();
+  const descricao = document.getElementById('cadDesc').value.trim();
+  const fornecedor_nome = document.getElementById('cadFornNome').value.trim();
+  const fornecedor_cnpj = document.getElementById('cadFornCnpj').value.trim();
+  const qtd_por_caixa = parseInt(document.getElementById('cadQtd').value);
+  const observacao = document.getElementById('cadObs').value.trim();
+  if (!ean) { alert('EAN obrigatório'); return; }
+  if (!qtd_por_caixa || qtd_por_caixa < 1) { alert('Qtd por caixa inválida'); return; }
+  try {
+    const r = await apiFetch('/api/embalagens-fornecedor', {
+      method: 'POST',
+      body: JSON.stringify({ ean, descricao, fornecedor_nome, fornecedor_cnpj, qtd_por_caixa, observacao })
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.erro);
+    alert(`Cadastrado! ${d.recalculados ? d.recalculados + ' itens já importados foram recalculados.' : ''}`);
+    document.getElementById('modalCadastro').classList.remove('show');
+    carregar();
+  } catch (e) { alert('Erro: ' + e.message); }
+}
+
+async function aceitarMassa() {
+  if (!confirm('Validar TODAS as sugestões pendentes com confiança ALTA?')) return;
+  try {
+    const r = await apiFetch('/api/embalagens-fornecedor/aceitar-sugestao-massa', {
+      method: 'POST', body: JSON.stringify({ confianca: 'alta' })
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.erro);
+    alert(`${d.atualizados} sugestões aceitas.`);
+    carregar();
+  } catch (e) { alert('Erro: ' + e.message); }
+}
+
+carregar();
+</script>
+</body>
+</html>

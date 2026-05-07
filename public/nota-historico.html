@@ -54,7 +54,8 @@ th{background:#f1f5f9;color:#0f172a;font-size:10px;text-transform:uppercase;font
 function fmtData(d){if(!d)return'—';return new Date(d).toLocaleDateString('pt-BR',{timeZone:'UTC'})}
 function fmtDH(d){if(!d)return'—';return new Date(d).toLocaleString('pt-BR')}
 function fmtMoeda(v){return'R$ '+(parseFloat(v||0)).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}
-const LOJAS={1:'L1 ECONOMICO',2:'L2 BR',3:'L3 JOÃO PESSOA',4:'L4 FLORESTA',5:'L5 SÃO JOSÉ',6:'L6 SANTARÉM'};
+function escHtml(s){if(s==null)return'';return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+// LOJAS já vem global de shared.js
 
 const notaId = new URL(location.href).searchParams.get('id');
 
@@ -62,10 +63,20 @@ async function carregar(){
   if (!notaId) { document.getElementById('root').innerHTML='ID não informado'; return; }
   try{
     const r = await apiFetch('/api/notas/'+notaId+'/historico');
-    if (!r.ok) throw new Error((await r.json()).erro);
+    if (!r.ok) {
+      let erroMsg = 'HTTP ' + r.status;
+      try { erroMsg = (await r.json()).erro || erroMsg; } catch {}
+      throw new Error(erroMsg);
+    }
     const d = await r.json();
-    render(d);
-  }catch(e){document.getElementById('root').innerHTML='Erro: '+e.message}
+    if (!d || !d.nota) { document.getElementById('root').innerHTML='Resposta vazia do servidor'; return; }
+    try {
+      render(d);
+    } catch (renderErr) {
+      console.error('Erro no render:', renderErr);
+      document.getElementById('root').innerHTML = 'Erro ao renderizar: ' + renderErr.message + '<br><br><pre style="font-size:10px;background:#f1f5f9;padding:10px;overflow:auto">' + JSON.stringify(d, null, 2).slice(0, 5000) + '</pre>';
+    }
+  }catch(e){document.getElementById('root').innerHTML='Erro ao carregar: '+e.message}
 }
 
 function render(d){
@@ -74,6 +85,21 @@ function render(d){
   const titulo = isCD
     ? `Transferência CD — MCP ${n.cd_mov_codi}`
     : `NF ${n.numero_nota}/${n.serie||''} — ${n.fornecedor_nome||''}`;
+
+  // Calcula diff total vs último preço fornecedor
+  let diffTotalReais = 0, diffItensCount = 0;
+  for (const it of (d.itens||[])) {
+    if (it.diff_total != null) { diffTotalReais += parseFloat(it.diff_total); diffItensCount++; }
+  }
+  const diffCor = diffTotalReais > 0.01 ? '#dc2626' : (diffTotalReais < -0.01 ? '#16a34a' : '#475569');
+  const diffLabel = diffTotalReais > 0.01 ? '⚠ AUMENTO' : (diffTotalReais < -0.01 ? '✓ ECONOMIA' : '— neutro');
+  const diffSinal = diffTotalReais > 0 ? '+' : '';
+
+  // Origem
+  let origemTxt = '—';
+  if (d.pedido) origemTxt = `📋 Pedido <strong>#${d.pedido.numero_pedido||d.pedido.id}</strong>${d.pedido.vendedor_nome?' (vendedor: '+escHtml(d.pedido.vendedor_nome)+')':''}`;
+  else if (n.emergencial) origemTxt = '🚨 Emergencial (sem pedido)';
+  else origemTxt = '📥 Importação direta';
 
   let html = `
     <div class="header">
@@ -84,15 +110,22 @@ function render(d){
     <div class="section">
       <h2>Dados da Nota</h2>
       <div class="grid">
-        <div class="field"><label>Origem</label><span>${n.origem||'nfe'}</span></div>
-        <div class="field"><label>Fornecedor</label><span>${n.fornecedor_nome||'—'}</span></div>
-        <div class="field"><label>CNPJ</label><span>${n.fornecedor_cnpj||'—'}</span></div>
+        <div class="field"><label>Fornecedor</label><span>${escHtml(n.fornecedor_nome||'—')}</span></div>
+        <div class="field"><label>CNPJ</label><span>${escHtml(n.fornecedor_cnpj||'—')}</span></div>
+        <div class="field"><label>Origem</label><span>${origemTxt}</span></div>
         <div class="field"><label>Data Emissão</label><span>${fmtData(n.data_emissao)}</span></div>
-        <div class="field"><label>Data Recebimento</label><span>${fmtData(n.data_recebimento)}</span></div>
+        <div class="field"><label>Data Recebimento</label><span>${fmtData(n.data_recebimento) !== '—' ? fmtData(n.data_recebimento) : (n.recebida_em ? fmtData(n.recebida_em) : (n.importado_em ? fmtData(n.importado_em) : '—'))}</span></div>
         <div class="field"><label>Valor Total</label><span>${fmtMoeda(n.valor_total)}</span></div>
-        <div class="field"><label>Importado por</label><span>${n.importado_por||'—'}</span></div>
+        <div class="field"><label>Importado por</label><span>${escHtml(n.importado_por||'—')}</span></div>
         <div class="field"><label>Importado em</label><span>${fmtDH(n.importado_em)}</span></div>
+        ${n.fechado_em?`<div class="field"><label>Fechada em</label><span>${fmtDH(n.fechado_em)}</span></div>`:''}
       </div>
+      ${diffItensCount > 0 ? `
+      <div style="margin-top:14px;padding:10px;background:${diffTotalReais > 0.01 ? '#fee2e2' : (diffTotalReais < -0.01 ? '#dcfce7' : '#f1f5f9')};border-radius:6px;border-left:4px solid ${diffCor}">
+        <div style="font-size:11px;color:#475569;text-transform:uppercase;letter-spacing:.05em">Comparativo vs último preço pago do fornecedor</div>
+        <div style="font-size:18px;font-weight:700;color:${diffCor};margin-top:4px">${diffLabel}: ${diffSinal}${fmtMoeda(diffTotalReais)}</div>
+        <div style="font-size:11px;color:#64748b;margin-top:2px">${diffItensCount} de ${d.itens.length} itens com histórico de compra anterior. Ganho/perda calculado contra a última nota desse fornecedor pra cada EAN.</div>
+      </div>` : ''}
     </div>`;
 
   // Pedido B2B (se houver)
@@ -127,13 +160,49 @@ function render(d){
       </div>`;
   }
 
-  // Timeline
-  html += `<div class="section"><h2>Timeline</h2><div class="timeline">`;
-  if (n.cd_synced_em) html += `<div class="evt ok"><strong>Sincronizada do CD</strong> <small>(${fmtDH(n.cd_synced_em)})</small></div>`;
-  if (n.recebida_em) html += `<div class="evt ok"><strong>Estoque marcou recebida</strong> por ${n.recebida_por||'?'} <small>(${fmtDH(n.recebida_em)})</small></div>`;
-  if (n.liberada_em) html += `<div class="evt ok"><strong>Cadastro liberou pro estoque</strong> por ${n.liberada_por||'?'} <small>(${fmtDH(n.liberada_em)})</small></div>`;
-  if (n.conferida_em) html += `<div class="evt ${n.conferida_com_divergencia?'warn':'ok'}"><strong>Estoque finalizou conferência</strong> por ${n.conferida_por||'?'} <small>(${fmtDH(n.conferida_em)})</small> — ${n.conferida_com_divergencia?'COM divergência':'sem divergência'}</div>`;
-  if (n.validada_em) html += `<div class="evt ok"><strong>Cadastro validou a nota</strong> por ${n.validada_por||'?'} <small>(${fmtDH(n.validada_em)})</small></div>`;
+  // Timeline — coleta eventos de várias fontes e ordena por data
+  const eventos = [];
+  if (n.cd_synced_em) eventos.push({ d:n.cd_synced_em, t:'ok', txt:`<strong>Sincronizada do CD</strong>` });
+  if (n.importado_em) eventos.push({ d:n.importado_em, t:'ok', txt:`<strong>NF-e importada</strong> por ${n.importado_por||'?'}` });
+  if (n.emergencial && n.importado_em) eventos.push({ d:n.importado_em, t:'warn', txt:`<strong>Marcada como emergencial</strong>` });
+  if (n.liberada_em) eventos.push({ d:n.liberada_em, t:'ok', txt:`<strong>Cadastro liberou pro estoque</strong> por ${n.liberada_por||'?'}` });
+  if (n.recebida_em) eventos.push({ d:n.recebida_em, t:'ok', txt:`<strong>Estoque marcou recebida</strong> por ${n.recebida_por||'?'}` });
+  // Conferências por rodada (NF-e)
+  for (const i of d.itens) {
+    if (i.conferencias) {
+      for (const c of i.conferencias) {
+        if (c.conferido_em) eventos.push({ d:c.conferido_em, t: c.status==='ok'?'ok':'warn', txt:`<strong>Conferência item ${i.numero_item} — rodada ${c.rodada}</strong> por ${c.conferido_por||'?'} (${c.qtd_contada||0} un, status ${c.status||'?'})`, sub:i.descricao_nota });
+      }
+    }
+    if (i.auditoria && i.auditoria.auditado_em) eventos.push({ d:i.auditoria.auditado_em, t: i.auditoria.status==='ok'?'ok':'warn', txt:`<strong>Auditoria item ${i.numero_item}</strong> por ${i.auditoria.auditado_por||'?'} (${i.auditoria.qtd_contada||0} un)`, sub:i.descricao_nota });
+  }
+  if (n.conferida_em) eventos.push({ d:n.conferida_em, t: n.conferida_com_divergencia?'warn':'ok', txt:`<strong>Conferência finalizada</strong> por ${n.conferida_por||'?'} — ${n.conferida_com_divergencia?'COM divergência':'sem divergência'}` });
+  if (n.fechado_em) eventos.push({ d:n.fechado_em, t:'ok', txt:`<strong>Nota fechada</strong>` });
+  if (n.validada_em) eventos.push({ d:n.validada_em, t:'ok', txt:`<strong>Cadastro validou a nota</strong> por ${n.validada_por||'?'}` });
+  // Devoluções
+  for (const dv of (d.devolucoes||[])) {
+    if (dv.criado_em) eventos.push({ d:dv.criado_em, t:'warn', txt:`<strong>Devolução criada #${dv.id}</strong> — ${dv.destinatario_nome} — motivo ${dv.motivo}` });
+    if (dv.xml_anexado_em) eventos.push({ d:dv.xml_anexado_em, t:'ok', txt:`<strong>XML de devolução anexado</strong> por ${dv.xml_anexado_por||'?'} — NF ${dv.xml_numero_nf||'?'}` });
+    if (dv.enviada_em) eventos.push({ d:dv.enviada_em, t:'ok', txt:`<strong>Devolução enviada ao fornecedor</strong> por ${dv.enviada_por||'?'}` });
+    if (dv.vendedor_notificado_em) eventos.push({ d:dv.vendedor_notificado_em, t:'ok', txt:`<strong>Vendedor notificado</strong> via ${dv.vendedor_notificacao_canais||'?'} (${dv.vendedor_notificacao_status||'?'})` });
+  }
+  // Decisões de validade em risco
+  for (const i of d.itens) {
+    for (const v of (i.validades_risco||[])) {
+      if (v.decidido_em) eventos.push({ d:v.decidido_em, t: v.status==='liberado'?'ok':'warn', txt:`<strong>Validade decidida (${v.status})</strong> por ${v.decidido_por||'?'} — item ${i.numero_item}`, sub:i.descricao_nota });
+    }
+  }
+  // Logs de alteração de embalagem (NF-e)
+  for (const l of (d.logsEmbalagem||[])) {
+    eventos.push({ d:l.alterado_em, t:'ok', txt:`<strong>Embalagem ajustada</strong> ${l.qtd_anterior||1}→${l.qtd_novo} por ${l.alterado_por||'?'} (${l.origem})`, sub:l.descricao_nota });
+  }
+  eventos.sort((a,b) => new Date(a.d) - new Date(b.d));
+
+  html += `<div class="section"><h2>Timeline (${eventos.length} eventos)</h2><div class="timeline">`;
+  if (!eventos.length) html += `<div style="color:#64748b;padding:8px">Sem eventos registrados.</div>`;
+  for (const e of eventos) {
+    html += `<div class="evt ${e.t||''}">${e.txt} <small>(${fmtDH(e.d)})</small>${e.sub?`<div style="font-size:10px;color:#64748b;padding-left:4px">${escHtml(e.sub)}</div>`:''}</div>`;
+  }
   html += `</div></div>`;
 
   // Devoluções (se houver)
@@ -150,30 +219,85 @@ function render(d){
     html += `</div>`;
   }
 
-  // Itens com detalhes
-  html += `<div class="section"><h2>Itens da Nota — Detalhamento</h2>`;
+  // Itens com detalhes (NF-e fornecedor + CD)
+  html += `<div class="section"><h2>Itens da Nota — Detalhamento (${d.itens.length})</h2>`;
+  function statusPrecoLabel(s){
+    return {igual:'= IGUAL',maior:'▲ MAIOR',menor:'▼ MENOR',auditagem:'⚠ AUDITAGEM',divergente:'⚠ DIV.',sem_cadastro:'sem cadastro'}[s]||s||'';
+  }
+  function statusPrecoColor(s){
+    return {igual:'#1e3a8a',maior:'#7f1d1d',menor:'#14532d',auditagem:'#92400e',divergente:'#431407'}[s]||'#475569';
+  }
   for (const i of d.itens) {
-    const lotes = i.lotes || [];
-    const divs = i.divergencias || [];
+    const lotes = i.lotes || []; // CD
+    const divs = i.divergencias || []; // CD
     const vals = i.validades_risco || [];
-    html += `<div style="border:1px solid #e2e8f0;border-radius:6px;padding:10px;margin-bottom:8px;background:#fafafa">
-      <div style="font-weight:700;color:#0f172a;font-size:13px">${i.numero_item}. ${i.descricao_nota||''}</div>
-      <div style="font-size:11px;color:#475569;margin-top:2px">EAN ${i.ean_nota||'—'} · MAT ${i.cd_pro_codi||'—'} · Qtd ${parseFloat(i.quantidade).toFixed(0)} ${i.qtd_embalagem_loja?'×'+i.qtd_embalagem_loja+' = '+(parseFloat(i.quantidade)*parseFloat(i.qtd_embalagem_loja)).toFixed(0)+' un':''} · ${fmtMoeda(i.preco_total_nota)}</div>
-      ${lotes.length?`<div style="margin-top:6px"><strong style="font-size:11px">Lotes contados pelo estoque:</strong><br>
+    const confs = i.conferencias || []; // NF-e
+    const aud = i.auditoria; // NF-e
+    const log = i.log_embalagem || [];
+    const qtd = parseFloat(i.quantidade) || 0;
+    const emb = parseInt(i.qtd_por_caixa_nfe) || 1;
+    const qtdUn = parseFloat(i.qtd_em_unidades) || (qtd * emb);
+    const corStatus = statusPrecoColor(i.status_preco);
+    html += `<div style="border:1px solid #e2e8f0;border-radius:6px;padding:10px;margin-bottom:10px;background:#fafafa">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+        <strong style="color:#0f172a;font-size:13px;flex:1">${i.numero_item}. ${escHtml(i.descricao_nota||'')}</strong>
+        ${i.produto_novo?'<span class="badge" style="background:#a78bfa;color:#fff">★ NOVO</span>':''}
+        ${i.status_preco?`<span class="badge" style="background:${corStatus};color:#fff">${statusPrecoLabel(i.status_preco)}</span>`:''}
+      </div>
+      <div style="font-size:11px;color:#475569;display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:4px 12px;margin-top:6px">
+        <div><strong>EAN:</strong> ${i.ean_nota||'—'}${i.ean_trib && i.ean_trib!==i.ean_nota?` · trib ${i.ean_trib}`:''}</div>
+        <div><strong>MAT:</strong> ${i.cd_pro_codi||'—'}</div>
+        <div><strong>Qtd:</strong> ${qtd.toFixed(qtd%1===0?0:3)} ${i.un_comercial||''}</div>
+        <div><strong>Emb:</strong> ${emb}${i.qtd_por_caixa_confianca?` (${i.qtd_por_caixa_confianca})`:''}</div>
+        <div><strong>Qtd UN:</strong> ${qtdUn.toFixed(qtdUn%1===0?0:3)}</div>
+        <div><strong>Preço NF/UN:</strong> ${fmtMoeda(i.preco_unitario_nota)}</div>
+        ${i.preco_unitario_caixa?`<div><strong>Preço NF/CX:</strong> ${fmtMoeda(i.preco_unitario_caixa)}</div>`:''}
+        <div><strong>Custo NF (CD):</strong> ${i.custo_fabrica!=null?fmtMoeda(i.custo_fabrica):'—'}</div>
+        <div><strong>Total:</strong> ${fmtMoeda(i.preco_total_nota)}</div>
+        ${i.ean_fonte?`<div><strong>Fonte EAN:</strong> ${i.ean_fonte}</div>`:''}
+        ${i.preco_anterior_fornecedor!=null?`<div><strong>Últ. preço fornec.:</strong> ${fmtMoeda(i.preco_anterior_fornecedor)}</div>`:''}
+        ${i.diff_unit!=null?`<div><strong>Δ unit:</strong> <span style="color:${i.diff_unit>0?'#dc2626':i.diff_unit<0?'#16a34a':'#475569'};font-weight:700">${i.diff_unit>0?'+':''}${fmtMoeda(i.diff_unit)}${i.diff_pct!=null?' ('+(i.diff_pct>0?'+':'')+i.diff_pct.toFixed(1)+'%)':''}</span></div>`:''}
+        ${i.diff_total!=null?`<div><strong>Δ total:</strong> <span style="color:${i.diff_total>0?'#dc2626':i.diff_total<0?'#16a34a':'#475569'};font-weight:700">${i.diff_total>0?'+':''}${fmtMoeda(i.diff_total)}</span></div>`:''}
+      </div>
+      ${log.length?`<div style="margin-top:8px;font-size:11px"><strong style="color:#7c3aed">📝 Log de embalagem (${log.length}):</strong><br>
+        ${log.map(l=>`<div style="margin-top:2px">${l.qtd_anterior||1} → <strong>${l.qtd_novo}</strong> por ${escHtml(l.alterado_por||'?')} <small>(${escHtml(l.origem)} · ${fmtDH(l.alterado_em)})</small></div>`).join('')}
+      </div>`:''}
+      ${confs.length?`<div style="margin-top:8px;font-size:11px"><strong>🔍 Conferências (${confs.length}):</strong><br>
+        ${confs.map(c=>`<div style="margin-top:4px;padding:4px 8px;background:#f1f5f9;border-radius:4px">
+          <div>Rodada ${c.rodada} · <strong>${c.qtd_contada||0} un</strong> · status <span class="badge">${c.status||'?'}</span> ${c.conferido_por?' por '+escHtml(c.conferido_por)+' em '+fmtDH(c.conferido_em):''}</div>
+          ${c.lotes && c.lotes.length?`<div style="margin-top:2px;color:#64748b">${c.lotes.map(lt=>`<span class="lote">${parseFloat(lt.quantidade||0).toFixed(0)} un · val ${fmtData(lt.validade)} · ${escHtml(lt.local_destino||'Estoque')}${lt.lote?' · lote '+escHtml(lt.lote):''}</span>`).join('')}</div>`:''}
+        </div>`).join('')}
+      </div>`:''}
+      ${aud?`<div style="margin-top:8px;font-size:11px"><strong>🛡 Auditoria final:</strong><br>
+        <div style="margin-top:2px">qtd contada <strong>${aud.qtd_contada||0}</strong> · status <span class="badge">${aud.status||'?'}</span>${aud.lote?' · lote '+escHtml(aud.lote):''}${aud.validade?' · val '+fmtData(aud.validade):''}${aud.observacao?' — '+escHtml(aud.observacao):''} <small>${aud.auditado_por?'por '+escHtml(aud.auditado_por)+' em '+fmtDH(aud.auditado_em):''}</small></div>
+      </div>`:''}
+      ${lotes.length?`<div style="margin-top:8px;font-size:11px"><strong>📦 Lotes contados:</strong><br>
         ${lotes.map(l=>`<span class="lote">${parseFloat(l.qtd_caixas).toFixed(0)} cx · ${parseFloat(l.qtd_unidades).toFixed(0)} un · val ${fmtData(l.validade)} · tot ${parseFloat(l.qtd_total).toFixed(0)}</span>`).join('')}
       </div>`:''}
-      ${divs.length?`<div style="margin-top:6px"><strong style="font-size:11px;color:#dc2626">⚠ Divergências:</strong><br>
+      ${divs.length?`<div style="margin-top:8px;font-size:11px"><strong style="color:#dc2626">⚠ Divergências:</strong><br>
         ${divs.map(dd=>{
           const dif=parseFloat(dd.diferenca);
-          return `<div style="font-size:11px;margin-top:2px"><span class="${dif<0?'diff':'sobra'}">${dif>0?'+':''}${dif.toFixed(0)}</span> (esperado ${parseFloat(dd.qtd_esperada).toFixed(0)}, contado ${parseFloat(dd.qtd_contada).toFixed(0)}) — ${fmtMoeda(dd.valor_total_diferenca)} <span class="badge">${dd.status}</span> ${dd.observacao?' — '+dd.observacao:''} ${dd.numero_nf_devolucao?' (NF dev '+dd.numero_nf_devolucao+')':''} ${dd.resolvido_por?' por '+dd.resolvido_por+' '+fmtDH(dd.resolvido_em):''}</div>`;
+          return `<div style="margin-top:2px"><span class="${dif<0?'diff':'sobra'}">${dif>0?'+':''}${dif.toFixed(0)}</span> (esperado ${parseFloat(dd.qtd_esperada).toFixed(0)}, contado ${parseFloat(dd.qtd_contada).toFixed(0)}) — ${fmtMoeda(dd.valor_total_diferenca)} <span class="badge">${dd.status}</span> ${dd.observacao?' — '+escHtml(dd.observacao):''} ${dd.numero_nf_devolucao?' (NF dev '+dd.numero_nf_devolucao+')':''} ${dd.resolvido_por?' por '+escHtml(dd.resolvido_por)+' '+fmtDH(dd.resolvido_em):''}</div>`;
         }).join('')}
       </div>`:''}
-      ${vals.length?`<div style="margin-top:6px"><strong style="font-size:11px;color:#fbbf24">⏰ Validades em risco:</strong><br>
-        ${vals.map(v=>`<div style="font-size:11px;margin-top:2px">val ${fmtData(v.validade)} (${v.dias_ate_vencer}d) — risco ${v.qtd_em_risco_caixas||0} cx (${parseFloat(v.qtd_em_risco).toFixed(0)} un) — ${fmtMoeda(v.valor_em_risco)} <span class="badge">${v.motivo_risco}</span> <span class="badge">${v.status}</span> ${v.observacao?' — '+v.observacao:''} ${v.decidido_por?' por '+v.decidido_por+' '+fmtDH(v.decidido_em):''}</div>`).join('')}
+      ${vals.length?`<div style="margin-top:8px;font-size:11px"><strong style="color:#fbbf24">⏰ Validades em risco:</strong><br>
+        ${vals.map(v=>`<div style="margin-top:2px">val ${fmtData(v.validade)} (${v.dias_ate_vencer}d) — risco ${v.qtd_em_risco_caixas||0} cx (${parseFloat(v.qtd_em_risco).toFixed(0)} un) — ${fmtMoeda(v.valor_em_risco)} <span class="badge">${v.motivo_risco}</span> <span class="badge">${v.status}</span> ${v.observacao?' — '+escHtml(v.observacao):''} ${v.decidido_por?' por '+escHtml(v.decidido_por)+' '+fmtDH(v.decidido_em):''}</div>`).join('')}
       </div>`:''}
     </div>`;
   }
   html += `</div>`;
+
+  // Alertas (notas_alertas)
+  if (d.alertas && d.alertas.length) {
+    html += `<div class="section"><h2>Alertas (${d.alertas.length})</h2>`;
+    for (const a of d.alertas) {
+      html += `<div style="padding:6px 8px;border-left:3px solid #fbbf24;background:#fef3c7;margin-bottom:4px;font-size:11px">
+        <strong>${escHtml(a.tipo)}:</strong> ${escHtml(a.mensagem||'')}
+        <small style="color:#475569">(${fmtDH(a.criado_em)})${a.lido_em?` · lido por ${escHtml(a.lido_por||'?')} ${fmtDH(a.lido_em)}`:''}</small>
+      </div>`;
+    }
+    html += `</div>`;
+  }
 
   document.getElementById('root').innerHTML = html;
 }

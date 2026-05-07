@@ -139,10 +139,15 @@ async function checarLiberacaoNota(notaId) {
     `SELECT COUNT(*) FILTER (WHERE status='devolucao')::int AS qt_dev FROM validades_em_risco WHERE nota_id=$1`,
     [notaId]
   );
+  // Devoluções pendentes (qualquer origem: validade, divergência de quantidade) bloqueiam o fechamento
+  const devsAbertas = await query(
+    `SELECT COUNT(*)::int AS qtd FROM devolucoes WHERE nota_id=$1 AND status='aguardando'`,
+    [notaId]
+  );
   const [nota] = await query(`SELECT conferida_com_divergencia, origem FROM notas_entrada WHERE id=$1`, [notaId]);
   const isCD = nota?.origem === 'cd' || nota?.origem === 'transferencia_loja';
   let novoStatus;
-  if (dec[0].qt_dev > 0) novoStatus = 'aguardando_devolucao';
+  if (dec[0].qt_dev > 0 || devsAbertas[0].qtd > 0) novoStatus = 'aguardando_devolucao';
   else if (isCD) novoStatus = nota?.conferida_com_divergencia ? 'auditagem' : 'conferida';
   else novoStatus = 'fechada'; // NF-e fornecedor sem devolução = fecha
   await query(`UPDATE notas_entrada SET status=$2 WHERE id=$1 AND status='aguardando_admin_validade'`, [notaId, novoStatus]);

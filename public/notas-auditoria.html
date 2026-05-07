@@ -35,7 +35,11 @@ nav .btn-nav:hover{background:#0284c7}
 .nota-info strong{color:#e2e8f0}
 .aviso{background:#1c1300;border:1px solid #b45309;border-radius:8px;padding:12px 16px;margin-bottom:20px;font-size:14px;color:#fcd34d}
 table{width:100%;border-collapse:collapse;font-size:13px}
-thead th{background:#1e293b;padding:10px 12px;text-align:left;color:#94a3b8;font-weight:600;border-bottom:1px solid #334155;white-space:nowrap}
+thead{position:sticky;top:0;z-index:5}
+thead th{background:#1e293b;padding:10px 12px;text-align:center;color:#94a3b8;font-weight:600;border-bottom:1px solid #334155;white-space:nowrap}
+thead th:nth-child(1),thead th:nth-child(2),thead th:nth-child(3){text-align:left}
+tbody td{text-align:center}
+tbody td:nth-child(1),tbody td:nth-child(2),tbody td:nth-child(3){text-align:left}
 tbody tr{border-bottom:1px solid #1e293b}
 tbody tr:hover{background:#1a2744}
 td{padding:9px 12px;vertical-align:middle}
@@ -119,7 +123,8 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 1
 
       <div style="margin-bottom:16px;display:flex;gap:10px;align-items:center">
         <button class="btn-primary" id="btnFechar" onclick="fecharNota()">✓ Fechar Nota</button>
-        <button class="btn-print" onclick="window.print()">🖨 Imprimir</button>
+        <button class="btn-print" onclick="window.print()">🖨 Imprimir Tela</button>
+        <button class="btn-print" style="background:#7c3aed" onclick="if(notaAtualId)window.open('/nota-historico?id='+notaAtualId,'_blank')">🖨 Vida da Nota</button>
         <span style="font-size:12px;color:#64748b" id="statusNota"></span>
       </div>
 
@@ -259,6 +264,16 @@ function renderTabela(itens) {
     const readonly = itensFechados ? 'readonly' : '';
     const tabindex = itensFechados ? 'tabindex="-1"' : '';
 
+    // Sugestão de lote/validade: rodada mais alta disponível (C3 → C2 → C1). Ignora se múltiplos lotes.
+    const ultimaRodada = (item.conferencias || []).slice().sort((a,b) => (b.rodada||0) - (a.rodada||0))[0];
+    const sugLotes = ultimaRodada?.lotes || [];
+    const sugLote = sugLotes.length === 1 ? (sugLotes[0].lote || '') : '';
+    const sugValidade = sugLotes.length === 1 && sugLotes[0].validade ? String(sugLotes[0].validade).substring(0,10) : '';
+    const sugQtd = ultimaRodada?.qtd_contada != null ? fmtQtd(ultimaRodada.qtd_contada) : fmtQtd(item.quantidade);
+    const loteVal = aud?.lote ?? sugLote;
+    const validadeVal = aud?.validade ? aud.validade.substring(0,10) : sugValidade;
+    const qtdVal = aud ? fmtQtd(aud.qtd_contada) : sugQtd;
+
     return `<tr>
       <td>${item.numero_item}</td>
       <td>${item.descricao_nota}</td>
@@ -270,13 +285,13 @@ function renderTabela(itens) {
       <td class="col-c2" style="font-size:11px">${c2 ? fmtLotes(c2.lotes) : '—'}</td>
       <td class="col-c2">${chipStatus(c2?.status)}</td>
       <td class="col-aud">
-        <input type="number" id="aud-qty-${item.id}" min="0" step="1" value="${aud ? fmtQtd(aud.qtd_contada) : ''}" placeholder="Qtd" ${readonly} ${tabindex}>
+        <input type="number" id="aud-qty-${item.id}" min="0" step="1" value="${qtdVal}" placeholder="Qtd" ${readonly} ${tabindex}>
       </td>
       <td class="col-aud">
-        <input type="text" id="aud-lote-${item.id}" value="${aud?.lote || ''}" placeholder="Lote" ${readonly} ${tabindex}>
+        <input type="text" id="aud-lote-${item.id}" value="${loteVal}" placeholder="Lote" ${readonly} ${tabindex}>
       </td>
       <td class="col-aud">
-        <input type="date" id="aud-val-${item.id}" value="${aud?.validade ? aud.validade.substring(0,10) : ''}" ${readonly} ${tabindex}>
+        <input type="date" id="aud-val-${item.id}" value="${validadeVal}" ${readonly} ${tabindex}>
       </td>
       <td class="col-aud">
         <textarea id="aud-obs-${item.id}" placeholder="Obs." ${readonly} ${tabindex}>${aud?.observacao || ''}</textarea>
@@ -289,29 +304,45 @@ async function fecharNota() {
   if (!confirm('Fechar esta nota? Esta ação não pode ser desfeita.')) return;
 
   const { nota, itens } = await fetchApi(`/api/notas/${notaAtualId}`);
+  // Bloqueia se algum input está vazio — auditor precisa confirmar explicitamente cada item
+  const vazios = itens.filter(item => {
+    const v = document.getElementById(`aud-qty-${item.id}`)?.value;
+    return v == null || String(v).trim() === '' || isNaN(parseFloat(v));
+  });
+  if (vazios.length) {
+    showMsg(`Preencha a quantidade de ${vazios.length} item(ns). Default sugerido = qtd da nota.`, 'err');
+    return;
+  }
   const itens_auditados = itens.map(item => ({
     item_id: item.id,
-    qtd_contada: parseFloat(document.getElementById(`aud-qty-${item.id}`)?.value || 0),
+    qtd_contada: parseFloat(document.getElementById(`aud-qty-${item.id}`).value),
     lote: document.getElementById(`aud-lote-${item.id}`)?.value || null,
     validade: document.getElementById(`aud-val-${item.id}`)?.value || null,
     observacao: document.getElementById(`aud-obs-${item.id}`)?.value || null,
   }));
 
-  const semQtd = itens_auditados.some(i => !i.qtd_contada && i.qtd_contada !== 0);
-  if (itens_auditados.some(i => i.qtd_contada == null || i.qtd_contada === '' || isNaN(i.qtd_contada))) {
-    showMsg('Preencha a quantidade de todos os itens', 'err');
-    return;
-  }
-
+  const btnFechar = document.getElementById('btnFechar');
+  btnFechar.disabled = true;
   try {
-    document.getElementById('btnFechar').disabled = true;
-    await fetchApi(`/api/notas/${notaAtualId}/auditoria`, 'POST', { itens_auditados });
-    showMsg('Nota fechada com sucesso. Relatório disponível no Cadastro.', 'ok');
+    const r = await fetchApi(`/api/notas/${notaAtualId}/auditoria`, 'POST', { itens_auditados });
+    let msg;
+    if (r.novo_status === 'aguardando_admin_validade') {
+      msg = 'Nota com validade em risco — admin vai decidir em /validades-em-risco.';
+    } else if (r.novo_status === 'aguardando_devolucao') {
+      const sobraExtra = r.tem_sobra ? ` + ${r.sobras_count} sobra(s) registradas em alerta.` : '';
+      msg = `Nota com FALTA — enviada ao Cadastro pra emitir NF de devolução em /aguardando-devolucao.${sobraExtra}`;
+    } else if (r.tem_sobra) {
+      msg = `Nota fechada. ${r.sobras_count} item(ns) com sobra alertados pro comprador (não entram no estoque).`;
+    } else {
+      msg = 'Nota fechada com sucesso.';
+    }
+    showMsg(msg, 'ok');
     await carregarNotas();
-    abrirNota(notaAtualId);
+    await abrirNota(notaAtualId);
   } catch (e) {
     showMsg(e.message, 'err');
-    document.getElementById('btnFechar').disabled = false;
+  } finally {
+    btnFechar.disabled = false;
   }
 }
 

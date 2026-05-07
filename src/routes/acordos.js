@@ -75,6 +75,56 @@ router.get('/:id', compradorOuAdmin, async (req, res) => {
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
+// GET /api/acordos/:id/extrato — vendas dia a dia entre data_acordo e validade
+router.get('/:id/extrato', compradorOuAdmin, async (req, res) => {
+  try {
+    const [a] = await dbQuery(`
+      SELECT a.*, l.nome AS loja_nome, l.cnpj AS loja_cnpj
+        FROM acordos_comerciais a
+        JOIN lojas l ON l.id = a.loja_id
+       WHERE a.id = $1`, [req.params.id]);
+    if (!a) return res.status(404).json({ erro: 'Acordo não encontrado' });
+
+    const dtInicio = a.aprovado_em || a.solicitado_em;
+    const dtFim = a.data_validade || a.fechado_em || new Date();
+
+    const vendas = await dbQuery(`
+      SELECT data_venda, SUM(qtd_vendida)::numeric(12,3) AS qtd
+        FROM vendas_historico
+       WHERE NULLIF(LTRIM(codigobarra,'0'),'') = NULLIF(LTRIM($1,'0'),'')
+         AND loja_id = $2
+         AND data_venda >= $3::date
+         AND data_venda <= $4::date
+         AND COALESCE(tipo_saida, 'venda') = 'venda'
+       GROUP BY data_venda
+       ORDER BY data_venda`,
+      [a.barcode, a.loja_id, dtInicio, dtFim]
+    );
+
+    const totalVendido = vendas.reduce((s, v) => s + parseFloat(v.qtd), 0);
+    const qtdAcordada = parseFloat(a.qtde_acordada) || 0;
+    const precoAtual = parseFloat(a.preco_atual) || 0;
+    const precoAcordo = parseFloat(a.preco_acordo) || 0;
+    const diff = precoAtual - precoAcordo;
+    const qtdEfetiva = Math.min(totalVendido, qtdAcordada);
+    const debitoCalculado = qtdEfetiva * diff;
+
+    res.json({
+      acordo: a,
+      vendas,
+      resumo: {
+        total_vendido: totalVendido,
+        qtde_acordada: qtdAcordada,
+        qtd_efetiva: qtdEfetiva,
+        preco_atual: precoAtual,
+        preco_acordo: precoAcordo,
+        diferenca_unitaria: diff,
+        debito_calculado: debitoCalculado
+      }
+    });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
 // POST /api/acordos/:id/aprovar
 router.post('/:id/aprovar', compradorOuAdmin, async (req, res) => {
   const client = await pool.connect();

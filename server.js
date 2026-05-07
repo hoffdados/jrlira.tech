@@ -941,6 +941,39 @@ async function initDB() {
        END;
        $trg$ LANGUAGE plpgsql;`);
 
+    // V5: id_tabela_preco entra na chave (necessário pra calcular consumido por tabela do ERP)
+    await runMigration(client, '20260507_vendas_historico_id_tabela_preco',
+      `ALTER TABLE vendas_historico ADD COLUMN IF NOT EXISTS id_tabela_preco INT`);
+    await runMigration(client, '20260507_vendas_historico_drop_unique_v4',
+      `ALTER TABLE vendas_historico DROP CONSTRAINT IF EXISTS vendas_historico_loja_id_codigobarra_data_venda_key`);
+    await runMigration(client, '20260507_vendas_historico_unique_v5',
+      `CREATE UNIQUE INDEX IF NOT EXISTS vendas_historico_uniq_v5
+         ON vendas_historico (loja_id, codigobarra, data_venda, COALESCE(id_tabela_preco, 0))`);
+    await runMigration(client, '20260507_idx_vendas_id_tabela_preco',
+      `CREATE INDEX IF NOT EXISTS idx_vendas_id_tabela_preco
+         ON vendas_historico (id_tabela_preco) WHERE id_tabela_preco IS NOT NULL`);
+    await runMigration(client, '20260507_trim_skip_dup_vendas_v5_idtabela',
+      `CREATE OR REPLACE FUNCTION trim_skip_dup_vendas() RETURNS TRIGGER AS $trg$
+       BEGIN
+         NEW.codigobarra := NULLIF(LTRIM(COALESCE(NEW.codigobarra,''),'0'),'');
+         NEW.tipo_saida  := TRIM(COALESCE(NEW.tipo_saida, 'venda'));
+         IF NEW.codigobarra IS NULL THEN RETURN NEW; END IF;
+         -- Match incluindo id_tabela_preco (null tratado como 0). Trigger atualiza linha existente
+         -- pra refletir nova qtd_vendida + tipo_saida, ou cria linha nova se não existe combinação.
+         UPDATE vendas_historico
+            SET qtd_vendida = NEW.qtd_vendida,
+                tipo_saida  = NEW.tipo_saida,
+                id_tabela_preco = COALESCE(NEW.id_tabela_preco, vendas_historico.id_tabela_preco),
+                sincronizado_em = NOW()
+          WHERE loja_id = NEW.loja_id
+            AND codigobarra = NEW.codigobarra
+            AND data_venda = NEW.data_venda
+            AND COALESCE(id_tabela_preco, 0) = COALESCE(NEW.id_tabela_preco, 0);
+         IF FOUND THEN RETURN NULL; END IF;
+         RETURN NEW;
+       END;
+       $trg$ LANGUAGE plpgsql;`);
+
     await runMigration(client, '20260506_trim_skip_dup_compras_v4_upsert',
       `CREATE OR REPLACE FUNCTION trim_skip_dup_compras() RETURNS TRIGGER AS $trg$
        BEGIN

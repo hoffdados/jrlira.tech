@@ -1,4 +1,5 @@
 const xml2js = require('xml2js');
+const { parseEmbalagem } = require('../parser_embalagem');
 
 const MAX_XML_BYTES = 5 * 1024 * 1024;
 
@@ -93,14 +94,6 @@ async function parseNFe(buf) {
 
     const custo_total = (vprod - vdesc_item) + vfrete_item + vseg_item + voutro_item + vipi + vst + vfcp_st;
     const preco_total_nota = parseFloat(custo_total.toFixed(2));
-    // Preço unitário em UN (tributável) — comparável com custo do CD que está em UN.
-    // Quando uCom=uTrib (bulk), qTrib==qCom e o resultado é o mesmo.
-    // Quando uCom=CX e uTrib=UN, qTrib = total UN → divide certo.
-    const qBase = qTrib > 0 ? qTrib : qCom;
-    const preco_unitario_nota = parseFloat((custo_total / qBase).toFixed(4));
-    const preco_unitario_caixa = (qCom > 0 && qCom !== qBase)
-      ? parseFloat((custo_total / qCom).toFixed(4))
-      : null;
 
     const eanRaw = prod.cEAN;
     const ean = (!eanRaw || eanRaw === 'SEM GTIN') ? null : String(eanRaw).trim();
@@ -108,8 +101,9 @@ async function parseNFe(buf) {
     const eanTrib = (!eanTribRaw || eanTribRaw === 'SEM GTIN') ? null : String(eanTribRaw).trim();
 
     // Qtd por caixa derivada do XML.
-    // qCom = unidade comercial (geralmente CX/PCT/FD), qTrib = unidade tributável (geralmente UN).
-    // Se qCom > 0 e qTrib é múltiplo inteiro, ratio = qtd por caixa pra esse fornecedor.
+    // Caminho A: qCom != qTrib e ratio inteiro >= 2 → derivado direto.
+    // Caminho B: uCom == uTrib (fornecedor factura tudo em CX/UN sem distinção)
+    //           → fallback via descrição ("18X500 G", "12X1000ML", "27X200ML").
     let qtd_por_caixa_nfe = null;
     let qtd_por_caixa_confianca = 'nula';
     if (qCom > 0 && qTrib > 0 && uCom && uTrib && uCom !== uTrib) {
@@ -128,11 +122,49 @@ async function parseNFe(buf) {
         }
       }
     }
+    // Fallback pela descrição quando XML não distingue (uCom == uTrib).
+    // REGRA: só aplica se cEAN != cEANTrib. EANs iguais = venda unidade-a-unidade,
+    // não em caixa (mesmo se descrição tiver "30X150G", que é nome do produto, não embalagem).
+    // Admin sobrescreve via cadastro manual em /embalagens-fornecedor pra exceções.
+    const eanDistinto = ean && eanTrib && ean !== eanTrib;
+    if (qtd_por_caixa_nfe == null && eanDistinto) {
+      const descParse = parseEmbalagem(prod.xProd || '');
+      if (descParse.qtd && descParse.qtd >= 2) {
+        qtd_por_caixa_nfe = descParse.qtd;
+        qtd_por_caixa_confianca = descParse.confianca === 'alta' ? 'media' : 'baixa';
+      }
+    }
 
+    // Cálculo de preço unitário e quantidade em unidades.
+    // 3 casos:
+    // A) uCom != uTrib (qTrib = total UN) → preço/UN = custo/qTrib, preço/CX = custo/qCom, qtd_un = qTrib
+    // B) uCom == uTrib + qtd_por_caixa achada → assume qCom em CAIXAS, multiplica pra UN
+    // C) uCom == uTrib sem qtd_por_caixa → assume tudo em UN (tradicional)
+    let preco_unitario_nota, preco_unitario_caixa = null, qtd_em_unidades = null;
+    if (qCom !== qTrib && qTrib > 0) {
+      // Caso A
+      preco_unitario_nota = parseFloat((custo_total / qTrib).toFixed(4));
+      preco_unitario_caixa = qCom > 0 ? parseFloat((custo_total / qCom).toFixed(4)) : null;
+      qtd_em_unidades = qTrib;
+    } else if (qtd_por_caixa_nfe && qtd_por_caixa_nfe >= 2) {
+      // Caso B: assume qCom em caixas, multiplica
+      const totalUn = qCom * qtd_por_caixa_nfe;
+      preco_unitario_nota = parseFloat((custo_total / totalUn).toFixed(4));
+      preco_unitario_caixa = parseFloat((custo_total / qCom).toFixed(4));
+      qtd_em_unidades = totalUn;
+    } else {
+      // Caso C
+      preco_unitario_nota = parseFloat((custo_total / qCom).toFixed(4));
+      qtd_em_unidades = qCom;
+    }
+
+    const cProdRaw = prod.cProd;
+    const cprodFornecedor = cProdRaw ? String(cProdRaw).trim() : null;
     return {
       numero_item: parseInt(det.$?.nItem || idx + 1) || idx + 1,
       ean_nota: ean,
       ean_trib: eanTrib,
+      cprod_fornecedor: cprodFornecedor,
       descricao_nota: String(prod.xProd || '').trim(),
       quantidade: qCom,
       qtd_comercial: qCom,
@@ -141,6 +173,7 @@ async function parseNFe(buf) {
       un_tributavel: uTrib || null,
       qtd_por_caixa_nfe,
       qtd_por_caixa_confianca,
+      qtd_em_unidades,
       preco_unitario_nota, preco_total_nota, preco_unitario_caixa,
       vprod, vdesc_item, vfrete_item, vseg_item, voutro_item,
       vicms_bc, vicms, vst_bc, vst, vfcp_st, vipi_bc, vipi,

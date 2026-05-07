@@ -210,11 +210,9 @@ async function carregarStats() {
     ]);
     const m = Object.fromEntries(r1.por_status.map(s => [s.status, s.qtd]));
     const e = Object.fromEntries(r2.por_status.map(s => [s.ean_status || 'null', s.qtd]));
-    const sugNfe = r1.sugestoes_nfe_pendentes || 0;
     document.getElementById('stats').innerHTML = `
       <div class="stat"><div class="stat-label">Embalagens validadas</div><div class="stat-value ok">${(m.validado || 0).toLocaleString('pt-BR')}</div></div>
       <div class="stat"><div class="stat-label">Emb. pendente/diverg.</div><div class="stat-value warn">${((m.pendente_validacao || 0) + (m.divergente_qtd_planilha || 0) + (m.divergente_descricao_mudou || 0)).toLocaleString('pt-BR')}</div></div>
-      ${sugNfe > 0 ? `<div class="stat" style="cursor:pointer;outline:2px solid #38bdf8" onclick="document.getElementById('fSugNfe').value='true';carregar()"><div class="stat-label">📥 Sug. NF-e pendentes</div><div class="stat-value warn">${sugNfe.toLocaleString('pt-BR')}</div></div>` : ''}
       <div class="stat"><div class="stat-label">EAN OK (ativos)</div><div class="stat-value ok">${(e.ok || 0).toLocaleString('pt-BR')}</div></div>
       <div class="stat"><div class="stat-label">EAN divergente</div><div class="stat-value err">${(e.divergente || 0).toLocaleString('pt-BR')}</div></div>
       <div class="stat"><div class="stat-label">Sem EAN no CD</div><div class="stat-value warn">${(e.sem_ean_cd || 0).toLocaleString('pt-BR')}</div></div>

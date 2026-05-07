@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Divergências de Devolução — JR Lira</title>
+<link rel="stylesheet" href="/shared.css">
+<script src="/shared.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+nav{background:#1e293b;padding:14px 24px;display:flex;align-items:center;gap:16px;border-bottom:1px solid #334155}
+nav .brand{font-size:16px;font-weight:700;color:#38bdf8}
+nav .sep{color:#475569}
+nav .page{font-size:14px;color:#94a3b8}
+nav .user{margin-left:auto;font-size:13px;color:#64748b}
+nav .btn-nav{background:#0ea5e9;color:#fff;border:none;padding:7px 14px;border-radius:6px;font-size:13px;cursor:pointer}
+.wrap{padding:20px;max-width:1500px;margin:0 auto}
+.tools{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;align-items:end}
+.tools label{font-size:11px;color:#64748b;display:block;margin-bottom:3px}
+.tools select,.tools input{padding:8px 10px;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:13px}
+.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-bottom:18px}
+.stat{background:#1e293b;border-radius:10px;padding:14px}
+.stat-label{font-size:11px;color:#64748b;text-transform:uppercase}
+.stat-value{font-size:22px;font-weight:700;margin-top:4px}
+.pos{color:#f87171}
+.neg{color:#4ade80}
+.zero{color:#94a3b8}
+table{width:100%;background:#1e293b;border-radius:10px;border-collapse:collapse;overflow:hidden;margin-bottom:20px}
+th,td{padding:10px 12px;border-bottom:1px solid #0f172a;font-size:13px}
+th{background:#0f172a;color:#94a3b8;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+tr:last-child td{border-bottom:none}
+tbody tr:hover{background:#243044}
+.right{text-align:right}
+h2{font-size:14px;color:#94a3b8;font-weight:600;margin:24px 0 8px;text-transform:uppercase;letter-spacing:.05em}
+.empty{padding:30px;text-align:center;color:#64748b;background:#1e293b;border-radius:10px}
+</style>
+</head>
+<body>
+<nav>
+  <span class="brand">JR Lira Tech</span><span class="sep">/</span>
+  <span class="page">Divergências de Devolução</span>
+  <span class="user" id="nomeUsuario"></span>
+  <button class="btn-nav" onclick="location.href='/aguardando-devolucao'">📦 Aguardando Devolução</button>
+  <button class="btn-nav" onclick="location.href='/'">← Início</button>
+</nav>
+
+<div class="wrap">
+  <div class="tools">
+    <div>
+      <label>Agrupar por</label>
+      <select id="agrupar">
+        <option value="fornecedor">Fornecedor</option>
+        <option value="loja">Loja</option>
+        <option value="mes">Mês</option>
+      </select>
+    </div>
+    <div>
+      <label>Loja</label>
+      <select id="lojaId">
+        <option value="">Todas</option>
+        <option value="1">L1 ECONOMICO</option>
+        <option value="2">L2 BR</option>
+        <option value="3">L3 JOAO PAULO</option>
+        <option value="4">L4 FLORESTA</option>
+        <option value="5">L5 SAO JOSE</option>
+        <option value="6">L6 SANTAREM</option>
+      </select>
+    </div>
+    <div>
+      <label>Fornecedor (CNPJ)</label>
+      <input type="text" id="fornCnpj" placeholder="só dígitos" style="width:160px">
+    </div>
+    <div><label>De</label><input type="date" id="de"></div>
+    <div><label>Até</label><input type="date" id="ate"></div>
+    <button class="btn-nav" onclick="carregar()">↺ Atualizar</button>
+  </div>
+
+  <div class="stats" id="stats"></div>
+
+  <h2>Resumo agrupado</h2>
+  <div id="agreg"></div>
+
+  <h2>Devoluções individuais com divergência (top 500)</h2>
+  <div id="lista"></div>
+</div>
+
+<script>
+document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
+
+function fmtMoeda(v) {
+  const n = parseFloat(v || 0);
+  return 'R$ ' + n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function classDiff(v) {
+  const n = parseFloat(v || 0);
+  if (Math.abs(n) < 0.01) return 'zero';
+  return n > 0 ? 'pos' : 'neg';
+}
+function setaDiff(v) {
+  const n = parseFloat(v || 0);
+  if (Math.abs(n) < 0.01) return '=';
+  return n > 0 ? '▲' : '▼';
+}
+
+async function carregar() {
+  const params = new URLSearchParams();
+  ['agrupar', 'lojaId', 'fornCnpj', 'de', 'ate'].forEach(id => {
+    const v = document.getElementById(id).value;
+    if (v) {
+      const k = { agrupar: 'agrupar', lojaId: 'loja_id', fornCnpj: 'fornecedor_cnpj', de: 'de', ate: 'ate' }[id];
+      params.set(k, v);
+    }
+  });
+  try {
+    const r1 = await apiFetch('/api/devolucoes/divergencias?' + params);
+    const d1 = await r1.json();
+    const t = d1.total || {};
+    document.getElementById('stats').innerHTML = `
+      <div class="stat"><div class="stat-label">Devoluções Enviadas</div><div class="stat-value">${t.qtd_devolucoes || 0}</div></div>
+      <div class="stat"><div class="stat-label">Esperado (sistema)</div><div class="stat-value">${fmtMoeda(t.total_esperado)}</div></div>
+      <div class="stat"><div class="stat-label">XML (fornecedor)</div><div class="stat-value">${fmtMoeda(t.total_xml)}</div></div>
+      <div class="stat"><div class="stat-label">Diferença</div><div class="stat-value ${classDiff(t.total_diferenca)}">${setaDiff(t.total_diferenca)} ${fmtMoeda(Math.abs(parseFloat(t.total_diferenca||0)))}</div></div>
+      <div class="stat"><div class="stat-label">Com divergência</div><div class="stat-value">${t.qtd_com_divergencia || 0}</div></div>
+    `;
+    const ag = document.getElementById('agreg');
+    if (!d1.rows.length) {
+      ag.innerHTML = '<div class="empty">Nenhuma devolução enviada no período</div>';
+    } else {
+      const colName = { fornecedor: 'Fornecedor', loja: 'Loja', mes: 'Mês' }[d1.agrupar] || 'Agrupamento';
+      ag.innerHTML = `
+        <table>
+          <thead><tr>
+            <th>${colName}</th>
+            <th class="right">Qtd</th>
+            <th class="right">C/ divergência</th>
+            <th class="right">Esperado</th>
+            <th class="right">XML</th>
+            <th class="right">Diferença</th>
+          </tr></thead>
+          <tbody>
+            ${d1.rows.map(r => `
+              <tr>
+                <td>${r.rotulo || r.chave || '—'}</td>
+                <td class="right">${r.qtd_devolucoes}</td>
+                <td class="right">${r.qtd_com_divergencia}</td>
+                <td class="right">${fmtMoeda(r.total_esperado)}</td>
+                <td class="right">${fmtMoeda(r.total_xml)}</td>
+                <td class="right ${classDiff(r.total_diferenca)}">${setaDiff(r.total_diferenca)} ${fmtMoeda(Math.abs(parseFloat(r.total_diferenca||0)))}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>`;
+    }
+
+    const r2 = await apiFetch('/api/devolucoes/divergencias/lista?' + params);
+    const d2 = await r2.json();
+    const lista = document.getElementById('lista');
+    if (!d2.rows.length) {
+      lista.innerHTML = '<div class="empty">Nenhuma devolução com divergência de valor (XML vs esperado)</div>';
+    } else {
+      lista.innerHTML = `
+        <table>
+          <thead><tr>
+            <th>NF Devolução</th>
+            <th>NF Origem</th>
+            <th>Loja</th>
+            <th>Fornecedor</th>
+            <th>Enviada em</th>
+            <th class="right">Esperado</th>
+            <th class="right">XML</th>
+            <th class="right">Diferença</th>
+          </tr></thead>
+          <tbody>
+            ${d2.rows.map(r => `
+              <tr>
+                <td>${r.xml_numero_nf || '—'}</td>
+                <td>${r.nota_origem_numero || '—'}</td>
+                <td>L${r.loja_id}</td>
+                <td>${r.destinatario_nome || '—'}</td>
+                <td>${r.enviada_em ? new Date(r.enviada_em).toLocaleDateString('pt-BR') : '—'}</td>
+                <td class="right">${fmtMoeda(r.valor_total)}</td>
+                <td class="right">${fmtMoeda(r.valor_xml)}</td>
+                <td class="right ${classDiff(r.diferenca_valor)}">${setaDiff(r.diferenca_valor)} ${fmtMoeda(Math.abs(parseFloat(r.diferenca_valor||0)))}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>`;
+    }
+  } catch (e) { alert('Erro: ' + e.message); }
+}
+
+// padrão: últimos 60 dias
+const hoje = new Date();
+const de = new Date(hoje); de.setDate(hoje.getDate() - 60);
+document.getElementById('de').value = de.toISOString().slice(0, 10);
+document.getElementById('ate').value = hoje.toISOString().slice(0, 10);
+['agrupar', 'lojaId', 'fornCnpj', 'de', 'ate'].forEach(id => {
+  document.getElementById(id).addEventListener('change', carregar);
+});
+carregar();
+</script>
+</body>
+</html>
