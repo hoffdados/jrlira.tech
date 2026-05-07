@@ -5,9 +5,8 @@ SET kitchen=C:\Pentaho\data-integration\Kitchen.bat
 SET logfile="%currentdir%log_vendas_loja_1.txt"
 SET PSEXE=C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
 
-REM Calcula data 7 dias atrás via arquivo temp (carga delta)
-"%PSEXE%" -NoProfile -Command "(Get-Date).AddDays(-7).ToString('yyyy-MM-dd')" > "%TEMP%\dc_vendas_1.txt"
-set /p DATA_CORTE=<"%TEMP%\dc_vendas_1.txt"
+"%PSEXE%" -NoProfile -Command "(Get-Date).AddDays(-7).ToString('yyyy-MM-dd') | Out-File -FilePath '%currentdir%dc_vendas_1.txt' -Encoding ascii -NoNewline"
+set /p DATA_CORTE=<"%currentdir%dc_vendas_1.txt"
 
 echo. >> %logfile% 2>&1
 echo === DELTA INICIO: %DATE% %TIME% (DATA_CORTE=%DATA_CORTE%) === >> %logfile% 2>&1
