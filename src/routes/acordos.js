@@ -2,6 +2,14 @@ const express = require('express');
 const router = express.Router();
 const { pool, query: dbQuery } = require('../db');
 const { autenticar, compradorOuAdmin } = require('../auth');
+const { criarNotificacao } = require('./notificacoes');
+
+async function notificarCadastros({ titulo, corpo, url }) {
+  const dest = await dbQuery(`SELECT id FROM rh_usuarios WHERE perfil IN ('cadastro','admin') AND ativo=TRUE`);
+  for (const u of dest) {
+    await criarNotificacao({ destinatario_tipo: 'usuario', destinatario_id: u.id, tipo: 'acordo_decisao', titulo, corpo, url });
+  }
+}
 
 // GET /api/acordos?status=&loja_id=
 router.get('/', compradorOuAdmin, async (req, res) => {
@@ -158,6 +166,11 @@ router.post('/:id/aprovar', compradorOuAdmin, async (req, res) => {
     );
 
     await client.query('COMMIT');
+    notificarCadastros({
+      titulo: '✅ Acordo aprovado',
+      corpo: `${a.fornecedor_nome || ''} • ${a.produto_nome} • R$ ${parseFloat(a.preco_acordo).toFixed(2)} (${a.qtde_acordada} un)`,
+      url: `/acordo-extrato.html?id=${a.id}`
+    }).catch(() => {});
     res.json({ ok: true, id: a.id });
   } catch (e) {
     await client.query('ROLLBACK').catch(() => {});
@@ -185,7 +198,64 @@ router.post('/:id/recusar', compradorOuAdmin, async (req, res) => {
        WHERE id = $3`,
       [aprovador, motivo, req.params.id]
     );
+    const [info] = await dbQuery(`SELECT fornecedor_nome, produto_nome FROM acordos_comerciais WHERE id=$1`, [req.params.id]);
+    notificarCadastros({
+      titulo: '❌ Acordo recusado',
+      corpo: `${info?.fornecedor_nome || ''} • ${info?.produto_nome || ''} — Motivo: ${motivo}`,
+      url: '/auditoria-acordos.html'
+    }).catch(() => {});
     res.json({ ok: true });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
+// GET /api/acordos/auditoria/nao-aceitos — agrupa acordos recusados/pendentes/cancelados por fornecedor
+router.get('/auditoria/nao-aceitos', compradorOuAdmin, async (req, res) => {
+  try {
+    const fornecedor_cnpj = (req.query.fornecedor_cnpj || '').replace(/\D/g, '');
+    const status = req.query.status || 'recusado,cancelado,pendente_compras';
+    const statuses = status.split(',').map(s => s.trim()).filter(Boolean);
+    const params = [statuses];
+    let where = `a.status = ANY($1::text[])`;
+    if (fornecedor_cnpj) {
+      params.push(fornecedor_cnpj);
+      where += ` AND REGEXP_REPLACE(a.fornecedor_cnpj,'\\D','','g') = $${params.length}`;
+    }
+    const rows = await dbQuery(
+      `SELECT a.id, a.loja_id, l.nome AS loja_nome,
+              a.fornecedor_cnpj, a.fornecedor_nome,
+              a.barcode, a.produto_nome,
+              a.preco_atual, a.preco_acordo, a.diferenca_unitaria, a.qtde_acordada, a.valor_confessado,
+              a.data_validade, a.status, a.motivo_recusa,
+              a.solicitado_por_nome, a.solicitado_em, a.aprovado_por, a.aprovado_em
+         FROM acordos_comerciais a
+         LEFT JOIN lojas l ON l.id = a.loja_id
+        WHERE ${where}
+        ORDER BY a.fornecedor_nome, a.solicitado_em DESC`,
+      params
+    );
+    res.json(rows);
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
+// GET /api/acordos/auditoria/resumo-fornecedores — agregado por fornecedor
+router.get('/auditoria/resumo-fornecedores', compradorOuAdmin, async (req, res) => {
+  try {
+    const rows = await dbQuery(
+      `SELECT a.fornecedor_cnpj, a.fornecedor_nome,
+              COUNT(*) FILTER (WHERE a.status='ativo')             AS aceitos,
+              COUNT(*) FILTER (WHERE a.status='recusado')          AS recusados,
+              COUNT(*) FILTER (WHERE a.status='cancelado')         AS cancelados,
+              COUNT(*) FILTER (WHERE a.status='pendente_compras')  AS pendentes,
+              COUNT(*) FILTER (WHERE a.status='fechado')           AS fechados,
+              COUNT(*) AS total,
+              SUM(a.valor_confessado) FILTER (WHERE a.status='ativo')    AS valor_aceito,
+              SUM(a.valor_confessado) FILTER (WHERE a.status='recusado') AS valor_recusado
+         FROM acordos_comerciais a
+        WHERE a.fornecedor_cnpj IS NOT NULL
+        GROUP BY 1, 2
+        ORDER BY recusados DESC, cancelados DESC, total DESC`,
+    );
+    res.json(rows);
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 

@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Auditoria de Acordos — JR Lira</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:system-ui,-apple-system,sans-serif;background:#0f172a;color:#e2e8f0;padding:14px}
+  header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+  h1{font-size:18px;color:#F5C518}
+  .tabs{display:flex;gap:6px;margin-bottom:12px}
+  .tabs button{flex:1;padding:8px;font-size:12px;border:0;border-radius:6px;cursor:pointer;background:#1e293b;color:#94a3b8;font-weight:600}
+  .tabs button.ativa{background:#F5C518;color:#000}
+  .grid{display:grid;grid-template-columns:1fr;gap:8px}
+  .card{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:12px}
+  .forn-nome{font-weight:700;color:#e2e8f0;font-size:14px;margin-bottom:6px}
+  .row{display:flex;gap:8px;font-size:11px;color:#94a3b8;flex-wrap:wrap}
+  .pill{padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600}
+  .p-aceito{background:#16a34a;color:#fff}
+  .p-recusado{background:#dc2626;color:#fff}
+  .p-cancelado{background:#475569;color:#cbd5e1}
+  .p-pendente{background:#f59e0b;color:#000}
+  .p-fechado{background:#0369a1;color:#fff}
+  table{width:100%;border-collapse:collapse;background:#0f172a;border:1px solid #334155;border-radius:8px;overflow:hidden;font-size:12px}
+  th{background:#1e293b;color:#94a3b8;text-align:left;padding:8px;font-size:11px;font-weight:600;text-transform:uppercase}
+  td{padding:8px;border-top:1px solid #1e293b;color:#cbd5e1}
+  td.right{text-align:right}
+  .filtros{display:flex;gap:8px;margin-bottom:10px;align-items:center;flex-wrap:wrap}
+  .filtros input,.filtros select{background:#1e293b;border:1px solid #334155;color:#e2e8f0;padding:7px;border-radius:6px;font-size:12px}
+  .vazio{text-align:center;padding:40px;color:#64748b}
+  small{color:#64748b}
+</style>
+</head>
+<body>
+<header>
+  <h1>📋 Auditoria de Acordos</h1>
+  <button onclick="location.href='/'" style="background:#334155;color:#cbd5e1;padding:6px 12px;border:0;border-radius:6px;cursor:pointer;font-size:11px">← Voltar</button>
+</header>
+
+<div class="tabs">
+  <button id="tab-resumo" class="ativa" onclick="mudarTab('resumo')">Resumo por Fornecedor</button>
+  <button id="tab-detalhe" onclick="mudarTab('detalhe')">Acordos Não Aceitos</button>
+</div>
+
+<div id="view-resumo">
+  <div id="resumo-lista" class="grid"></div>
+</div>
+
+<div id="view-detalhe" style="display:none">
+  <div class="filtros">
+    <select id="f-status" onchange="carregarDetalhe()">
+      <option value="recusado,cancelado,pendente_compras">Não aceitos (recusado + cancelado + pendente)</option>
+      <option value="recusado">Só recusados</option>
+      <option value="cancelado">Só cancelados</option>
+      <option value="pendente_compras">Só pendentes</option>
+    </select>
+    <input type="text" id="f-cnpj" placeholder="Filtrar por CNPJ" onkeyup="if(event.key==='Enter')carregarDetalhe()">
+    <button onclick="carregarDetalhe()" style="background:#F5C518;color:#000;padding:7px 14px;border:0;border-radius:6px;cursor:pointer;font-weight:600;font-size:12px">Aplicar</button>
+  </div>
+  <div id="detalhe-lista"></div>
+</div>
+
+<script>
+const TOKEN_KEYS = ['jrlira_token','token'];
+function token() { for (const k of TOKEN_KEYS) { const v = localStorage.getItem(k); if (v) return v; } return null; }
+function auth() { return { Authorization: 'Bearer ' + token() }; }
+
+if (!token()) { location.href = '/'; }
+
+let tab = 'resumo';
+function mudarTab(t) {
+  tab = t;
+  document.getElementById('tab-resumo').className = t==='resumo' ? 'ativa' : '';
+  document.getElementById('tab-detalhe').className = t==='detalhe' ? 'ativa' : '';
+  document.getElementById('view-resumo').style.display = t==='resumo' ? 'block' : 'none';
+  document.getElementById('view-detalhe').style.display = t==='detalhe' ? 'block' : 'none';
+  if (t==='resumo') carregarResumo();
+  else carregarDetalhe();
+}
+
+async function carregarResumo() {
+  const r = await fetch('/api/acordos/auditoria/resumo-fornecedores', { headers: auth() });
+  if (r.status === 401) { location.href = '/'; return; }
+  const itens = await r.json();
+  const el = document.getElementById('resumo-lista');
+  if (!itens.length) { el.innerHTML = '<div class="vazio">Sem acordos</div>'; return; }
+  el.innerHTML = itens.map(it => `
+    <div class="card">
+      <div class="forn-nome">${esc(it.fornecedor_nome || it.fornecedor_cnpj || '?')}</div>
+      <div class="row">
+        <span class="pill p-aceito">${it.aceitos} aceitos</span>
+        <span class="pill p-recusado">${it.recusados} recusados</span>
+        <span class="pill p-cancelado">${it.cancelados} cancelados</span>
+        <span class="pill p-pendente">${it.pendentes} pendentes</span>
+        <span class="pill p-fechado">${it.fechados} fechados</span>
+        <small>• Total: ${it.total} • Valor aceito: R$ ${num(it.valor_aceito)} • Valor recusado: R$ ${num(it.valor_recusado)}</small>
+      </div>
+      <button onclick="filtrarPorFornec('${it.fornecedor_cnpj}')" style="margin-top:8px;background:#1e293b;border:1px solid #475569;color:#cbd5e1;padding:5px 10px;border-radius:5px;cursor:pointer;font-size:11px">Ver acordos não aceitos →</button>
+    </div>
+  `).join('');
+}
+
+function filtrarPorFornec(cnpj) {
+  document.getElementById('f-cnpj').value = cnpj;
+  mudarTab('detalhe');
+}
+
+async function carregarDetalhe() {
+  const status = document.getElementById('f-status').value;
+  const cnpj = document.getElementById('f-cnpj').value.replace(/\D/g, '');
+  const u = new URLSearchParams({ status });
+  if (cnpj) u.set('fornecedor_cnpj', cnpj);
+  const r = await fetch('/api/acordos/auditoria/nao-aceitos?' + u, { headers: auth() });
+  const itens = await r.json();
+  const el = document.getElementById('detalhe-lista');
+  if (!itens.length) { el.innerHTML = '<div class="vazio">Sem acordos com esses filtros</div>'; return; }
+  // Agrupa por fornecedor
+  const grupos = {};
+  for (const it of itens) {
+    const k = it.fornecedor_cnpj + '|' + it.fornecedor_nome;
+    if (!grupos[k]) grupos[k] = { nome: it.fornecedor_nome, cnpj: it.fornecedor_cnpj, itens: [] };
+    grupos[k].itens.push(it);
+  }
+  el.innerHTML = Object.values(grupos).map(g => `
+    <div class="card" style="margin-bottom:10px">
+      <div class="forn-nome">${esc(g.nome || g.cnpj || '?')} <small style="color:#64748b">(${g.itens.length} acordos)</small></div>
+      <table>
+        <thead><tr>
+          <th>Status</th><th>Loja</th><th>Produto</th>
+          <th class="right">Qtd</th><th class="right">Preço Acordo</th><th class="right">Valor</th>
+          <th>Solicitado</th><th>Decidido</th><th>Motivo</th>
+        </tr></thead>
+        <tbody>
+          ${g.itens.map(it => `<tr>
+            <td><span class="pill p-${pillClass(it.status)}">${labelStatus(it.status)}</span></td>
+            <td>${esc(it.loja_nome||'')}</td>
+            <td>${esc(it.produto_nome||it.barcode||'')}</td>
+            <td class="right">${it.qtde_acordada || '-'}</td>
+            <td class="right">R$ ${num(it.preco_acordo)}</td>
+            <td class="right">R$ ${num(it.valor_confessado)}</td>
+            <td><small>${esc(it.solicitado_por_nome||'')}<br>${dt(it.solicitado_em)}</small></td>
+            <td><small>${esc(it.aprovado_por||'-')}<br>${dt(it.aprovado_em)}</small></td>
+            <td><small>${esc(it.motivo_recusa||'-')}</small></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  `).join('');
+}
+
+function pillClass(s) { return ({recusado:'recusado',cancelado:'cancelado',pendente_compras:'pendente',ativo:'aceito',fechado:'fechado'})[s] || 'cancelado'; }
+function labelStatus(s) { return ({recusado:'Recusado',cancelado:'Cancelado',pendente_compras:'Pendente',ativo:'Aceito',fechado:'Fechado'})[s] || s; }
+function num(v) { return v ? parseFloat(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}) : '0,00'; }
+function dt(s) { return s ? new Date(s).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'}) : '-'; }
+function esc(s) { return String(s||'').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[c]); }
+
+carregarResumo();
+</script>
+<script src="/js/notificacoes.js"></script>
+</body>
+</html>
