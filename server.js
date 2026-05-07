@@ -958,21 +958,58 @@ async function initDB() {
          NEW.codigobarra := NULLIF(LTRIM(COALESCE(NEW.codigobarra,''),'0'),'');
          NEW.tipo_saida  := TRIM(COALESCE(NEW.tipo_saida, 'venda'));
          IF NEW.codigobarra IS NULL THEN RETURN NEW; END IF;
-         -- Match incluindo id_tabela_preco (null tratado como 0). Trigger atualiza linha existente
-         -- pra refletir nova qtd_vendida + tipo_saida, ou cria linha nova se não existe combinação.
          UPDATE vendas_historico
-            SET qtd_vendida = NEW.qtd_vendida,
-                tipo_saida  = NEW.tipo_saida,
-                id_tabela_preco = COALESCE(NEW.id_tabela_preco, vendas_historico.id_tabela_preco),
-                sincronizado_em = NOW()
-          WHERE loja_id = NEW.loja_id
-            AND codigobarra = NEW.codigobarra
-            AND data_venda = NEW.data_venda
+            SET qtd_vendida = NEW.qtd_vendida, tipo_saida  = NEW.tipo_saida, sincronizado_em = NOW()
+          WHERE loja_id = NEW.loja_id AND codigobarra = NEW.codigobarra AND data_venda = NEW.data_venda
             AND COALESCE(id_tabela_preco, 0) = COALESCE(NEW.id_tabela_preco, 0);
          IF FOUND THEN RETURN NULL; END IF;
          RETURN NEW;
        END;
        $trg$ LANGUAGE plpgsql;`);
+
+    // V6: aproveita linha existente com id_tabela_preco=NULL e "promove" pra preencher,
+    // evitando duplicar quando a coluna nova começa a ser populada pelo KTR.
+    await runMigration(client, '20260507_trim_skip_dup_vendas_v6_promote_null',
+      `CREATE OR REPLACE FUNCTION trim_skip_dup_vendas() RETURNS TRIGGER AS $trg$
+       BEGIN
+         NEW.codigobarra := NULLIF(LTRIM(COALESCE(NEW.codigobarra,''),'0'),'');
+         NEW.tipo_saida  := TRIM(COALESCE(NEW.tipo_saida, 'venda'));
+         IF NEW.codigobarra IS NULL THEN RETURN NEW; END IF;
+         -- 1) Match exato (mesmo id_tabela_preco)
+         UPDATE vendas_historico
+            SET qtd_vendida = NEW.qtd_vendida, tipo_saida = NEW.tipo_saida, sincronizado_em = NOW()
+          WHERE loja_id = NEW.loja_id AND codigobarra = NEW.codigobarra AND data_venda = NEW.data_venda
+            AND COALESCE(id_tabela_preco, 0) = COALESCE(NEW.id_tabela_preco, 0);
+         IF FOUND THEN RETURN NULL; END IF;
+         -- 2) Se vem id_tabela_preco real e existe linha legada NULL, promove ela
+         IF NEW.id_tabela_preco IS NOT NULL THEN
+           WITH alvo AS (
+             SELECT id FROM vendas_historico
+              WHERE loja_id = NEW.loja_id AND codigobarra = NEW.codigobarra AND data_venda = NEW.data_venda
+                AND id_tabela_preco IS NULL
+              LIMIT 1
+           )
+           UPDATE vendas_historico v
+              SET id_tabela_preco = NEW.id_tabela_preco, qtd_vendida = NEW.qtd_vendida,
+                  tipo_saida = NEW.tipo_saida, sincronizado_em = NOW()
+             FROM alvo WHERE v.id = alvo.id;
+           IF FOUND THEN RETURN NULL; END IF;
+         END IF;
+         RETURN NEW;
+       END;
+       $trg$ LANGUAGE plpgsql;`);
+
+    // Limpeza one-shot: remove linhas legadas com id_tabela_preco=NULL onde já existe outra preenchida
+    await runMigration(client, '20260507_dedup_vendas_id_tabela_null',
+      `DELETE FROM vendas_historico v_old
+        WHERE v_old.id_tabela_preco IS NULL
+          AND EXISTS (
+            SELECT 1 FROM vendas_historico v_new
+             WHERE v_new.loja_id = v_old.loja_id
+               AND v_new.codigobarra = v_old.codigobarra
+               AND v_new.data_venda = v_old.data_venda
+               AND v_new.id_tabela_preco IS NOT NULL
+          )`);
 
     await runMigration(client, '20260506_trim_skip_dup_compras_v4_upsert',
       `CREATE OR REPLACE FUNCTION trim_skip_dup_compras() RETURNS TRIGGER AS $trg$
