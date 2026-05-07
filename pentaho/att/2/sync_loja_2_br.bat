@@ -1,7 +1,7 @@
 @echo off
 TITLE SyncAcougue - Loja 2 BR
 SET currentdir=%~dp0
-SET kitchen=C:\Pentaho\app\data-integration\Kitchen.bat
+SET kitchen=C:\Pentaho\data-integration\Kitchen.bat
 SET logfile="%currentdir%log_loja_2.txt"
 
 echo. >> %logfile%
