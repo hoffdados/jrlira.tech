@@ -9,7 +9,8 @@ echo ========================================== >> %logfile% 2>&1
 echo INICIO: %DATE% %TIME% >> %logfile% 2>&1
 echo ========================================== >> %logfile% 2>&1
 
-"%kitchen%" /file:"%currentdir%job_vendas_loja_6_santarem.kjb" "/param:LOJA_ID=6" "/param:DATA_CORTE=2025-01-01" /level:Basic >> %logfile% 2>&1
+SET DATA_CORTE=2025-01-01
+"%kitchen%" /file:"%currentdir%job_vendas_loja_6_santarem.kjb" "/param:LOJA_ID=6" /level:Basic >> %logfile% 2>&1
 
 echo ========================================== >> %logfile% 2>&1
 echo FIM:    %DATE% %TIME% >> %logfile% 2>&1
