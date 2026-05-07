@@ -93,6 +93,7 @@
       <parameters>
         <pass_all_parameters>Y</pass_all_parameters>
         <parameter><name>LOJA_ID</name><stream_name/><value>2</value></parameter>
+        <parameter><name>DATA_CORTE</name><stream_name/><value>${DATA_CORTE}</value></parameter>
       </parameters>
       <parallel>N</parallel><draw>Y</draw><nr>0</nr><xloc>384</xloc><yloc>96</yloc>
       <attributes_kjc/>
