@@ -13,6 +13,11 @@
         <default_value/>
         <description>ID da loja no sistema (obrigatorio — sem default pra evitar gravar como loja 1 por engano)</description>
       </parameter>
+      <parameter>
+        <name>DATA_CORTE</name>
+        <default_value/>
+        <description>Data inicial do filtro B.DATAENTRADA (formato YYYY-MM-DD).</description>
+      </parameter>
     </parameters>
     <size_rowset>10000</size_rowset>
     <sleep_time_empty>50</sleep_time_empty>

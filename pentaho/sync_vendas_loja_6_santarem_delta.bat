@@ -10,6 +10,6 @@ for /f %%i in ('powershell -NoProfile "(Get-Date).AddDays(-7).ToString('yyyy-MM-
 echo. >> %logfile% 2>&1
 echo === DELTA INICIO: %DATE% %TIME% (DATA_CORTE=%DATA_CORTE%) === >> %logfile% 2>&1
 
-"%kitchen%" /file:"%currentdir%job_vendas_loja_6_santarem.kjb" "/param:LOJA_ID=6" /level:Basic >> %logfile% 2>&1
+"%kitchen%" /file:"%currentdir%job_vendas_loja_6_santarem.kjb" "/param:LOJA_ID=6" "/param:DATA_CORTE=%DATA_CORTE%" /level:Basic >> %logfile% 2>&1
 
 echo === DELTA FIM: %DATE% %TIME% === >> %logfile% 2>&1

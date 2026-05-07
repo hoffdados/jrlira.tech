@@ -13,6 +13,11 @@
         <default_value/>
         <description>ID da loja no sistema (obrigatorio — sem default pra evitar gravar como loja 1 por engano)</description>
       </parameter>
+      <parameter>
+        <name>DATA_CORTE</name>
+        <default_value/>
+        <description>Data inicial do filtro PED.DATAEFE (formato YYYY-MM-DD). Sem default — BAT precisa passar.</description>
+      </parameter>
     </parameters>
     <log>
       <trans-log-table>
