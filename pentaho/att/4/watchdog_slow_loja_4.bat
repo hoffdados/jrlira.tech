@@ -4,7 +4,11 @@ set PSEXE=C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
 set PING=C:\Windows\System32\PING.EXE
 
 :loop
-%PSEXE% -NoProfile -Command "$d=Get-Date;$h=$d.Hour;$m=$d.Minute;$run=$true;if($m -lt 45 -or $m -gt 49){$run=$false};if($h -eq 6){$run=$false};if($run){exit 0}else{exit 1}"
+REM auto-kill de java/javaw do Pentaho pendurados ha mais de 15min
+%PSEXE% -NoProfile -Command "Get-Process javaw,java -EA SilentlyContinue | Where-Object { $_.Path -like 'C:\Pentaho\*' -and $_.StartTime -lt (Get-Date).AddMinutes(-15) } | Stop-Process -Force -EA SilentlyContinue"
+
+REM SLOW roda 3x/dia: 08:00, 14:00, 20:00 (janela inicio ate :04)
+%PSEXE% -NoProfile -Command "$d=Get-Date;$h=$d.Hour;$m=$d.Minute;$run=($h -in @(8,14,20) -and $m -le 4);if($run){exit 0}else{exit 1}"
 if errorlevel 1 goto skip
 
 echo === SLOW COMPRAS+DEV+FORN %DATE% %TIME% ===
