@@ -3,34 +3,24 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>JR Lira Tech</title>
+<title>JR Lira Tech — Layout Por Perfil (TESTE)</title>
 <link rel="stylesheet" href="/shared.css">
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; padding: 24px; }
-body.login-mode { display: flex; align-items: center; justify-content: center; }
-
-/* ── LOGIN ── */
-.login-box { background: #1e293b; border-radius: 14px; padding: 40px; width: 360px; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
-.login-title { font-family: 'Segoe UI Black', 'Segoe UI', sans-serif; font-weight: 900; font-size: 26px; color: #38bdf8; text-align: center; margin-bottom: 4px; letter-spacing: -0.5px; }
-.login-sub { text-align: center; font-size: 12px; color: #475569; margin-bottom: 32px; }
-.login-box label { display: block; font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; margin-top: 18px; }
-.login-box input { width: 100%; padding: 10px 14px; background: #0f172a; border: 1px solid #334155; border-radius: 8px; color: #e2e8f0; font-size: 14px; }
-.login-box input:focus { outline: none; border-color: #38bdf8; }
-.login-box button { width: 100%; margin-top: 26px; padding: 12px; background: #0ea5e9; border: none; border-radius: 8px; color: #fff; font-size: 15px; font-weight: 700; cursor: pointer; transition: background .2s; }
-.login-box button:hover { background: #0284c7; }
-.erro { margin-top: 12px; text-align: center; color: #f87171; font-size: 13px; }
-
-/* ── DASHBOARD ── */
-.dashboard { display: none; max-width: 1200px; margin: 0 auto; width: 100%; }
-.dash-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+.dashboard { max-width: 1200px; margin: 0 auto; }
+.dash-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; flex-wrap: wrap; gap: 12px; }
 .dash-brand { font-family: 'Segoe UI Black', 'Segoe UI', sans-serif; font-weight: 900; font-size: 24px; color: #38bdf8; letter-spacing: -0.5px; }
 .dash-user { font-size: 12px; color: #475569; margin-top: 2px; }
-.logout-btn { font-size: 12px; color: #475569; cursor: pointer; text-decoration: none; transition: color .2s; }
-.logout-btn:hover { color: #94a3b8; }
 
-/* ── GRUPOS ── */
+.aviso { background: #1e293b; border: 1px solid #f59e0b; border-radius: 8px; padding: 10px 14px; font-size: 12px; color: #fbbf24; margin-bottom: 16px; }
+
+.perfil-switch { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 24px; }
+.perfil-btn { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 8px 14px; font-size: 13px; color: #e2e8f0; cursor: pointer; transition: all .15s; }
+.perfil-btn:hover { background: #273549; border-color: #475569; }
+.perfil-btn.ativa { background: #0ea5e9; border-color: #0ea5e9; color: #fff; font-weight: 600; }
+
 .grupo { margin-bottom: 24px; border: 2px solid; border-radius: 12px; padding: 14px 16px 16px 16px; position: relative; background: rgba(30, 41, 59, 0.3); }
 .grupo-titulo { position: absolute; top: -11px; left: 16px; padding: 0 10px; font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; background: #0f172a; }
 
@@ -41,7 +31,6 @@ body.login-mode { display: flex; align-items: center; justify-content: center; }
 .grupo.auditoria    { border-color: #ef4444; } .grupo.auditoria .grupo-titulo    { color: #f87171; } .grupo.auditoria .card .ic svg    { color: #f87171; }
 .grupo.admin        { border-color: #64748b; } .grupo.admin .grupo-titulo        { color: #94a3b8; } .grupo.admin .card .ic svg        { color: #94a3b8; }
 
-/* ── CARDS ── */
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
 .card { background: #1e293b; border-radius: 10px; padding: 16px 12px; display: flex; flex-direction: column; align-items: center; gap: 8px; cursor: pointer; text-decoration: none; color: inherit; border: 1px solid transparent; transition: background .2s, border-color .2s; text-align: center; position: relative; }
 .card:hover { background: #273549; border-color: #334155; }
@@ -51,56 +40,37 @@ body.login-mode { display: flex; align-items: center; justify-content: center; }
 .card-desc { font-size: 10px; color: #64748b; line-height: 1.3; }
 .badge { position: absolute; top: -6px; right: -6px; background: #ef4444; color: #fff; font-size: 11px; font-weight: 700; min-width: 22px; height: 22px; border-radius: 11px; display: flex; align-items: center; justify-content: center; padding: 0 6px; box-shadow: 0 2px 6px rgba(239,68,68,.5); animation: pulse 2s infinite; }
 @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+.card.com-pendencia .ic svg { color: #f87171; }
 </style>
 </head>
-<body class="login-mode">
+<body>
 
-<div class="login-box" id="loginBox">
-  <div class="login-title">JR Lira Tech</div>
-  <div class="login-sub">Sistema de Gestão</div>
-  <label>Usuário</label>
-  <input type="text" id="inputUsuario" placeholder="usuario">
-  <label>Senha</label>
-  <input type="password" id="inputSenha" placeholder="••••••••" onkeydown="if(event.key==='Enter')fazerLogin()">
-  <button onclick="fazerLogin()">Entrar</button>
-  <div class="erro" id="erroLogin"></div>
-</div>
-
-<div class="dashboard" id="dashboard">
+<div class="dashboard">
   <div class="dash-header">
     <div>
       <div class="dash-brand">JR Lira Tech</div>
-      <div class="dash-user" id="dashUser"></div>
+      <div class="dash-user">Layout em teste — preview por perfil</div>
     </div>
-    <a class="logout-btn" onclick="sair()">Sair</a>
+    <a class="logout-btn" href="/" style="font-size: 12px; color: #475569; cursor: pointer; text-decoration: none;">← Voltar</a>
   </div>
+
+  <div class="aviso">🧪 <b>PREVIEW POR PERFIL</b> — Clique nos botões abaixo pra ver o que cada usuário veria. Badges são mockados.</div>
+
+  <div class="perfil-switch">
+    <button class="perfil-btn ativa" data-perfil="admin">Admin</button>
+    <button class="perfil-btn" data-perfil="rh">RH</button>
+    <button class="perfil-btn" data-perfil="cadastro">Cadastro</button>
+    <button class="perfil-btn" data-perfil="estoque">Estoque</button>
+    <button class="perfil-btn" data-perfil="comprador">Comprador</button>
+    <button class="perfil-btn" data-perfil="auditor">Auditor</button>
+  </div>
+
   <div id="layout"></div>
 </div>
 
 <script>
-const API = '';
-function getToken() { return localStorage.getItem('jrlira_token'); }
-
-async function fazerLogin() {
-  const usuario = document.getElementById('inputUsuario').value.trim();
-  const senha = document.getElementById('inputSenha').value;
-  document.getElementById('erroLogin').textContent = '';
-  try {
-    const r = await fetch(`${API}/api/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ usuario, senha })
-    });
-    const data = await r.json();
-    if (!r.ok) return document.getElementById('erroLogin').textContent = data.erro;
-    localStorage.setItem('jrlira_token', data.token);
-    localStorage.setItem('jrlira_nome', data.nome);
-    localStorage.setItem('jrlira_perfil', data.perfil);
-    localStorage.setItem('jrlira_lojas', JSON.stringify(data.lojas || null));
-    mostrarDashboard(data.nome, data.perfil);
-  } catch { document.getElementById('erroLogin').textContent = 'Erro de conexão'; }
-}
-
+// estrutura: cada grupo tem cards, e cada card declara perfis que veem
+// pendencias mockadas pra preview
 const GRUPOS = [
   { id: 'rh', titulo: 'Recursos Humanos', classe: 'rh', cards: [
     { href: '/rh', icon: 'users', title: 'Quadro de Lotação', desc: 'Funcionários e histórico', perfis: ['admin','rh'] },
@@ -108,17 +78,17 @@ const GRUPOS = [
     { href: '/ponto', icon: 'clock', title: 'Controle de Ponto', desc: 'Importação iPonto', perfis: ['admin','rh'] },
   ]},
   { id: 'pedidos', titulo: 'Pedidos Fornecedores · fluxo operacional', classe: 'pedidos', cards: [
-    { href: '/fornecedores', icon: 'building-2', title: 'Fornecedores', desc: 'Cadastro e aprovações', perfis: ['admin','comprador'], badge: 'fornecedores_pendentes' },
+    { href: '/fornecedores', icon: 'building-2', title: 'Fornecedores', desc: 'Cadastro e aprovações', perfis: ['admin','comprador'] },
     { href: '/sugestao-compras', icon: 'trending-up', title: 'Sugestão de Compras', desc: 'Reposição proativa', perfis: ['admin','comprador'] },
     { href: '/pedidos-comprador', icon: 'shopping-cart', title: 'Pedidos', desc: 'Validação e PDF', perfis: ['admin','comprador'] },
-    { href: '/auditoria-pedidos', icon: 'shield-check', title: 'Auditoria de Pedidos', desc: 'Liberar acima da sugestão', perfis: ['admin','auditor'], badge: 'auditoria_pedidos' },
+    { href: '/auditoria-pedidos', icon: 'shield-check', title: 'Auditoria de Pedidos', desc: 'Liberar acima da sugestão', perfis: ['admin','auditor'], pendencia: 3 },
     { href: '/notas-comprador', icon: 'file-check', title: 'NF-e Fornecedor', desc: 'Importar XMLs e vincular', perfis: ['admin','comprador'] },
     { href: '/contas-receber', icon: 'receipt', title: 'Contas a Receber', desc: 'Devoluções e bonificações', perfis: ['admin','comprador'] },
   ]},
   { id: 'notas', titulo: 'Notas de Entrada · cadastro → estoque → auditoria', classe: 'notas', cards: [
     { href: '/notas-cadastro', icon: 'file-text', title: 'Cadastro', desc: 'NF-e dos fornecedores', perfis: ['admin','cadastro'] },
     { href: '/notas-estoque', icon: 'package', title: 'Estoque', desc: 'Conferência às cegas', perfis: ['admin','estoque'] },
-    { href: '/notas-auditoria', icon: 'clipboard-check', title: 'Auditoria', desc: 'Fechamento de notas', perfis: ['admin','auditor'], badge: 'notas_auditoria' },
+    { href: '/notas-auditoria', icon: 'clipboard-check', title: 'Auditoria', desc: 'Fechamento de notas', perfis: ['admin','auditor'], pendencia: 7 },
   ]},
   { id: 'transferencias', titulo: 'Transferências CD / Lojas', classe: 'transferencias', cards: [
     { href: '/notas-transferencias-cadastro', icon: 'truck', title: 'Cadastro', desc: 'Transferências CD/lojas', perfis: ['admin','cadastro'] },
@@ -126,11 +96,11 @@ const GRUPOS = [
     { href: '/notas-cd', icon: 'route', title: 'Acompanhar CD', desc: 'Transferências CD/lojas', perfis: ['admin','comprador'] },
   ]},
   { id: 'auditoria', titulo: 'Auditoria & Qualidade', classe: 'auditoria', cards: [
-    { href: '/auditagem-divergencias', icon: 'alert-triangle', title: 'Divergências CD', desc: 'Faltas/sobras na conferência', perfis: ['admin','auditor'], badge: 'divergencias_cd' },
-    { href: '/validades-em-risco', icon: 'calendar-clock', title: 'Validades em Risco', desc: 'Decisão admin', perfis: ['admin','auditor'], badge: 'validades_em_risco' },
-    { href: '/aguardando-devolucao', icon: 'undo-2', title: 'Aguardando Devolução', desc: 'Anexar XML', perfis: ['admin','cadastro'], badge: 'aguardando_devolucao' },
+    { href: '/auditagem-divergencias', icon: 'alert-triangle', title: 'Divergências CD', desc: 'Faltas/sobras na conferência', perfis: ['admin','auditor'], pendencia: 5 },
+    { href: '/validades-em-risco', icon: 'calendar-clock', title: 'Validades em Risco', desc: 'Decisão admin', perfis: ['admin','auditor'], pendencia: 12 },
+    { href: '/aguardando-devolucao', icon: 'undo-2', title: 'Aguardando Devolução', desc: 'Anexar XML', perfis: ['admin','cadastro'], pendencia: 2 },
     { href: '/devolucoes-divergencias', icon: 'trending-down', title: 'Divergências Devolução', desc: 'NF devolução vs esperado', perfis: ['admin','auditor'] },
-    { href: '/auditoria-acordos', icon: 'handshake', title: 'Auditoria Acordos', desc: 'Resumo aprovações', perfis: ['admin','auditor'], badge: 'auditoria_acordos' },
+    { href: '/auditoria-acordos', icon: 'handshake', title: 'Auditoria Acordos', desc: 'Resumo aprovações', perfis: ['admin','auditor'], pendencia: 'NOVO' },
   ]},
   { id: 'admin', titulo: 'Cadastros / Admin', classe: 'admin', cards: [
     { href: '/produtos-embalagem', icon: 'box', title: 'Cadastro CD', desc: 'Quantidade por embalagem', perfis: ['admin'] },
@@ -139,15 +109,7 @@ const GRUPOS = [
   ]},
 ];
 
-async function carregarBadges() {
-  try {
-    const r = await fetch(`${API}/api/dashboard/badges`, { headers: { Authorization: `Bearer ${getToken()}` } });
-    if (!r.ok) return {};
-    return await r.json();
-  } catch { return {}; }
-}
-
-function renderLayout(perfil, badges) {
+function renderLayout(perfil) {
   const container = document.getElementById('layout');
   container.innerHTML = '';
   for (const grupo of GRUPOS) {
@@ -156,47 +118,30 @@ function renderLayout(perfil, badges) {
     const grupoEl = document.createElement('div');
     grupoEl.className = `grupo ${grupo.classe}`;
     grupoEl.innerHTML = `<div class="grupo-titulo">${grupo.titulo}</div><div class="cards">${
-      cards.map(c => {
-        const n = c.badge ? (badges[c.badge] || 0) : 0;
-        return `
-          <a class="card" href="${c.href}">
-            ${n > 0 ? `<span class="badge">${n}</span>` : ''}
-            <div class="ic"><i data-lucide="${c.icon}"></i></div>
-            <div>
-              <div class="card-title">${c.title}</div>
-              <div class="card-desc">${c.desc}</div>
-            </div>
-          </a>`;
-      }).join('')
+      cards.map(c => `
+        <a class="card${c.pendencia ? ' com-pendencia' : ''}" href="${c.href}">
+          ${c.pendencia ? `<span class="badge">${c.pendencia}</span>` : ''}
+          <div class="ic"><i data-lucide="${c.icon}"></i></div>
+          <div>
+            <div class="card-title">${c.title}</div>
+            <div class="card-desc">${c.desc}</div>
+          </div>
+        </a>`).join('')
     }</div>`;
     container.appendChild(grupoEl);
   }
   lucide.createIcons();
 }
 
-async function mostrarDashboard(nome, perfil) {
-  document.body.classList.remove('login-mode');
-  document.getElementById('loginBox').style.display = 'none';
-  document.getElementById('dashboard').style.display = 'block';
-  document.getElementById('dashUser').textContent = `Bem-vindo, ${nome}`;
-  const badges = await carregarBadges();
-  renderLayout(perfil || localStorage.getItem('jrlira_perfil') || '', badges);
-  // Atualiza badges a cada 60s
-  setInterval(async () => {
-    const fresh = await carregarBadges();
-    renderLayout(perfil || localStorage.getItem('jrlira_perfil') || '', fresh);
-  }, 60000);
-}
+document.querySelectorAll('.perfil-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.perfil-btn').forEach(b => b.classList.remove('ativa'));
+    btn.classList.add('ativa');
+    renderLayout(btn.dataset.perfil);
+  });
+});
 
-function sair() {
-  ['jrlira_token','jrlira_nome','jrlira_perfil','jrlira_lojas'].forEach(k => localStorage.removeItem(k));
-  document.body.classList.add('login-mode');
-  document.getElementById('loginBox').style.display = 'block';
-  document.getElementById('dashboard').style.display = 'none';
-}
-
-if (getToken()) mostrarDashboard(localStorage.getItem('jrlira_nome') || '', localStorage.getItem('jrlira_perfil') || '');
+renderLayout('admin');
 </script>
-<script src="/js/notificacoes.js"></script>
 </body>
 </html>

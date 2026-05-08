@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JR Lira Tech — Layout Novo (TESTE)</title>
+<link rel="stylesheet" href="/shared.css">
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; padding: 24px; }
+
+.dashboard { max-width: 1200px; margin: 0 auto; }
+.dash-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+.dash-brand { font-family: 'Segoe UI Black', 'Segoe UI', sans-serif; font-weight: 900; font-size: 24px; color: #38bdf8; letter-spacing: -0.5px; }
+.dash-user { font-size: 12px; color: #475569; margin-top: 2px; }
+.aviso { background: #1e293b; border: 1px solid #f59e0b; border-radius: 8px; padding: 10px 14px; font-size: 12px; color: #fbbf24; margin-bottom: 20px; }
+.logout-btn { font-size: 12px; color: #475569; cursor: pointer; text-decoration: none; }
+
+/* ── GRUPOS ── */
+.grupo { margin-bottom: 24px; border: 2px solid; border-radius: 12px; padding: 14px 16px 16px 16px; position: relative; background: rgba(30, 41, 59, 0.3); }
+.grupo-titulo { position: absolute; top: -11px; left: 16px; padding: 0 10px; font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; background: #0f172a; }
+
+.grupo.rh           { border-color: #3b82f6; } .grupo.rh .grupo-titulo           { color: #60a5fa; } .grupo.rh .card .ic svg           { color: #60a5fa; }
+.grupo.pedidos      { border-color: #10b981; } .grupo.pedidos .grupo-titulo      { color: #34d399; } .grupo.pedidos .card .ic svg      { color: #34d399; }
+.grupo.notas        { border-color: #f97316; } .grupo.notas .grupo-titulo        { color: #fb923c; } .grupo.notas .card .ic svg        { color: #fb923c; }
+.grupo.transferencias { border-color: #a855f7; } .grupo.transferencias .grupo-titulo { color: #c084fc; } .grupo.transferencias .card .ic svg { color: #c084fc; }
+.grupo.auditoria    { border-color: #ef4444; } .grupo.auditoria .grupo-titulo    { color: #f87171; } .grupo.auditoria .card .ic svg    { color: #f87171; }
+.grupo.admin        { border-color: #64748b; } .grupo.admin .grupo-titulo        { color: #94a3b8; } .grupo.admin .card .ic svg        { color: #94a3b8; }
+
+/* ── CARDS COMPACTOS ── */
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+.card { background: #1e293b; border-radius: 10px; padding: 16px 12px; display: flex; flex-direction: column; align-items: center; gap: 8px; cursor: pointer; text-decoration: none; color: inherit; border: 1px solid transparent; transition: background .2s, border-color .2s; text-align: center; position: relative; }
+.card:hover { background: #273549; border-color: #334155; }
+.card .ic { background: #0f2a3f; border-radius: 8px; padding: 10px; display: flex; align-items: center; justify-content: center; }
+.card .ic svg { color: #38bdf8; width: 22px; height: 22px; }
+.card-title { font-size: 12px; font-weight: 600; color: #e2e8f0; line-height: 1.25; }
+.card-desc { font-size: 10px; color: #64748b; line-height: 1.3; }
+
+/* ── BADGE DE PENDÊNCIAS ── */
+.badge { position: absolute; top: -6px; right: -6px; background: #ef4444; color: #fff; font-size: 11px; font-weight: 700; min-width: 22px; height: 22px; border-radius: 11px; display: flex; align-items: center; justify-content: center; padding: 0 6px; box-shadow: 0 2px 6px rgba(239,68,68,.5); animation: pulse 2s infinite; }
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+.card.com-pendencia .ic svg { color: #f87171; }
+</style>
+</head>
+<body>
+
+<div class="dashboard">
+  <div class="dash-header">
+    <div>
+      <div class="dash-brand">JR Lira Tech</div>
+      <div class="dash-user">Layout em teste — admin</div>
+    </div>
+    <a class="logout-btn" href="/">← Voltar pro layout antigo</a>
+  </div>
+
+  <div class="aviso">
+    🧪 <b>PÁGINA DE TESTE</b> — Os badges vermelhos mostram pendências mockadas só pra preview. Layout final só é aplicado depois da sua aprovação.
+  </div>
+
+  <!-- RECURSOS HUMANOS -->
+  <div class="grupo rh">
+    <div class="grupo-titulo">Recursos Humanos</div>
+    <div class="cards">
+      <a class="card" href="/rh"><div class="ic"><i data-lucide="users"></i></div><div><div class="card-title">Quadro de Lotação</div><div class="card-desc">Funcionários e histórico</div></div></a>
+      <a class="card" href="/rh-painel"><div class="ic"><i data-lucide="gauge"></i></div><div><div class="card-title">Painel RH</div><div class="card-desc">Indicadores e absenteísmo</div></div></a>
+      <a class="card" href="/ponto"><div class="ic"><i data-lucide="clock"></i></div><div><div class="card-title">Controle de Ponto</div><div class="card-desc">Importação iPonto</div></div></a>
+    </div>
+  </div>
+
+  <!-- PEDIDOS FORNECEDORES -->
+  <div class="grupo pedidos">
+    <div class="grupo-titulo">Pedidos Fornecedores · fluxo operacional</div>
+    <div class="cards">
+      <a class="card" href="/fornecedores"><div class="ic"><i data-lucide="building-2"></i></div><div><div class="card-title">Fornecedores</div><div class="card-desc">Cadastro e aprovações</div></div></a>
+      <a class="card" href="/sugestao-compras"><div class="ic"><i data-lucide="trending-up"></i></div><div><div class="card-title">Sugestão de Compras</div><div class="card-desc">Reposição proativa</div></div></a>
+      <a class="card" href="/pedidos-comprador"><div class="ic"><i data-lucide="shopping-cart"></i></div><div><div class="card-title">Pedidos</div><div class="card-desc">Validação e PDF</div></div></a>
+      <a class="card com-pendencia" href="/auditoria-pedidos"><span class="badge">3</span><div class="ic"><i data-lucide="shield-check"></i></div><div><div class="card-title">Auditoria de Pedidos</div><div class="card-desc">Liberar acima da sugestão</div></div></a>
+      <a class="card" href="/notas-comprador"><div class="ic"><i data-lucide="file-check"></i></div><div><div class="card-title">NF-e Fornecedor</div><div class="card-desc">Importar XMLs e vincular</div></div></a>
+      <a class="card" href="/contas-receber"><div class="ic"><i data-lucide="receipt"></i></div><div><div class="card-title">Contas a Receber</div><div class="card-desc">Devoluções e bonificações</div></div></a>
+    </div>
+  </div>
+
+  <!-- NOTAS DE ENTRADA -->
+  <div class="grupo notas">
+    <div class="grupo-titulo">Notas de Entrada · cadastro → estoque → auditoria</div>
+    <div class="cards">
+      <a class="card" href="/notas-cadastro"><div class="ic"><i data-lucide="file-text"></i></div><div><div class="card-title">Cadastro</div><div class="card-desc">NF-e dos fornecedores</div></div></a>
+      <a class="card" href="/notas-estoque"><div class="ic"><i data-lucide="package"></i></div><div><div class="card-title">Estoque</div><div class="card-desc">Conferência às cegas</div></div></a>
+      <a class="card com-pendencia" href="/notas-auditoria"><span class="badge">7</span><div class="ic"><i data-lucide="clipboard-check"></i></div><div><div class="card-title">Auditoria</div><div class="card-desc">Fechamento de notas</div></div></a>
+    </div>
+  </div>
+
+  <!-- TRANSFERÊNCIAS CD/LOJAS -->
+  <div class="grupo transferencias">
+    <div class="grupo-titulo">Transferências CD / Lojas</div>
+    <div class="cards">
+      <a class="card" href="/notas-transferencias-cadastro"><div class="ic"><i data-lucide="truck"></i></div><div><div class="card-title">Cadastro</div><div class="card-desc">Transferências CD/lojas</div></div></a>
+      <a class="card" href="/notas-distribuidora"><div class="ic"><i data-lucide="package-plus"></i></div><div><div class="card-title">Distribuidora</div><div class="card-desc">Conferência de transferências</div></div></a>
+      <a class="card" href="/notas-cd"><div class="ic"><i data-lucide="route"></i></div><div><div class="card-title">Acompanhar CD</div><div class="card-desc">Transferências CD/lojas</div></div></a>
+    </div>
+  </div>
+
+  <!-- AUDITORIA & QUALIDADE -->
+  <div class="grupo auditoria">
+    <div class="grupo-titulo">Auditoria & Qualidade</div>
+    <div class="cards">
+      <a class="card com-pendencia" href="/auditagem-divergencias"><span class="badge">5</span><div class="ic"><i data-lucide="alert-triangle"></i></div><div><div class="card-title">Divergências CD</div><div class="card-desc">Faltas/sobras na conferência</div></div></a>
+      <a class="card com-pendencia" href="/validades-em-risco"><span class="badge">12</span><div class="ic"><i data-lucide="calendar-clock"></i></div><div><div class="card-title">Validades em Risco</div><div class="card-desc">Decisão admin</div></div></a>
+      <a class="card com-pendencia" href="/aguardando-devolucao"><span class="badge">2</span><div class="ic"><i data-lucide="undo-2"></i></div><div><div class="card-title">Aguardando Devolução</div><div class="card-desc">Anexar XML</div></div></a>
+      <a class="card" href="/devolucoes-divergencias"><div class="ic"><i data-lucide="trending-down"></i></div><div><div class="card-title">Divergências Devolução</div><div class="card-desc">NF devolução vs esperado</div></div></a>
+      <a class="card com-pendencia" href="/auditoria-acordos"><span class="badge">NOVO</span><div class="ic"><i data-lucide="handshake"></i></div><div><div class="card-title">Auditoria Acordos</div><div class="card-desc">Resumo aprovações por fornecedor</div></div></a>
+    </div>
+  </div>
+
+  <!-- CADASTROS / ADMIN -->
+  <div class="grupo admin">
+    <div class="grupo-titulo">Cadastros / Admin</div>
+    <div class="cards">
+      <a class="card" href="/produtos-embalagem"><div class="ic"><i data-lucide="box"></i></div><div><div class="card-title">Cadastro CD</div><div class="card-desc">Quantidade por embalagem</div></div></a>
+      <a class="card" href="/embalagens-fornecedor"><div class="ic"><i data-lucide="package-search"></i></div><div><div class="card-title">Embalagens Fornec</div><div class="card-desc">Sugestões via NF-e</div></div></a>
+      <a class="card" href="/usuarios"><div class="ic"><i data-lucide="shield"></i></div><div><div class="card-title">Usuários</div><div class="card-desc">Perfis de acesso</div></div></a>
+    </div>
+  </div>
+
+</div>
+
+<script>lucide.createIcons();</script>
+</body>
+</html>

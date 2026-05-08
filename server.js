@@ -43,6 +43,7 @@ app.use('/api/devolucoes', require('./src/routes/devolucoes'));
 app.use('/api/perdas', require('./src/routes/perdas'));
 app.use('/api/sync-status', require('./src/routes/sync_status'));
 app.use('/api/notificacoes', require('./src/routes/notificacoes'));
+app.use('/api/dashboard', require('./src/routes/dashboard'));
 
 // ── PÁGINAS ───────────────────────────────────────────────────────
 app.get('/favicon.ico', (req, res) => res.redirect(301, '/favicon.svg'));
@@ -75,6 +76,10 @@ app.get('/validades-em-risco', (req, res) => res.sendFile(path.join(__dirname, '
 app.get('/nota-historico', (req, res) => res.sendFile(path.join(__dirname, 'public/nota-historico.html')));
 app.get('/aguardando-devolucao', (req, res) => res.sendFile(path.join(__dirname, 'public/aguardando-devolucao.html')));
 app.get('/preview-icons', (req, res) => res.sendFile(path.join(__dirname, 'public/preview-icons.html')));
+app.get('/auditoria-acordos', (req, res) => res.sendFile(path.join(__dirname, 'public/auditoria-acordos.html')));
+app.get('/devolucoes-divergencias', (req, res) => res.sendFile(path.join(__dirname, 'public/devolucoes-divergencias.html')));
+app.get('/index-novo', (req, res) => res.sendFile(path.join(__dirname, 'public/index-novo.html')));
+app.get('/index-novo-perfis', (req, res) => res.sendFile(path.join(__dirname, 'public/index-novo-perfis.html')));
 
 // ── INIT DB ───────────────────────────────────────────────────────
 async function runMigration(client, name, sql) {
