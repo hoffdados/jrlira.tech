@@ -105,13 +105,10 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 1
       </div>
       <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
         <button class="aba-vend ativa" data-aba="pendente" onclick="setAba('pendente')">
-          Pendentes <span class="aba-cnt" id="cntPendente">0</span>
+          Aguardando validação <span class="aba-cnt" id="cntPendente">0</span>
         </button>
         <button class="aba-vend" data-aba="aprovado" onclick="setAba('aprovado')">
           Aprovados <span class="aba-cnt" id="cntAprovado">0</span>
-        </button>
-        <button class="aba-vend" data-aba="expirado" onclick="setAba('expirado')">
-          Expirados <span class="aba-cnt" id="cntExpirado">0</span>
         </button>
         <button class="aba-vend" data-aba="rejeitado" onclick="setAba('rejeitado')">
           Rejeitados <span class="aba-cnt" id="cntRejeitado">0</span>
@@ -119,6 +116,9 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 1
         <button class="aba-vend" data-aba="inativo" onclick="setAba('inativo')">
           Inativos <span class="aba-cnt" id="cntInativo">0</span>
         </button>
+      </div>
+      <div style="margin-bottom:10px">
+        <input type="text" id="filtroVendForn" placeholder="Filtrar por fornecedor (nome, fantasia ou CNPJ)..." oninput="renderVendedoresGlobal()" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:13px">
       </div>
       <div id="listaVendedoresGlobal"><div style="color:#475569;text-align:center;padding:16px;font-size:13px">Carregando...</div></div>
     </div>
@@ -248,9 +248,13 @@ function classificar(v) {
   if (v.status === 'pendente' || v.status === 'aguardando_cadastro') return 'pendente';
   if (v.status === 'aprovado') {
     const exp = v.acesso_expira_em && new Date(v.acesso_expira_em) < new Date();
-    return exp ? 'expirado' : 'aprovado';
+    return exp ? 'pendente' : 'aprovado'; // expirados entram na fila pendente/aguardando validação
   }
   return v.status; // rejeitado, inativo
+}
+
+function expirou(v) {
+  return v.status === 'aprovado' && v.acesso_expira_em && new Date(v.acesso_expira_em) < new Date();
 }
 
 function setAba(aba) {
@@ -262,38 +266,46 @@ function setAba(aba) {
 const COR_ABA = {
   pendente:  '#3b82f6',
   aprovado:  '#22c55e',
-  expirado:  '#f59e0b',
   rejeitado: '#ef4444',
   inativo:   '#64748b',
 };
 
 function renderVendedoresGlobal() {
   const el = document.getElementById('listaVendedoresGlobal');
-  const lista = vendedoresTodos.filter(v => classificar(v) === abaAtual);
+  const filtroEl = document.getElementById('filtroVendForn');
+  const q = (filtroEl?.value || '').trim().toLowerCase();
+  let lista = vendedoresTodos.filter(v => classificar(v) === abaAtual);
+  if (q) {
+    lista = lista.filter(v =>
+      (v.razao_social || '').toLowerCase().includes(q) ||
+      (v.fantasia || '').toLowerCase().includes(q) ||
+      (v.cnpj || '').replace(/\D/g,'').includes(q.replace(/\D/g,''))
+    );
+  }
   if (!lista.length) {
     el.innerHTML = `<div style="color:#475569;text-align:center;padding:16px;font-size:13px">Nenhum vendedor neste estado.</div>`;
     return;
   }
   const cor = COR_ABA[abaAtual];
   el.innerHTML = lista.map(v => {
-    const cl = classificar(v);
+    const exp = expirou(v);
     return `
       <div class="vend-row" style="border-left:3px solid ${cor};margin-bottom:8px">
         <div class="vend-topo">
           ${v.foto_url ? `<img src="${encodeURI(v.foto_url)}" class="vend-foto" onerror="this.style.display='none'">` : '<div class="vend-foto" style="display:flex;align-items:center;justify-content:center;font-size:18px">👤</div>'}
           <div style="flex:1">
-            <div class="vend-nome">${escapeHtml(v.nome)}</div>
+            <div class="vend-nome">${escapeHtml(v.nome)}${exp ? ' <span style="background:#f59e0b;color:#000;font-size:10px;padding:1px 6px;border-radius:4px;margin-left:6px">acesso expirado</span>' : ''}</div>
             <div class="vend-info" style="color:#60a5fa;font-size:11px">${escapeHtml(v.fantasia || v.razao_social)}${v.cnpj ? ' · ' + escapeHtml(v.cnpj) : ''}</div>
             <div class="vend-info">${escapeHtml(v.email || '—')}${v.telefone ? ' | ' + escapeHtml(v.telefone) : ''}</div>
-            ${v.acesso_expira_em ? `<div class="expira ${cl==='expirado'?'expirado-txt':''}">Acesso ${cl==='expirado'?'expirou':'expira'} em ${new Date(v.acesso_expira_em).toLocaleDateString('pt-BR')}</div>` : ''}
+            ${v.acesso_expira_em ? `<div class="expira ${exp?'expirado-txt':''}">Acesso ${exp?'expirou':'expira'} em ${new Date(v.acesso_expira_em).toLocaleDateString('pt-BR')}</div>` : ''}
           </div>
           <div style="font-size:11px;color:#64748b">${new Date(v.criado_em).toLocaleDateString('pt-BR')}</div>
         </div>
         <div class="vend-acoes">
-          ${cl === 'pendente' ? `<button class="btn-ok btn-sm" onclick="aprovarVendedor(${v.id}, this)">✓ Aprovar</button><button class="btn-danger btn-sm" onclick="rejeitarVendedor(${v.id}, this)">✕ Rejeitar</button>` : ''}
-          ${(cl === 'aprovado' || cl === 'expirado') ? `<button class="btn-warn btn-sm" onclick="revalidarVendedor(${v.id}, this)">🔄 Revalidar</button>` : ''}
-          ${cl === 'aprovado' ? `<button class="btn-danger btn-sm" onclick="toggleVendador(${v.id}, false, this)">Desativar</button>` : ''}
-          ${cl === 'inativo' ? `<button class="btn-ok btn-sm" onclick="toggleVendador(${v.id}, true, this)">Ativar</button>` : ''}
+          ${v.status === 'pendente' || v.status === 'aguardando_cadastro' ? `<button class="btn-ok btn-sm" onclick="aprovarVendedor(${v.id}, this)">✓ Aprovar</button><button class="btn-danger btn-sm" onclick="rejeitarVendedor(${v.id}, this)">✕ Rejeitar</button>` : ''}
+          ${exp ? `<button class="btn-warn btn-sm" onclick="revalidarVendedor(${v.id}, this)">🔄 Revalidar acesso</button>` : ''}
+          ${abaAtual === 'aprovado' ? `<button class="btn-warn btn-sm" onclick="revalidarVendedor(${v.id}, this)">🔄 Revalidar</button><button class="btn-danger btn-sm" onclick="toggleVendador(${v.id}, false, this)">Desativar</button>` : ''}
+          ${abaAtual === 'inativo' ? `<button class="btn-ok btn-sm" onclick="toggleVendador(${v.id}, true, this)">Ativar</button>` : ''}
         </div>
       </div>`;
   }).join('');
@@ -306,7 +318,7 @@ async function carregarVendedoresGlobal() {
     if (!r.ok) throw new Error('falha');
     vendedoresTodos = await r.json();
     // Atualiza contadores
-    const cnt = { pendente: 0, aprovado: 0, expirado: 0, rejeitado: 0, inativo: 0 };
+    const cnt = { pendente: 0, aprovado: 0, rejeitado: 0, inativo: 0 };
     vendedoresTodos.forEach(v => { const c = classificar(v); if (cnt[c] !== undefined) cnt[c]++; });
     Object.entries(cnt).forEach(([k, n]) => {
       const e = document.getElementById('cnt' + k.charAt(0).toUpperCase() + k.slice(1));
@@ -394,7 +406,13 @@ async function revalidarVendedor(id, btn) {
 async function toggleVendador(id, ativo, btn) {
   await withLoading(btn, async () => {
     const r = await apiFetch(`${API}/api/fornecedores/vendedores/${id}/ativo`, { method:'PATCH', body:JSON.stringify({ ativo }) });
-    if (r.ok) { showMsg(ativo ? 'Vendedor ativado.' : 'Vendedor desativado.', 'ok'); carregarVendedores(fornSelecionado.id); }
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      return showMsg(d.erro || 'Falha ao alterar status', 'err');
+    }
+    showMsg(ativo ? 'Vendedor ativado.' : 'Vendedor desativado.', 'ok');
+    carregarVendedoresGlobal();
+    if (fornSelecionado) carregarVendedores(fornSelecionado.id);
   }, 'Aguarde...');
 }
 

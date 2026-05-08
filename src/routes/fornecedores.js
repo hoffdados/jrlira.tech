@@ -263,12 +263,51 @@ router.post('/vendedores/:vid/revalidar', compradorOuAdmin, async (req, res) => 
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
-// Desativar/ativar vendedor
+// Desativar/ativar vendedor — ao ativar, renova expiração + senha + email (igual revalidar)
 router.patch('/vendedores/:vid/ativo', compradorOuAdmin, async (req, res) => {
   try {
     const { ativo } = req.body;
-    const status = ativo ? 'aprovado' : 'inativo';
-    await dbQuery(`UPDATE vendedores SET status=$1 WHERE id=$2`, [status, req.params.vid]);
+    if (!ativo) {
+      await dbQuery(`UPDATE vendedores SET status='inativo' WHERE id=$1`, [req.params.vid]);
+      return res.json({ ok: true });
+    }
+    const rows = await dbQuery('SELECT * FROM vendedores WHERE id=$1', [req.params.vid]);
+    if (!rows.length) return res.status(404).json({ erro: 'Vendedor não encontrado' });
+    const v = rows[0];
+
+    // Detecta conflito: outro vendedor ativo com mesmo CPF+CNPJ (substituição prévia)
+    const conflito = await dbQuery(
+      `SELECT id, nome, status FROM vendedores
+       WHERE id <> $1
+         AND REGEXP_REPLACE(COALESCE(cpf,''),'\\D','','g') = REGEXP_REPLACE(COALESCE($2,''),'\\D','','g')
+         AND REGEXP_REPLACE(COALESCE(fornecedor_cnpj,''),'\\D','','g') = REGEXP_REPLACE(COALESCE($3,''),'\\D','','g')
+         AND status IN ('pendente','aprovado','aguardando_cadastro')`,
+      [v.id, v.cpf, v.fornecedor_cnpj]
+    );
+    if (conflito.length) {
+      return res.status(409).json({
+        erro: `Já existe outro vendedor ativo (${conflito[0].nome}) com este CPF para este fornecedor. Desative-o antes de reativar este.`
+      });
+    }
+
+    const cfgRows = await dbQuery("SELECT valor FROM configuracoes WHERE chave='validade_acesso_vendedor_dias'");
+    const dias = parseInt(cfgRows[0]?.valor || '90');
+
+    const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+    const senha = Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+    const hash = await bcrypt.hash(senha, 10);
+
+    await dbQuery(
+      `UPDATE vendedores SET status='aprovado', senha_hash=$1,
+       acesso_expira_em=NOW() + ($2 || ' days')::interval WHERE id=$3`,
+      [hash, dias, v.id]
+    );
+
+    if (v.email) {
+      const forn = await dbQuery('SELECT fantasia, razao_social FROM fornecedores WHERE id=$1', [v.fornecedor_id]);
+      const empresa = forn[0]?.fantasia || forn[0]?.razao_social || '';
+      await enviarEmail(v.email, 'Acesso reativado — JR Lira Pedidos', templateAcesso({ nome: v.nome, email: v.email, senha, empresa }), anexosVendedor());
+    }
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
