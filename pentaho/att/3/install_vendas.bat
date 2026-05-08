@@ -15,6 +15,12 @@ echo Instalando JRLiraSyncVendasLoja3...
 %NSSM% set JRLiraSyncVendasLoja3 AppStdout "C:\Pentaho\app\watchdog_vendas.log"
 %NSSM% set JRLiraSyncVendasLoja3 AppStderr "C:\Pentaho\app\watchdog_vendas_err.log"
 
+echo Reconfigurando AppStdout/AppStderr de FAST e SLOW (idempotente)...
+%NSSM% set JRLiraSyncLoja3 AppStdout "C:\Pentaho\app\watchdog.log"
+%NSSM% set JRLiraSyncLoja3 AppStderr "C:\Pentaho\app\watchdog_err.log"
+%NSSM% set JRLiraSyncSlowLoja3 AppStdout "C:\Pentaho\app\watchdog_slow.log"
+%NSSM% set JRLiraSyncSlowLoja3 AppStderr "C:\Pentaho\app\watchdog_slow_err.log"
+
 echo Iniciando todos...
 %NSSM% start JRLiraSyncLoja3
 %NSSM% start JRLiraSyncSlowLoja3
