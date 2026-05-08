@@ -1,28 +1,27 @@
 @echo off
-REM Cria serviço NSSM pro watchdog VENDAS Loja 1
-REM Roda como Administrador
+set NSSM=C:\Pentaho\app\nssm.exe
 
 echo Parando servicos antigos...
-nssm stop JRLiraSyncLoja1 2>/dev/null
-nssm stop JRLiraSyncSlowLoja1 2>/dev/null
-nssm stop JRLiraSyncVendasLoja1 2>/dev/null
-nssm remove JRLiraSyncVendasLoja1 confirm 2>/dev/null
+%NSSM% stop JRLiraSyncLoja1 2>nul
+%NSSM% stop JRLiraSyncSlowLoja1 2>nul
+%NSSM% stop JRLiraSyncVendasLoja1 2>nul
+%NSSM% remove JRLiraSyncVendasLoja1 confirm 2>nul
 
 echo Instalando JRLiraSyncVendasLoja1...
-nssm install JRLiraSyncVendasLoja1 "C:\Pentaho\app\watchdog_vendas_loja_1.bat"
-nssm set JRLiraSyncVendasLoja1 AppDirectory "C:\Pentaho\app"
-nssm set JRLiraSyncVendasLoja1 DisplayName "JR Lira Sync VENDAS Loja 1"
-nssm set JRLiraSyncVendasLoja1 Start SERVICE_AUTO_START
-nssm set JRLiraSyncVendasLoja1 AppStdout "C:\Pentaho\app\watchdog_vendas.log"
-nssm set JRLiraSyncVendasLoja1 AppStderr "C:\Pentaho\app\watchdog_vendas_err.log"
+%NSSM% install JRLiraSyncVendasLoja1 "C:\Pentaho\app\watchdog_vendas_loja_1.bat"
+%NSSM% set JRLiraSyncVendasLoja1 AppDirectory "C:\Pentaho\app"
+%NSSM% set JRLiraSyncVendasLoja1 DisplayName "JR Lira Sync VENDAS Loja 1"
+%NSSM% set JRLiraSyncVendasLoja1 Start SERVICE_AUTO_START
+%NSSM% set JRLiraSyncVendasLoja1 AppStdout "C:\Pentaho\app\watchdog_vendas.log"
+%NSSM% set JRLiraSyncVendasLoja1 AppStderr "C:\Pentaho\app\watchdog_vendas_err.log"
 
 echo Iniciando todos...
-nssm start JRLiraSyncLoja1
-nssm start JRLiraSyncSlowLoja1
-nssm start JRLiraSyncVendasLoja1
+%NSSM% start JRLiraSyncLoja1
+%NSSM% start JRLiraSyncSlowLoja1
+%NSSM% start JRLiraSyncVendasLoja1
 
 echo OK. Servicos:
-sc query JRLiraSyncLoja1 | find "STATE"
-sc query JRLiraSyncSlowLoja1 | find "STATE"
-sc query JRLiraSyncVendasLoja1 | find "STATE"
+C:\Windows\System32\sc.exe query JRLiraSyncLoja1 | find "STATE"
+C:\Windows\System32\sc.exe query JRLiraSyncSlowLoja1 | find "STATE"
+C:\Windows\System32\sc.exe query JRLiraSyncVendasLoja1 | find "STATE"
 pause
