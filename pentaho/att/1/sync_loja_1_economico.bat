@@ -1,17 +1,16 @@
 @echo off
-TITLE SyncAcougue - Loja 1 Economico
+TITLE SyncProdutos - Loja 1 Economico
 SET currentdir=%~dp0
 SET kitchen=C:\Pentaho\data-integration\Kitchen.bat
-SET logfile="%currentdir%log_loja_1.txt"
 
-echo. >> %logfile%
-echo ========================================== >> %logfile%
-echo INICIO: %DATE% %TIME% >> %logfile%
-echo ========================================== >> %logfile%
+echo.
+echo ==========================================
+echo INICIO: %DATE% %TIME%
+echo ==========================================
 
-"%kitchen%" /file:"%currentdir%job_loja_1_economico.kjb" "/param:LOJA_ID=1" /level:Basic >> %logfile%
+"%kitchen%" /file:"%currentdir%job_loja_1_economico.kjb" "/param:LOJA_ID=1" /level:Basic
 
-echo ========================================== >> %logfile%
-echo FIM:    %DATE% %TIME% >> %logfile%
-echo ========================================== >> %logfile%
-echo. >> %logfile%
+echo ==========================================
+echo FIM:    %DATE% %TIME%
+echo ==========================================
+echo.
