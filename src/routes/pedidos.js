@@ -488,7 +488,7 @@ router.put('/:id/validar', compradorOuAdmin, async (req, res) => {
 
     // Calcula sugestões e detecta excesso (>30% acima) OU produto sem histórico
     const sugestoes = await calcularSugestoes(req.params.id);
-    const itensCheck = await dbQuery('SELECT id, codigo_barras, descricao, COALESCE(qtd_validada,quantidade) AS qtd, produto_novo FROM itens_pedido WHERE pedido_id=$1', [req.params.id]);
+    const itensCheck = await dbQuery('SELECT id, codigo_barras, descricao, COALESCE(qtd_validada,quantidade) AS qtd, produto_novo FROM itens_pedido WHERE pedido_id=$1 AND COALESCE(excluido_pelo_comprador,FALSE)=FALSE', [req.params.id]);
     const excessos = [];
     for (const it of itensCheck) {
       const meta = sugestoes[it.id] || { sugestao: null, media_dia: 0, existe: false };
@@ -500,9 +500,6 @@ router.put('/:id/validar', compradorOuAdmin, async (req, res) => {
       let motivo = null;
       if (meta.sugestao != null && meta.sugestao > 0 && qtd > meta.sugestao * EXCESSO_FATOR) {
         motivo = 'excesso_30pct';
-      } else if (!it.produto_novo && meta.existe && meta.media_dia <= 0) {
-        // Produto cadastrado, sem venda 90d, mas pedido > 0 → suspeito
-        motivo = 'sem_historico_vendas';
       }
 
       if (motivo) {

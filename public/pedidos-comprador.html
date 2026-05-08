@@ -729,7 +729,6 @@ function calcularExcessosLocal() {
     const sug = mediaDia > 0 ? Math.max(0, 30 * mediaDia - (estoque || 0) - (a.em_transito || 0)) : null;
     let motivo = null;
     if (sug != null && sug > 0 && qtdVal > sug * 1.30) motivo = 'excesso_30pct';
-    else if (!item.produto_novo && estoque != null && mediaDia <= 0) motivo = 'sem_historico_vendas';
     if (motivo) {
       excessos.push({
         item_id: item.id, codigo_barras: item.codigo_barras, descricao: item.descricao,
