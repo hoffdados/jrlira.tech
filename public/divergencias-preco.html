@@ -255,7 +255,9 @@ function renderItens(arr){
 
     let embCol;
     if (qeRaw == null) {
-      embCol = `<a href="/embalagens-fornecedor" target="_blank" style="color:#fbbf24;text-decoration:none;font-size:11px" title="Sem cadastro de embalagem (assume 1)">⚠ ?</a>`;
+      const ean = encodeURIComponent(r.ean_validado || r.ean_nota || '');
+      const cnpj = encodeURIComponent(r.fornecedor_cnpj || '');
+      embCol = `<a href="/embalagens-fornecedor?ean=${ean}&fornecedor_cnpj=${cnpj}" target="_blank" onclick="event.stopPropagation()" style="color:#fbbf24;text-decoration:none;font-size:11px;font-weight:700;background:#451a03;padding:3px 8px;border-radius:4px" title="Cadastrar embalagem deste EAN para o fornecedor">📦 cadastrar</a>`;
     } else {
       const fonte = r.emb_fonte || '';
       const FONTE_LABEL = {

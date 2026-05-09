@@ -382,5 +382,93 @@ router.post('/aceitar-sugestao-massa', autenticar, async (req, res) => {
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
+// POST /api/embalagens-fornecedor/backfill-descricao
+// Percorre itens_nota com padrao NxM na descricao (ex: "6X2500ML") e gera
+// sugestao em embalagens_fornecedor com confianca='descricao' pra produtos
+// (ean+cnpj) ainda nao cadastrados. Nao toca em itens_nota.
+// Body opcional: { fornecedor_cnpj, dryRun, limit }
+router.post('/backfill-descricao', autenticar, async (req, res) => {
+  try {
+    if (req.usuario.perfil !== 'admin') return res.status(403).json({ erro: 'Apenas admin' });
+    const { parseEmbalagem } = require('../parser_embalagem');
+    const fornecedorCnpj = req.body?.fornecedor_cnpj || null;
+    const dryRun = !!req.body?.dryRun;
+    const limit = Math.min(parseInt(req.body?.limit) || 10000, 50000);
+
+    const params = [];
+    let whereCnpj = '';
+    if (fornecedorCnpj) {
+      params.push(String(fornecedorCnpj).replace(/\D/g,''));
+      whereCnpj = `AND REGEXP_REPLACE(COALESCE(n.fornecedor_cnpj,''),'\\D','','g') = $${params.length}`;
+    }
+    params.push(limit);
+
+    // Pega 1 item por (ean, cnpj) — mais recente — onde nao existe cadastro ainda
+    const itens = await dbQuery(
+      `SELECT DISTINCT ON (ean_norm, cnpj_norm)
+              i.id, i.descricao_nota, i.nota_id,
+              ean_norm AS ean, n.fornecedor_cnpj, n.fornecedor_nome, cnpj_norm
+         FROM (
+           SELECT i.*,
+                  COALESCE(NULLIF(i.ean_validado,''), NULLIF(i.ean_nota,'')) AS ean_norm
+             FROM itens_nota i
+            WHERE COALESCE(NULLIF(i.ean_validado,''), NULLIF(i.ean_nota,'')) IS NOT NULL
+              AND i.descricao_nota ~* '\\m\\d+\\s*[xX]\\s*\\d+\\s*(ML|L|G|GR|KG|MG|UN|UND|CM|MM)\\M'
+         ) i
+         JOIN notas_entrada n ON n.id = i.nota_id,
+         LATERAL (SELECT REGEXP_REPLACE(COALESCE(n.fornecedor_cnpj,''),'\\D','','g') AS cnpj_norm) c
+         WHERE n.origem = 'nfe'
+           ${whereCnpj}
+           AND NOT EXISTS (
+             SELECT 1 FROM embalagens_fornecedor ef
+              WHERE ef.ean = ean_norm
+                AND COALESCE(ef.fornecedor_cnpj,'') = COALESCE(n.fornecedor_cnpj,'')
+                AND ef.qtd_por_caixa IS NOT NULL
+           )
+         ORDER BY ean_norm, cnpj_norm, i.id DESC
+         LIMIT $${params.length}`,
+      params
+    );
+
+    let analisados = 0, sugeridos = 0, ignorados = 0;
+    const exemplos = [];
+    const client = await pool.connect();
+    try {
+      if (!dryRun) await client.query('BEGIN');
+      for (const it of itens) {
+        analisados++;
+        const p = parseEmbalagem(it.descricao_nota || '');
+        if (!p.qtd || p.qtd < 2 || p.confianca !== 'alta') { ignorados++; continue; }
+        if (exemplos.length < 30) exemplos.push({ ean: it.ean, desc: it.descricao_nota, qtd: p.qtd, fornecedor_nome: it.fornecedor_nome });
+        if (dryRun) { sugeridos++; continue; }
+        await client.query(
+          `INSERT INTO embalagens_fornecedor
+             (ean, descricao, fornecedor_cnpj, fornecedor_nome,
+              qtd_sugerida_nfe, qtd_sugerida_nfe_em, qtd_sugerida_nfe_nota_id,
+              qtd_sugerida_nfe_confianca, status)
+           VALUES ($1,$2,$3,$4,$5,NOW(),$6,'descricao','pendente_validacao')
+           ON CONFLICT (ean, COALESCE(fornecedor_cnpj, ''::character varying)) WHERE ean IS NOT NULL DO UPDATE
+             SET descricao = COALESCE(EXCLUDED.descricao, embalagens_fornecedor.descricao),
+                 qtd_sugerida_nfe = EXCLUDED.qtd_sugerida_nfe,
+                 qtd_sugerida_nfe_em = EXCLUDED.qtd_sugerida_nfe_em,
+                 qtd_sugerida_nfe_nota_id = EXCLUDED.qtd_sugerida_nfe_nota_id,
+                 qtd_sugerida_nfe_confianca = EXCLUDED.qtd_sugerida_nfe_confianca,
+                 atualizado_em = NOW()`,
+          [it.ean, it.descricao_nota, it.fornecedor_cnpj, it.fornecedor_nome, p.qtd, it.nota_id]
+        );
+        sugeridos++;
+      }
+      if (!dryRun) await client.query('COMMIT');
+    } catch (e) {
+      if (!dryRun) await client.query('ROLLBACK').catch(()=>{});
+      throw e;
+    } finally { client.release(); }
+    res.json({ ok: true, dryRun, total_pares: itens.length, analisados, sugeridos, ignorados, exemplos });
+  } catch (e) {
+    console.error('[backfill-descricao]', e.message);
+    res.status(500).json({ erro: e.message });
+  }
+});
+
 module.exports = router;
 module.exports.recalcularItensFornecedor = recalcularItensFornecedor;

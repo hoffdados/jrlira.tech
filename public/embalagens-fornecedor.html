@@ -96,6 +96,7 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f172a; colo
     <input id="fQ" placeholder="🔎 EAN ou descrição" oninput="debouncedCarregar()">
     <button onclick="aceitarMassa()" title="Aceita todas pendentes com confiança ALTA">✓ Aceitar todas com confiança ALTA</button>
     <button onclick="abrirCadastro()" style="background:#16a34a">+ Cadastrar embalagem</button>
+    <button onclick="rodarBackfill()" id="btnBackfill" style="background:#7c3aed" title="Varre itens_nota antigos e gera sugestões a partir do padrão NxM da descrição (admin)">⚡ Backfill descrição</button>
   </div>
 
   <div class="lista" id="lista"></div>
@@ -370,6 +371,44 @@ async function aceitarMassa() {
     carregar();
   } catch (e) { alert('Erro: ' + e.message); }
 }
+
+async function rodarBackfill(){
+  const cnpj = document.getElementById('fForn').value.trim();
+  const escopo = cnpj ? `fornecedor ${cnpj}` : 'TODOS os fornecedores';
+  if (!confirm(`Backfill por descrição (${escopo})\n\n1) Faz dry-run primeiro pra você ver quantas sugestões viriam.\n2) Confirma o aplicar.\n\nProsseguir?`)) return;
+  const btn = document.getElementById('btnBackfill');
+  btn.disabled = true; btn.textContent = '⌛ Analisando...';
+  try {
+    const body = { dryRun: true };
+    if (cnpj) body.fornecedor_cnpj = cnpj;
+    const r = await apiFetch('/api/embalagens-fornecedor/backfill-descricao', { method:'POST', body: JSON.stringify(body) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.erro);
+    const exemplos = (d.exemplos || []).slice(0, 10).map(e => `  • ${e.qtd}x — ${e.desc} (${e.ean})`).join('\n');
+    if (!confirm(`Análise concluída:\n  ${d.sugeridos} sugestões prontas\n  ${d.ignorados} ignoradas (sem padrão claro)\n\nExemplos:\n${exemplos}\n\nAplicar?`)) {
+      btn.disabled = false; btn.textContent = '⚡ Backfill descrição'; return;
+    }
+    btn.textContent = '⌛ Aplicando...';
+    const r2 = await apiFetch('/api/embalagens-fornecedor/backfill-descricao', { method:'POST', body: JSON.stringify({ ...body, dryRun: false }) });
+    const d2 = await r2.json();
+    if (!r2.ok) throw new Error(d2.erro);
+    alert(`✓ ${d2.sugeridos} sugestão(ões) gravada(s) como pendente_validacao com confiança 'descricao'.`);
+    carregar();
+  } catch (e) {
+    alert('Erro: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '⚡ Backfill descrição';
+  }
+}
+
+// Pre-popula filtros via query string (vem de outras telas, ex /divergencias-preco)
+(function aplicarParamsURL(){
+  const u = new URLSearchParams(location.search);
+  const ean = u.get('ean') || u.get('q');
+  const cnpj = u.get('fornecedor_cnpj') || u.get('cnpj');
+  if (ean) document.getElementById('fQ').value = ean;
+  if (cnpj) document.getElementById('fForn').value = cnpj;
+})();
 
 carregar();
 </script>
