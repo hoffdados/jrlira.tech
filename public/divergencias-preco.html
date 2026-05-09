@@ -78,12 +78,22 @@ tbody tr:hover{background:#1a2744}
       <input type="text" id="filtroFornecedor" placeholder="Nome ou CNPJ">
     </div>
     <div>
-      <label>Tipos</label>
-      <div class="checks">
-        <label><input type="checkbox" value="maior" checked>Maior (até 15%)</label>
-        <label><input type="checkbox" value="auditagem" checked>Auditagem (>15%)</label>
-        <label><input type="checkbox" value="menor">Menor (ganho)</label>
-      </div>
+      <label>Divergência min</label>
+      <select id="filtroPctMin">
+        <option value="0">Todos</option>
+        <option value="2">≥ 2%</option>
+        <option value="5" selected>≥ 5%</option>
+        <option value="10">≥ 10%</option>
+        <option value="20">≥ 20%</option>
+      </select>
+    </div>
+    <div>
+      <label>Sentido</label>
+      <select id="filtroSentido">
+        <option value="todos">Todos</option>
+        <option value="sobrepreco">Só sobrepreço</option>
+        <option value="ganho">Só ganho</option>
+      </select>
     </div>
     <button class="btn-primary" onclick="carregar()">Atualizar</button>
     <button class="btn-ghost" onclick="limparFiltros()">Limpar</button>
@@ -115,18 +125,13 @@ document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlir
   });
 })();
 
-function tiposSelecionados(){
-  return [...document.querySelectorAll('.checks input:checked')].map(c=>c.value);
-}
-
 function limparFiltros(){
   document.getElementById('filtroLoja').value='';
   document.getElementById('filtroDataIni').value='';
   document.getElementById('filtroDataFim').value='';
   document.getElementById('filtroFornecedor').value='';
-  document.querySelectorAll('.checks input').forEach(c=>{
-    c.checked = (c.value === 'maior' || c.value === 'auditagem');
-  });
+  document.getElementById('filtroPctMin').value='5';
+  document.getElementById('filtroSentido').value='todos';
   carregar();
 }
 
@@ -136,12 +141,14 @@ async function carregar(){
   const di = document.getElementById('filtroDataIni').value;
   const df = document.getElementById('filtroDataFim').value;
   const fn = document.getElementById('filtroFornecedor').value.trim();
-  const tipos = tiposSelecionados().join(',');
+  const pct = document.getElementById('filtroPctMin').value;
+  const sentido = document.getElementById('filtroSentido').value;
   if (loja) params.set('loja', loja);
   if (di) params.set('dataIni', di);
   if (df) params.set('dataFim', df);
   if (fn) params.set('fornecedor', fn);
-  if (tipos) params.set('tipos', tipos);
+  if (pct) params.set('pctMin', pct);
+  if (sentido) params.set('sentido', sentido);
 
   document.getElementById('kpis').innerHTML = '<div class="empty">Carregando...</div>';
   document.getElementById('tabelaFornecedores').innerHTML = '';
@@ -162,13 +169,14 @@ async function carregar(){
 function renderKpis(k){
   if (!k) { document.getElementById('kpis').innerHTML='<div class="empty">Sem dados</div>'; return; }
   const d = Number(k.dif_total||0);
-  const dm = Number(k.dif_maior||0);
-  const da = Number(k.dif_auditagem||0);
+  const dSobre = Number(k.dif_sobrepreco||0);
+  const dGanho = Number(k.dif_ganho||0);
   document.getElementById('kpis').innerHTML = `
-    <div class="kpi info"><div class="label">Itens divergentes</div><div class="v">${(k.qtd_itens||0).toLocaleString('pt-BR')}</div><div class="extra">${k.qtd_notas||0} nota(s) · ${k.qtd_fornecedores||0} fornecedor(es)</div></div>
-    <div class="kpi ${d>=0?'danger':'info'}"><div class="label">Diferença total</div><div class="v">R$ ${fmtMoeda(d)}</div><div class="extra">${d>=0?'sobrepreço':'ganho'}</div></div>
-    <div class="kpi danger"><div class="label">Sobrepreço (maior)</div><div class="v">R$ ${fmtMoeda(dm)}</div></div>
-    <div class="kpi warn"><div class="label">Auditagem (>15%)</div><div class="v">R$ ${fmtMoeda(da)}</div></div>
+    <div class="kpi info"><div class="label">Itens divergentes</div><div class="v">${(k.qtd_itens_div||0).toLocaleString('pt-BR')}</div><div class="extra">de ${(k.qtd_itens_total||0).toLocaleString('pt-BR')} no escopo · ${k.qtd_notas||0} nota(s)</div></div>
+    <div class="kpi ${d>=0?'danger':'info'}"><div class="label">Saldo total</div><div class="v">R$ ${fmtMoeda(d)}</div><div class="extra">${d>=0?'pagamos a mais':'pagamos a menos'}</div></div>
+    <div class="kpi danger"><div class="label">Sobrepreço</div><div class="v">R$ ${fmtMoeda(dSobre)}</div><div class="extra">preço NF > custo×emb</div></div>
+    <div class="kpi"><div class="label">Ganho</div><div class="v">R$ ${fmtMoeda(Math.abs(dGanho))}</div><div class="extra">preço NF < custo×emb</div></div>
+    <div class="kpi warn"><div class="label">Sem cadastro emb</div><div class="v">${(k.qtd_sem_emb||0).toLocaleString('pt-BR')}</div><div class="extra">tratado como qtd=1</div></div>
   `;
 }
 
@@ -209,54 +217,35 @@ function renderItens(arr){
     <th class="left">Item</th>
     <th>EAN</th>
     <th>Qtd</th>
+    <th>Custo Unit</th>
+    <th>Emb CD</th>
+    <th>Custo×Emb</th>
     <th>Preço Nota</th>
-    <th>Custo</th>
     <th>Dif Unit</th>
     <th>%</th>
-    <th>Embalagem CD</th>
-    <th>Preço ÷ emb</th>
-    <th>Diagnóstico</th>
     <th>Dif Total</th>
-    <th>Tipo</th>
     <th>Emissão</th>
   </tr></thead>`;
   const body = arr.map(r=>{
     const dt = Number(r.diferenca_total||0);
     const du = Number(r.diferenca_unit||0);
     const pct = r.pct == null ? '-' : Number(r.pct).toFixed(2)+'%';
-    const qe = r.qtd_embalagem ? Number(r.qtd_embalagem) : null;
+    const qeRaw = r.qtd_embalagem;
     const custo = Number(r.custo_fabrica||0);
+    const custoEmb = Number(r.custo_emb||0);
     const preco = Number(r.preco_unitario_nota||0);
-    let embCol = '<span style="color:#475569">—</span>';
-    let precoNorm = '–';
-    let diag = '<span style="color:#475569">–</span>';
-    if (qe && qe > 1 && custo > 0) {
-      const precoDiv = preco / qe;
-      const precoMul = preco * qe;
-      precoNorm = `R$ ${fmtMoeda(precoDiv)}`;
-      const difDiv = Math.abs(precoDiv - custo) / custo;
-      const difMul = Math.abs(precoMul - custo) / custo;
-      const difOrig = Math.abs(preco - custo) / custo;
-      const embStatus = r.emb_status || '';
-      const embTag = embStatus === 'validado'
+
+    let embCol;
+    if (qeRaw == null) {
+      embCol = `<a href="/embalagens-fornecedor" target="_blank" style="color:#fbbf24;text-decoration:none;font-size:11px" title="Sem cadastro de embalagem (tratando como 1)">⚠ ?</a>`;
+    } else {
+      const tag = r.emb_status === 'validado'
         ? '<span style="color:#4ade80;font-size:10px">✓</span>'
         : '<span style="color:#fbbf24;font-size:10px">!</span>';
-      embCol = `${qe}x ${embTag}<div style="font-size:10px;color:#475569;font-family:monospace">${escapeHtml(r.mat_codi||'')}</div>`;
-      if (difDiv < 0.05 && difOrig > 0.10) {
-        diag = '<span style="color:#4ade80;font-weight:700" title="Preço da NF é da caixa, custo é unitário. Bate quando divide.">📦 caixa→un</span>';
-      } else if (difMul < 0.05 && difOrig > 0.10) {
-        diag = '<span style="color:#4ade80;font-weight:700" title="Preço da NF é unitário, custo está como caixa. Bate quando multiplica.">📦 un→caixa</span>';
-      } else if (difDiv < difOrig * 0.5) {
-        diag = '<span style="color:#fbbf24;font-weight:700" title="Reduz divergência se normalizado por embalagem, mas não zera.">≈ parcial</span>';
-      } else {
-        diag = '<span style="color:#f87171" title="Embalagem cadastrada não explica a divergência">divergência real</span>';
-      }
-    } else if (qe === 1) {
-      embCol = `<span style="color:#64748b">unidade</span>`;
-      diag = '<span style="color:#f87171" title="Cadastro indica unidade. Divergência é de preço mesmo">divergência real</span>';
-    } else {
-      embCol = `<a href="/embalagens-fornecedor" target="_blank" style="color:#fbbf24;text-decoration:none" title="Sem cadastro de embalagem para este produto">⚠ cadastrar</a>`;
+      embCol = `<span style="font-weight:700">${qeRaw}x</span> ${tag}`;
+      if (r.mat_codi) embCol += `<div style="font-size:10px;color:#475569;font-family:monospace">${escapeHtml(r.mat_codi)}</div>`;
     }
+
     return `<tr onclick="abrirNota(${r.nota_id})" style="cursor:pointer">
       <td class="left" style="font-family:monospace;color:#38bdf8;font-weight:700">${escapeHtml(r.numero_nota||'')}</td>
       <td class="left">${escapeHtml(r.fornecedor_nome||'')}</td>
@@ -264,15 +253,13 @@ function renderItens(arr){
       <td class="left">${escapeHtml(r.descricao_nota||'')}</td>
       <td class="center" style="font-family:monospace;font-size:11px">${escapeHtml(r.ean_validado||r.ean_nota||'')}</td>
       <td class="right">${Number(r.quantidade||0).toLocaleString('pt-BR',{maximumFractionDigits:3})}</td>
-      <td class="right">R$ ${fmtMoeda(preco)}</td>
       <td class="right">R$ ${fmtMoeda(custo)}</td>
+      <td class="center">${embCol}</td>
+      <td class="right" style="background:#0c1a2e;font-weight:600">R$ ${fmtMoeda(custoEmb)}</td>
+      <td class="right">R$ ${fmtMoeda(preco)}</td>
       <td class="right ${du>=0?'dif-pos':'dif-neg'}">R$ ${fmtMoeda(du)}</td>
-      <td class="right ${du>=0?'dif-pos':'dif-neg'}">${pct}</td>
-      <td class="center" style="font-size:11px">${embCol}</td>
-      <td class="right">${precoNorm}</td>
-      <td class="center" style="font-size:11px">${diag}</td>
-      <td class="right ${dt>=0?'dif-pos':'dif-neg'}">R$ ${fmtMoeda(dt)}</td>
-      <td class="center"><span class="badge b-${r.status_preco}">${STATUS_LABEL[r.status_preco]||r.status_preco}</span></td>
+      <td class="right ${du>=0?'dif-pos':'dif-neg'}" style="font-weight:700">${pct}</td>
+      <td class="right ${dt>=0?'dif-pos':'dif-neg'}" style="font-weight:700">R$ ${fmtMoeda(dt)}</td>
       <td class="center">${fmtData(r.data_emissao)}</td>
     </tr>`;
   }).join('');

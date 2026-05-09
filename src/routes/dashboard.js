@@ -129,8 +129,8 @@ router.get('/notas', autenticar, async (req, res) => {
 });
 
 // GET /api/dashboard/divergencias-preco
-// Lista itens cujo preco da NF-e divergiu do custo de fabrica (custoorigem).
-// Filtros: loja, dataIni/dataFim (data_emissao), fornecedor, status_preco (default: 'maior','auditagem').
+// Compara preco_unitario_nota com custo_emb = custo_fabrica * COALESCE(qtd_embalagem,1).
+// Filtros: loja, dataIni/dataFim (data_emissao), fornecedor, pctMin (% minimo de divergencia, default 5).
 router.get('/divergencias-preco', autenticar, async (req, res) => {
   try {
     const lojaUsr = req.usuario.loja_id;
@@ -139,14 +139,11 @@ router.get('/divergencias-preco', autenticar, async (req, res) => {
     const dataIni = req.query.dataIni || null;
     const dataFim = req.query.dataFim || null;
     const fornecedor = (req.query.fornecedor || '').trim();
-    const tiposParam = (req.query.tipos || 'maior,auditagem').split(',').map(s=>s.trim()).filter(Boolean);
+    const pctMin = req.query.pctMin != null ? Math.abs(parseFloat(req.query.pctMin)) : 5; // % minimo absoluto pra entrar
+    const sentido = req.query.sentido || 'todos'; // todos | sobrepreco | ganho
 
     const conds = [`i.custo_fabrica IS NOT NULL`, `i.custo_fabrica > 0`];
     const params = [];
-    if (tiposParam.length) {
-      params.push(tiposParam);
-      conds.push(`i.status_preco = ANY($${params.length})`);
-    }
     if (lojaId)  { params.push(lojaId);  conds.push(`n.loja_id = $${params.length}`); }
     if (dataIni) { params.push(dataIni); conds.push(`n.data_emissao >= $${params.length}`); }
     if (dataFim) { params.push(dataFim); conds.push(`n.data_emissao <= $${params.length}`); }
@@ -156,19 +153,23 @@ router.get('/divergencias-preco', autenticar, async (req, res) => {
     }
     const where = `WHERE ${conds.join(' AND ')}`;
 
-    const [itens, totaisFornecedor, totaisStatus, kpis] = await Promise.all([
-      query(`
+    // CTE base: ja retorna custo_emb, dif_unit, dif_total e pct calculados.
+    // Se qtd_embalagem nulo → trata como 1 (custo_emb = custo_fabrica).
+    const baseCte = `
+      WITH base AS (
         SELECT i.id AS item_id, i.nota_id, i.cd_pro_codi,
                n.numero_nota, n.fornecedor_nome, n.fornecedor_cnpj, n.data_emissao,
                n.loja_id, COALESCE(l.nome,'Sem loja') AS loja_nome,
                i.descricao_nota, i.ean_nota, i.ean_validado,
                i.quantidade, i.preco_unitario_nota, i.custo_fabrica, i.status_preco,
-               (i.preco_unitario_nota - i.custo_fabrica)::numeric(14,4) AS diferenca_unit,
-               (i.quantidade * (i.preco_unitario_nota - i.custo_fabrica))::numeric(14,2) AS diferenca_total,
-               CASE WHEN i.custo_fabrica > 0
-                    THEN ((i.preco_unitario_nota - i.custo_fabrica) / i.custo_fabrica * 100)::numeric(8,2)
-                    ELSE NULL END AS pct,
-               pe.qtd_embalagem, pe.mat_codi, pe.status AS emb_status
+               COALESCE(pe.qtd_embalagem, 1)::numeric AS qtd_emb_efetiva,
+               pe.qtd_embalagem AS qtd_embalagem,
+               pe.mat_codi, pe.status AS emb_status,
+               (i.custo_fabrica * COALESCE(pe.qtd_embalagem,1))::numeric(14,4) AS custo_emb,
+               (i.preco_unitario_nota - i.custo_fabrica * COALESCE(pe.qtd_embalagem,1))::numeric(14,4) AS diferenca_unit,
+               (i.quantidade * (i.preco_unitario_nota - i.custo_fabrica * COALESCE(pe.qtd_embalagem,1)))::numeric(14,2) AS diferenca_total,
+               ((i.preco_unitario_nota - i.custo_fabrica * COALESCE(pe.qtd_embalagem,1))
+                 / NULLIF(i.custo_fabrica * COALESCE(pe.qtd_embalagem,1),0) * 100)::numeric(8,2) AS pct
           FROM itens_nota i
           JOIN notas_entrada n ON n.id = i.nota_id
           LEFT JOIN lojas l ON l.id = n.loja_id
@@ -176,49 +177,53 @@ router.get('/divergencias-preco', autenticar, async (req, res) => {
                  ON (pe.mat_codi = i.cd_pro_codi)
                  OR (i.cd_pro_codi IS NULL AND pe.ean_principal_cd = COALESCE(NULLIF(i.ean_validado,''), NULLIF(i.ean_nota,'')))
           ${where}
-         ORDER BY ABS(i.quantidade * (i.preco_unitario_nota - i.custo_fabrica)) DESC
-         LIMIT 500
+      )
+    `;
+
+    const condDiv = [];
+    if (pctMin > 0) condDiv.push(`ABS(b.pct) >= ${Number(pctMin)}`);
+    if (sentido === 'sobrepreco') condDiv.push(`b.pct > 0`);
+    if (sentido === 'ganho')      condDiv.push(`b.pct < 0`);
+    const whereDiv = condDiv.length ? `WHERE ${condDiv.join(' AND ')}` : '';
+
+    const [itens, totaisFornecedor, kpis] = await Promise.all([
+      query(`
+        ${baseCte}
+        SELECT b.* FROM base b
+        ${whereDiv}
+        ORDER BY ABS(b.diferenca_total) DESC
+        LIMIT 500
       `, params),
       query(`
-        SELECT n.fornecedor_nome, n.fornecedor_cnpj,
+        ${baseCte}
+        SELECT b.fornecedor_nome, b.fornecedor_cnpj,
                COUNT(*)::int AS qtd_itens,
-               SUM(i.quantidade * (i.preco_unitario_nota - i.custo_fabrica))::numeric(14,2) AS dif_total
-          FROM itens_nota i
-          JOIN notas_entrada n ON n.id = i.nota_id
-          ${where}
-         GROUP BY n.fornecedor_nome, n.fornecedor_cnpj
-         ORDER BY ABS(SUM(i.quantidade * (i.preco_unitario_nota - i.custo_fabrica))) DESC
+               SUM(b.diferenca_total)::numeric(14,2) AS dif_total
+          FROM base b
+          ${whereDiv}
+         GROUP BY b.fornecedor_nome, b.fornecedor_cnpj
+         ORDER BY ABS(SUM(b.diferenca_total)) DESC
          LIMIT 30
       `, params),
       query(`
-        SELECT i.status_preco,
-               COUNT(*)::int AS qtd,
-               SUM(i.quantidade * (i.preco_unitario_nota - i.custo_fabrica))::numeric(14,2) AS dif_total
-          FROM itens_nota i
-          JOIN notas_entrada n ON n.id = i.nota_id
-          ${where}
-         GROUP BY i.status_preco
-         ORDER BY i.status_preco
-      `, params),
-      query(`
-        SELECT COUNT(*)::int AS qtd_itens,
-               COUNT(DISTINCT i.nota_id)::int AS qtd_notas,
-               COUNT(DISTINCT n.fornecedor_cnpj)::int AS qtd_fornecedores,
-               SUM(i.quantidade * (i.preco_unitario_nota - i.custo_fabrica))::numeric(14,2) AS dif_total,
-               SUM(CASE WHEN i.status_preco='maior' THEN i.quantidade*(i.preco_unitario_nota-i.custo_fabrica) ELSE 0 END)::numeric(14,2) AS dif_maior,
-               SUM(CASE WHEN i.status_preco='auditagem' THEN i.quantidade*(i.preco_unitario_nota-i.custo_fabrica) ELSE 0 END)::numeric(14,2) AS dif_auditagem
-          FROM itens_nota i
-          JOIN notas_entrada n ON n.id = i.nota_id
-          ${where}
+        ${baseCte}
+        SELECT COUNT(*)::int AS qtd_itens_total,
+               COUNT(*) FILTER (WHERE ABS(b.pct) >= ${Number(pctMin)})::int AS qtd_itens_div,
+               COUNT(DISTINCT b.nota_id)::int AS qtd_notas,
+               COUNT(DISTINCT b.fornecedor_cnpj)::int AS qtd_fornecedores,
+               SUM(b.diferenca_total) FILTER (WHERE ABS(b.pct) >= ${Number(pctMin)})::numeric(14,2) AS dif_total,
+               SUM(b.diferenca_total) FILTER (WHERE b.pct >= ${Number(pctMin)})::numeric(14,2) AS dif_sobrepreco,
+               SUM(b.diferenca_total) FILTER (WHERE b.pct <= -${Number(pctMin)})::numeric(14,2) AS dif_ganho,
+               COUNT(*) FILTER (WHERE b.qtd_embalagem IS NULL)::int AS qtd_sem_emb
+          FROM base b
       `, params),
     ]);
 
     res.json({
       itens,
       por_fornecedor: totaisFornecedor,
-      por_status: totaisStatus,
       kpis: kpis[0],
-      filtros: { loja: lojaId, dataIni, dataFim, fornecedor, tipos: tiposParam }
+      filtros: { loja: lojaId, dataIni, dataFim, fornecedor, pctMin, sentido }
     });
   } catch (err) {
     console.error('[dashboard/divergencias-preco]', err.message);
