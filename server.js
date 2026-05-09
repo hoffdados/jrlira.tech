@@ -1505,6 +1505,10 @@ async function initDB() {
        )`);
     await runMigration(client, '20260503_produtos_embalagem_idx_status',
       `CREATE INDEX IF NOT EXISTS idx_produtos_embalagem_status ON produtos_embalagem(status)`);
+    await runMigration(client, '20260509_produtos_embalagem_idx_ean_cd',
+      `CREATE INDEX IF NOT EXISTS idx_produtos_embalagem_ean_cd ON produtos_embalagem(ean_principal_cd) WHERE ean_principal_cd IS NOT NULL`);
+    await runMigration(client, '20260509_itens_nota_idx_cd_pro_codi',
+      `CREATE INDEX IF NOT EXISTS idx_itens_nota_cd_pro_codi ON itens_nota(cd_pro_codi) WHERE cd_pro_codi IS NOT NULL`);
     await runMigration(client, '20260503_produtos_embalagem_eans',
       `ALTER TABLE produtos_embalagem
          ADD COLUMN IF NOT EXISTS ean_principal_jrlira VARCHAR(20),

@@ -136,7 +136,8 @@ router.get('/divergencias-preco', autenticar, async (req, res) => {
     const lojaUsr = req.usuario.loja_id;
     const lojaParam = req.query.loja ? parseInt(req.query.loja) : null;
     const lojaId = lojaUsr || lojaParam;
-    const dataIni = req.query.dataIni || null;
+    // Default: ultimos 90 dias se nao foi passado nada (evita full scan).
+    const dataIni = req.query.dataIni || new Date(Date.now() - 90 * 86400 * 1000).toISOString().slice(0,10);
     const dataFim = req.query.dataFim || null;
     const fornecedor = (req.query.fornecedor || '').trim();
     const pctMin = req.query.pctMin != null ? Math.abs(parseFloat(req.query.pctMin)) : 5; // % minimo absoluto pra entrar
@@ -153,7 +154,9 @@ router.get('/divergencias-preco', autenticar, async (req, res) => {
     }
     const where = `WHERE ${conds.join(' AND ')}`;
 
-    // CTE base: ja retorna custo_emb, dif_unit, dif_total e pct calculados.
+    // CTE base: usa 2 LEFT JOINs separados (mat_codi e ean) com COALESCE pra
+    // evitar OR no JOIN (que estoura statement timeout). Indices:
+    // produtos_embalagem(mat_codi PK) e idx_produtos_embalagem_ean_cd.
     // Se qtd_embalagem nulo → trata como 1 (custo_emb = custo_fabrica).
     const baseCte = `
       WITH base AS (
@@ -162,20 +165,20 @@ router.get('/divergencias-preco', autenticar, async (req, res) => {
                n.loja_id, COALESCE(l.nome,'Sem loja') AS loja_nome,
                i.descricao_nota, i.ean_nota, i.ean_validado,
                i.quantidade, i.preco_unitario_nota, i.custo_fabrica, i.status_preco,
-               COALESCE(pe.qtd_embalagem, 1)::numeric AS qtd_emb_efetiva,
-               pe.qtd_embalagem AS qtd_embalagem,
-               pe.mat_codi, pe.status AS emb_status,
-               (i.custo_fabrica * COALESCE(pe.qtd_embalagem,1))::numeric(14,4) AS custo_emb,
-               (i.preco_unitario_nota - i.custo_fabrica * COALESCE(pe.qtd_embalagem,1))::numeric(14,4) AS diferenca_unit,
-               (i.quantidade * (i.preco_unitario_nota - i.custo_fabrica * COALESCE(pe.qtd_embalagem,1)))::numeric(14,2) AS diferenca_total,
-               ((i.preco_unitario_nota - i.custo_fabrica * COALESCE(pe.qtd_embalagem,1))
-                 / NULLIF(i.custo_fabrica * COALESCE(pe.qtd_embalagem,1),0) * 100)::numeric(8,2) AS pct
+               COALESCE(pe1.qtd_embalagem, pe2.qtd_embalagem) AS qtd_embalagem,
+               COALESCE(pe1.mat_codi, pe2.mat_codi) AS mat_codi,
+               COALESCE(pe1.status, pe2.status) AS emb_status,
+               (i.custo_fabrica * COALESCE(pe1.qtd_embalagem, pe2.qtd_embalagem, 1))::numeric(14,4) AS custo_emb,
+               (i.preco_unitario_nota - i.custo_fabrica * COALESCE(pe1.qtd_embalagem, pe2.qtd_embalagem, 1))::numeric(14,4) AS diferenca_unit,
+               (i.quantidade * (i.preco_unitario_nota - i.custo_fabrica * COALESCE(pe1.qtd_embalagem, pe2.qtd_embalagem, 1)))::numeric(14,2) AS diferenca_total,
+               ((i.preco_unitario_nota - i.custo_fabrica * COALESCE(pe1.qtd_embalagem, pe2.qtd_embalagem, 1))
+                 / NULLIF(i.custo_fabrica * COALESCE(pe1.qtd_embalagem, pe2.qtd_embalagem, 1),0) * 100)::numeric(12,2) AS pct
           FROM itens_nota i
           JOIN notas_entrada n ON n.id = i.nota_id
           LEFT JOIN lojas l ON l.id = n.loja_id
-          LEFT JOIN produtos_embalagem pe
-                 ON (pe.mat_codi = i.cd_pro_codi)
-                 OR (i.cd_pro_codi IS NULL AND pe.ean_principal_cd = COALESCE(NULLIF(i.ean_validado,''), NULLIF(i.ean_nota,'')))
+          LEFT JOIN produtos_embalagem pe1 ON pe1.mat_codi = i.cd_pro_codi
+          LEFT JOIN produtos_embalagem pe2 ON pe1.mat_codi IS NULL
+                                           AND pe2.ean_principal_cd = COALESCE(NULLIF(i.ean_validado,''), NULLIF(i.ean_nota,''))
           ${where}
       )
     `;
