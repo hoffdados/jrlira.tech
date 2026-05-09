@@ -213,6 +213,9 @@ function renderItens(arr){
     <th>Custo</th>
     <th>Dif Unit</th>
     <th>%</th>
+    <th>Embalagem CD</th>
+    <th>Preço ÷ emb</th>
+    <th>Diagnóstico</th>
     <th>Dif Total</th>
     <th>Tipo</th>
     <th>Emissão</th>
@@ -221,6 +224,39 @@ function renderItens(arr){
     const dt = Number(r.diferenca_total||0);
     const du = Number(r.diferenca_unit||0);
     const pct = r.pct == null ? '-' : Number(r.pct).toFixed(2)+'%';
+    const qe = r.qtd_embalagem ? Number(r.qtd_embalagem) : null;
+    const custo = Number(r.custo_fabrica||0);
+    const preco = Number(r.preco_unitario_nota||0);
+    let embCol = '<span style="color:#475569">—</span>';
+    let precoNorm = '–';
+    let diag = '<span style="color:#475569">–</span>';
+    if (qe && qe > 1 && custo > 0) {
+      const precoDiv = preco / qe;
+      const precoMul = preco * qe;
+      precoNorm = `R$ ${fmtMoeda(precoDiv)}`;
+      const difDiv = Math.abs(precoDiv - custo) / custo;
+      const difMul = Math.abs(precoMul - custo) / custo;
+      const difOrig = Math.abs(preco - custo) / custo;
+      const embStatus = r.emb_status || '';
+      const embTag = embStatus === 'validado'
+        ? '<span style="color:#4ade80;font-size:10px">✓</span>'
+        : '<span style="color:#fbbf24;font-size:10px">!</span>';
+      embCol = `${qe}x ${embTag}<div style="font-size:10px;color:#475569;font-family:monospace">${escapeHtml(r.mat_codi||'')}</div>`;
+      if (difDiv < 0.05 && difOrig > 0.10) {
+        diag = '<span style="color:#4ade80;font-weight:700" title="Preço da NF é da caixa, custo é unitário. Bate quando divide.">📦 caixa→un</span>';
+      } else if (difMul < 0.05 && difOrig > 0.10) {
+        diag = '<span style="color:#4ade80;font-weight:700" title="Preço da NF é unitário, custo está como caixa. Bate quando multiplica.">📦 un→caixa</span>';
+      } else if (difDiv < difOrig * 0.5) {
+        diag = '<span style="color:#fbbf24;font-weight:700" title="Reduz divergência se normalizado por embalagem, mas não zera.">≈ parcial</span>';
+      } else {
+        diag = '<span style="color:#f87171" title="Embalagem cadastrada não explica a divergência">divergência real</span>';
+      }
+    } else if (qe === 1) {
+      embCol = `<span style="color:#64748b">unidade</span>`;
+      diag = '<span style="color:#f87171" title="Cadastro indica unidade. Divergência é de preço mesmo">divergência real</span>';
+    } else {
+      embCol = `<a href="/embalagens-fornecedor" target="_blank" style="color:#fbbf24;text-decoration:none" title="Sem cadastro de embalagem para este produto">⚠ cadastrar</a>`;
+    }
     return `<tr onclick="abrirNota(${r.nota_id})" style="cursor:pointer">
       <td class="left" style="font-family:monospace;color:#38bdf8;font-weight:700">${escapeHtml(r.numero_nota||'')}</td>
       <td class="left">${escapeHtml(r.fornecedor_nome||'')}</td>
@@ -228,10 +264,13 @@ function renderItens(arr){
       <td class="left">${escapeHtml(r.descricao_nota||'')}</td>
       <td class="center" style="font-family:monospace;font-size:11px">${escapeHtml(r.ean_validado||r.ean_nota||'')}</td>
       <td class="right">${Number(r.quantidade||0).toLocaleString('pt-BR',{maximumFractionDigits:3})}</td>
-      <td class="right">R$ ${fmtMoeda(r.preco_unitario_nota)}</td>
-      <td class="right">R$ ${fmtMoeda(r.custo_fabrica)}</td>
+      <td class="right">R$ ${fmtMoeda(preco)}</td>
+      <td class="right">R$ ${fmtMoeda(custo)}</td>
       <td class="right ${du>=0?'dif-pos':'dif-neg'}">R$ ${fmtMoeda(du)}</td>
       <td class="right ${du>=0?'dif-pos':'dif-neg'}">${pct}</td>
+      <td class="center" style="font-size:11px">${embCol}</td>
+      <td class="right">${precoNorm}</td>
+      <td class="center" style="font-size:11px">${diag}</td>
       <td class="right ${dt>=0?'dif-pos':'dif-neg'}">R$ ${fmtMoeda(dt)}</td>
       <td class="center"><span class="badge b-${r.status_preco}">${STATUS_LABEL[r.status_preco]||r.status_preco}</span></td>
       <td class="center">${fmtData(r.data_emissao)}</td>

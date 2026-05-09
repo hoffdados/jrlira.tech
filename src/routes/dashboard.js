@@ -158,7 +158,7 @@ router.get('/divergencias-preco', autenticar, async (req, res) => {
 
     const [itens, totaisFornecedor, totaisStatus, kpis] = await Promise.all([
       query(`
-        SELECT i.id AS item_id, i.nota_id,
+        SELECT i.id AS item_id, i.nota_id, i.cd_pro_codi,
                n.numero_nota, n.fornecedor_nome, n.fornecedor_cnpj, n.data_emissao,
                n.loja_id, COALESCE(l.nome,'Sem loja') AS loja_nome,
                i.descricao_nota, i.ean_nota, i.ean_validado,
@@ -167,10 +167,14 @@ router.get('/divergencias-preco', autenticar, async (req, res) => {
                (i.quantidade * (i.preco_unitario_nota - i.custo_fabrica))::numeric(14,2) AS diferenca_total,
                CASE WHEN i.custo_fabrica > 0
                     THEN ((i.preco_unitario_nota - i.custo_fabrica) / i.custo_fabrica * 100)::numeric(8,2)
-                    ELSE NULL END AS pct
+                    ELSE NULL END AS pct,
+               pe.qtd_embalagem, pe.mat_codi, pe.status AS emb_status
           FROM itens_nota i
           JOIN notas_entrada n ON n.id = i.nota_id
           LEFT JOIN lojas l ON l.id = n.loja_id
+          LEFT JOIN produtos_embalagem pe
+                 ON (pe.mat_codi = i.cd_pro_codi)
+                 OR (i.cd_pro_codi IS NULL AND pe.ean_principal_cd = COALESCE(NULLIF(i.ean_validado,''), NULLIF(i.ean_nota,'')))
           ${where}
          ORDER BY ABS(i.quantidade * (i.preco_unitario_nota - i.custo_fabrica)) DESC
          LIMIT 500
