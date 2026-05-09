@@ -261,10 +261,11 @@ function renderItens(arr){
     } else {
       const fonte = r.emb_fonte || '';
       const FONTE_LABEL = {
-        'cd-cod': '<span style="color:#a5b4fc;font-size:9px;font-weight:700" title="produtos_embalagem (CD) por código">CD</span>',
-        'cd-ean': '<span style="color:#a5b4fc;font-size:9px;font-weight:700" title="produtos_embalagem (CD) por EAN">CD·ean</span>',
-        'forn':   '<span style="color:#bae6fd;font-size:9px;font-weight:700" title="embalagens_fornecedor (EAN+CNPJ)">Forn</span>',
-        'nfe':    '<span style="color:#fbbf24;font-size:9px;font-weight:700" title="qtd_por_caixa_nfe — parser detectou no XML, sem cadastro">NFe</span>',
+        'cd-cod':   '<span style="color:#a5b4fc;font-size:9px;font-weight:700" title="produtos_embalagem (CD) por código">CD</span>',
+        'cd-ean':   '<span style="color:#a5b4fc;font-size:9px;font-weight:700" title="produtos_embalagem (CD) por EAN">CD·ean</span>',
+        'forn':     '<span style="color:#bae6fd;font-size:9px;font-weight:700" title="embalagens_fornecedor validado">Forn ✓</span>',
+        'forn-sug': '<span style="color:#fbbf24;font-size:9px;font-weight:700" title="Sugestão pendente (não validada ainda)">Forn pend</span>',
+        'nfe':      '<span style="color:#fbbf24;font-size:9px;font-weight:700" title="qtd_por_caixa_nfe — parser do XML, sem cadastro">NFe</span>',
       };
       const tag = r.emb_status === 'validado'
         ? '<span style="color:#4ade80;font-size:10px" title="cadastro validado">✓</span>'

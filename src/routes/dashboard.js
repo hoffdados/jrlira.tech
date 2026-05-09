@@ -175,19 +175,32 @@ router.get('/divergencias-preco', autenticar, async (req, res) => {
                i.descricao_nota, i.ean_nota, i.ean_validado,
                i.quantidade, i.preco_unitario_nota, i.custo_fabrica, i.status_preco,
                i.qtd_por_caixa_nfe,
-               -- prioridade: CD por mat_codi > CD por EAN > fornecedor (EAN+CNPJ) > parser NFe
+               -- prioridade:
+               --   1. CD por mat_codi
+               --   2. CD por EAN
+               --   3. Fornecedor validado (qtd_por_caixa)
+               --   4. Fornecedor sugerido pendente (qtd_sugerida_nfe)
+               --   5. Parser do XML (qtd_por_caixa_nfe)
                COALESCE(pe1.qtd_embalagem, pe2.qtd_embalagem,
                         ef.qtd_por_caixa,
+                        ef.qtd_sugerida_nfe,
                         NULLIF(i.qtd_por_caixa_nfe,1)) AS qtd_embalagem,
                COALESCE(pe1.mat_codi, pe2.mat_codi) AS mat_codi,
-               -- fonte do dado (pra debug/UI)
+               -- fonte do dado (pra UI)
                CASE
                  WHEN pe1.qtd_embalagem IS NOT NULL THEN 'cd-cod'
                  WHEN pe2.qtd_embalagem IS NOT NULL THEN 'cd-ean'
                  WHEN ef.qtd_por_caixa IS NOT NULL THEN 'forn'
+                 WHEN ef.qtd_sugerida_nfe IS NOT NULL THEN 'forn-sug'
                  WHEN i.qtd_por_caixa_nfe IS NOT NULL AND i.qtd_por_caixa_nfe > 1 THEN 'nfe'
                END AS emb_fonte,
-               COALESCE(pe1.status, pe2.status, ef.status) AS emb_status
+               -- status: validado quando tem qtd_por_caixa, senao status do registro
+               CASE
+                 WHEN pe1.qtd_embalagem IS NOT NULL THEN pe1.status
+                 WHEN pe2.qtd_embalagem IS NOT NULL THEN pe2.status
+                 WHEN ef.qtd_por_caixa IS NOT NULL THEN ef.status
+                 WHEN ef.qtd_sugerida_nfe IS NOT NULL THEN ef.status
+               END AS emb_status
           FROM itens_nota i
           JOIN notas_entrada n ON n.id = i.nota_id
           LEFT JOIN lojas l ON l.id = n.loja_id
