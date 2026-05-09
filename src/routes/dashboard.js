@@ -321,4 +321,114 @@ router.get('/produtos-novos', autenticar, async (req, res) => {
   }
 });
 
+// GET /api/dashboard/emergenciais
+// Notas emergenciais (sem pedido previo) — compliance de compras.
+router.get('/emergenciais', autenticar, async (req, res) => {
+  try {
+    const lojaUsr = req.usuario.loja_id;
+    const lojaParam = req.query.loja ? parseInt(req.query.loja) : null;
+    const lojaId = lojaUsr || lojaParam;
+    const dataIni = req.query.dataIni || null;
+    const dataFim = req.query.dataFim || null;
+    const fornecedor = (req.query.fornecedor || '').trim();
+    const comprador = (req.query.comprador || '').trim();
+    const statusFiltro = req.query.statusFiltro || 'todas'; // todas | pendentes | aprovadas
+
+    const conds = [`n.emergencial = TRUE`];
+    const params = [];
+    if (statusFiltro === 'pendentes') conds.push(`n.status = 'emergencial_pendente'`);
+    if (statusFiltro === 'aprovadas') conds.push(`n.status <> 'emergencial_pendente'`);
+    if (lojaId)  { params.push(lojaId);  conds.push(`n.loja_id = $${params.length}`); }
+    if (dataIni) { params.push(dataIni); conds.push(`n.data_emissao >= $${params.length}`); }
+    if (dataFim) { params.push(dataFim); conds.push(`n.data_emissao <= $${params.length}`); }
+    if (fornecedor) {
+      params.push(`%${fornecedor}%`);
+      conds.push(`(n.fornecedor_nome ILIKE $${params.length} OR n.fornecedor_cnpj ILIKE $${params.length})`);
+    }
+    if (comprador) {
+      params.push(`%${comprador}%`);
+      conds.push(`n.importado_por ILIKE $${params.length}`);
+    }
+    const where = `WHERE ${conds.join(' AND ')}`;
+
+    // mesmo where mas sem o filtro emergencial (pra calcular % do total)
+    const condsTodas = conds.filter(c => c !== `n.emergencial = TRUE`);
+    const whereTodas = condsTodas.length ? `WHERE ${condsTodas.join(' AND ')}` : '';
+
+    const [kpis, totaisGerais, porFornecedor, porComprador, porLoja, notas] = await Promise.all([
+      query(`
+        SELECT COUNT(*)::int                            AS qtd,
+               COALESCE(SUM(n.valor_total),0)::numeric  AS valor,
+               COUNT(*) FILTER (WHERE n.status = 'emergencial_pendente')::int AS qtd_pendentes,
+               COALESCE(SUM(n.valor_total) FILTER (WHERE n.status = 'emergencial_pendente'),0)::numeric AS valor_pendente,
+               COUNT(DISTINCT n.fornecedor_cnpj)::int   AS qtd_fornecedores,
+               COUNT(DISTINCT n.importado_por)::int     AS qtd_compradores
+          FROM notas_entrada n
+          ${where}
+      `, params),
+      query(`
+        SELECT COUNT(*)::int                            AS qtd_total,
+               COALESCE(SUM(n.valor_total),0)::numeric  AS valor_total
+          FROM notas_entrada n
+          ${whereTodas}
+      `, params),
+      query(`
+        SELECT n.fornecedor_nome, n.fornecedor_cnpj,
+               COUNT(*)::int AS qtd,
+               COALESCE(SUM(n.valor_total),0)::numeric AS valor
+          FROM notas_entrada n
+          ${where}
+         GROUP BY n.fornecedor_nome, n.fornecedor_cnpj
+         ORDER BY qtd DESC
+         LIMIT 30
+      `, params),
+      query(`
+        SELECT COALESCE(NULLIF(n.importado_por,''),'(sem usuário)') AS comprador,
+               COUNT(*)::int AS qtd,
+               COALESCE(SUM(n.valor_total),0)::numeric AS valor
+          FROM notas_entrada n
+          ${where}
+         GROUP BY n.importado_por
+         ORDER BY qtd DESC
+         LIMIT 30
+      `, params),
+      query(`
+        SELECT n.loja_id,
+               COALESCE(l.nome,'Sem loja') AS loja_nome,
+               COUNT(*)::int AS qtd,
+               COALESCE(SUM(n.valor_total),0)::numeric AS valor
+          FROM notas_entrada n
+          LEFT JOIN lojas l ON l.id = n.loja_id
+          ${where}
+         GROUP BY n.loja_id, l.nome
+         ORDER BY n.loja_id
+      `, params),
+      query(`
+        SELECT n.id, n.numero_nota, n.fornecedor_nome, n.fornecedor_cnpj,
+               n.valor_total, n.status, n.data_emissao, n.importado_em,
+               n.importado_por,
+               n.loja_id, COALESCE(l.nome,'Sem loja') AS loja_nome
+          FROM notas_entrada n
+          LEFT JOIN lojas l ON l.id = n.loja_id
+          ${where}
+         ORDER BY n.data_emissao DESC, n.id DESC
+         LIMIT 300
+      `, params),
+    ]);
+
+    res.json({
+      kpis: kpis[0],
+      totais_gerais: totaisGerais[0],
+      por_fornecedor: porFornecedor,
+      por_comprador: porComprador,
+      por_loja: porLoja,
+      notas,
+      filtros: { loja: lojaId, dataIni, dataFim, fornecedor, comprador, statusFiltro }
+    });
+  } catch (err) {
+    console.error('[dashboard/emergenciais]', err.message);
+    res.status(500).json({ erro: err.message });
+  }
+});
+
 module.exports = router;
