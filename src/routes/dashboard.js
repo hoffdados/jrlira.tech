@@ -174,15 +174,30 @@ router.get('/divergencias-preco', autenticar, async (req, res) => {
                n.loja_id, COALESCE(l.nome,'Sem loja') AS loja_nome,
                i.descricao_nota, i.ean_nota, i.ean_validado,
                i.quantidade, i.preco_unitario_nota, i.custo_fabrica, i.status_preco,
-               COALESCE(pe1.qtd_embalagem, pe2.qtd_embalagem) AS qtd_embalagem,
+               i.qtd_por_caixa_nfe,
+               -- prioridade: CD por mat_codi > CD por EAN > fornecedor (EAN+CNPJ) > parser NFe
+               COALESCE(pe1.qtd_embalagem, pe2.qtd_embalagem,
+                        ef.qtd_por_caixa,
+                        NULLIF(i.qtd_por_caixa_nfe,1)) AS qtd_embalagem,
                COALESCE(pe1.mat_codi, pe2.mat_codi) AS mat_codi,
-               COALESCE(pe1.status, pe2.status) AS emb_status
+               -- fonte do dado (pra debug/UI)
+               CASE
+                 WHEN pe1.qtd_embalagem IS NOT NULL THEN 'cd-cod'
+                 WHEN pe2.qtd_embalagem IS NOT NULL THEN 'cd-ean'
+                 WHEN ef.qtd_por_caixa IS NOT NULL THEN 'forn'
+                 WHEN i.qtd_por_caixa_nfe IS NOT NULL AND i.qtd_por_caixa_nfe > 1 THEN 'nfe'
+               END AS emb_fonte,
+               COALESCE(pe1.status, pe2.status, ef.status) AS emb_status
           FROM itens_nota i
           JOIN notas_entrada n ON n.id = i.nota_id
           LEFT JOIN lojas l ON l.id = n.loja_id
           LEFT JOIN produtos_embalagem pe1 ON pe1.mat_codi = i.cd_pro_codi
           LEFT JOIN produtos_embalagem pe2 ON pe1.mat_codi IS NULL
                                            AND pe2.ean_principal_cd = COALESCE(NULLIF(i.ean_validado,''), NULLIF(i.ean_nota,''))
+          LEFT JOIN embalagens_fornecedor ef
+                 ON pe1.mat_codi IS NULL AND pe2.mat_codi IS NULL
+                AND ef.ean = COALESCE(NULLIF(i.ean_validado,''), NULLIF(i.ean_nota,''))
+                AND COALESCE(ef.fornecedor_cnpj,'') = COALESCE(n.fornecedor_cnpj,'')
           ${where}
       ),
       hipoteses AS (
