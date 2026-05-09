@@ -188,8 +188,31 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 1
 <script>
 const API = '';
 const token = () => localStorage.getItem('jrlira_token');
-(function(){ const p = localStorage.getItem('jrlira_perfil'); if (!token() || (p !== 'admin' && p !== 'cadastro')) location.href = '/'; })();
+const PERFIL = localStorage.getItem('jrlira_perfil');
+(function(){ if (!token() || (PERFIL !== 'admin' && PERFIL !== 'cadastro' && PERFIL !== 'comprador')) location.href = '/'; })();
 document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
+
+// Comprador eh read-only: ve mas nao executa acoes do cadastro
+const READ_ONLY = PERFIL === 'comprador';
+
+// Lojas permitidas (null = sem restricao). Usado pra restringir o filtro/lista
+// quando o usuario tem lojas_ids configuradas (tipico de comprador de loja).
+const LOJAS_PERMITIDAS = (function(){
+  try {
+    const arr = JSON.parse(localStorage.getItem('jrlira_lojas') || 'null');
+    return Array.isArray(arr) && arr.length ? arr.map(Number) : null;
+  } catch { return null; }
+})();
+
+// Restringe options do select de Loja
+if (LOJAS_PERMITIDAS) {
+  const sel = document.getElementById('fLoja');
+  Array.from(sel.querySelectorAll('option')).forEach(o => {
+    if (o.value && !LOJAS_PERMITIDAS.includes(parseInt(o.value))) o.remove();
+  });
+  // Se sobrou apenas 1 loja, pre-seleciona
+  if (LOJAS_PERMITIDAS.length === 1) sel.value = String(LOJAS_PERMITIDAS[0]);
+}
 
 let notaAtualId = null;
 
@@ -236,6 +259,10 @@ async function carregarNotas() {
     if (status === 'todas-incl-validadas') params.set('incluir_validadas_cd', '1');
     const notas = await fetchApi('/api/notas?' + params.toString());
     let filtradas = loja ? notas.filter(n => String(n.loja_id) === loja) : notas;
+    // Restricao de loja por perfil (front-side, double-check do backend)
+    if (LOJAS_PERMITIDAS) {
+      filtradas = filtradas.filter(n => LOJAS_PERMITIDAS.includes(Number(n.loja_id)));
+    }
     if (status === 'pendentes') filtradas = filtradas.filter(n => n.status !== 'validada' && n.status !== 'fechada');
     document.getElementById('totalNotas').textContent = `(${filtradas.length})`;
     const el = document.getElementById('listaNota');
@@ -283,18 +310,26 @@ async function abrirNota(id) {
     document.getElementById('nhStatus').innerHTML = `<span class="badge b-${nota.status}">${labelStatus(nota.status)}</span>`;
     document.getElementById('nhSync').textContent = nota.cd_synced_em ? new Date(nota.cd_synced_em).toLocaleString('pt-BR') : '—';
 
-    // Ações por status do cadastro
+    // Ações por status do cadastro (escondidas em modo read-only)
     const acoes = document.getElementById('acoes');
     let html = '';
     if (nota.status === 'recebida') {
-      html += `<button class="btn-primary" onclick="liberarEstoque()">▶ Liberar para Estoque</button>`;
+      html += READ_ONLY
+        ? `<span style="font-size:12px;color:#fbbf24">Aguardando cadastro liberar para estoque</span>`
+        : `<button class="btn-primary" onclick="liberarEstoque()">▶ Liberar para Estoque</button>`;
     }
     if (nota.status === 'conferida') {
-      html += `<button class="btn-success" onclick="validar()">✓ Validar Nota</button>`;
+      html += READ_ONLY
+        ? `<span style="font-size:12px;color:#4ade80">Conferência OK — aguardando cadastro validar</span>`
+        : `<button class="btn-success" onclick="validar()">✓ Validar Nota</button>`;
     }
     if (nota.status === 'auditagem') {
-      html += `<button class="btn-success" onclick="validar()" style="background:#f97316">⚠ Validar com Divergências</button>`;
-      html += `<span style="font-size:12px;color:#fbbf24;margin-left:8px">Estoque finalizou com divergência — admin gerou relatório pro CD</span>`;
+      if (READ_ONLY) {
+        html += `<span style="font-size:12px;color:#fbbf24">Em auditagem — divergência no estoque</span>`;
+      } else {
+        html += `<button class="btn-success" onclick="validar()" style="background:#f97316">⚠ Validar com Divergências</button>`;
+        html += `<span style="font-size:12px;color:#fbbf24;margin-left:8px">Estoque finalizou com divergência — admin gerou relatório pro CD</span>`;
+      }
     }
     if (nota.status === 'em_transito') {
       html += `<span style="font-size:12px;color:#64748b">Aguardando estoque marcar recebida fisicamente</span>`;
@@ -334,7 +369,7 @@ function renderLotes(lotes) {
   }).join('');
 }
 function renderItensCompleto(itens, statusNota) {
-  const podeCadastrarEan = ['conferida', 'auditagem', 'em_conferencia', 'recebida'].includes(statusNota);
+  const podeCadastrarEan = !READ_ONLY && ['conferida', 'auditagem', 'em_conferencia', 'recebida'].includes(statusNota);
   const tbody = document.getElementById('tbodyItens');
   tbody.innerHTML = itens.map(i => {
     const semCod = !!i.sem_codigo_barras;
