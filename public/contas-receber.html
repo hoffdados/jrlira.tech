@@ -711,11 +711,25 @@ function renderDetalheAcordo() {
 
   let acoesHtml = '';
   if (a.status === 'pendente_compras') {
+    const precoOriginal = parseFloat(a.preco_acordo || 0).toFixed(2);
     acoesHtml = `
+      <div style="background:#0f172a;border:1px solid #334155;border-radius:8px;padding:12px;margin-bottom:10px">
+        <label style="display:block;font-size:11px;color:#94a3b8;font-weight:600;text-transform:uppercase;margin-bottom:6px">💰 Preço acordo (negociável)</label>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span style="font-size:13px;color:#94a3b8">R$</span>
+          <input type="number" id="inp-preco-acordo" step="0.01" min="0" max="${parseFloat(a.preco_atual || 0).toFixed(2)}" value="${precoOriginal}" oninput="recalcAcordo(this)" style="background:#0f172a;border:1px solid #475569;color:#fbbf24;font-weight:700;font-size:16px;padding:8px 12px;border-radius:6px;width:130px;text-align:center">
+          <span style="font-size:11px;color:#64748b">Original sugerido: R$ ${precoOriginal} · Preço atual: ${fmtR(a.preco_atual)}</span>
+        </div>
+        <div id="acordo-recalc" style="margin-top:8px;font-size:11px;color:#94a3b8"></div>
+      </div>
       <div style="display:flex;gap:10px">
         <button class="btn-green" onclick="aprovarAcordo()" style="flex:1">✓ Aprovar acordo</button>
         <button class="btn-danger" onclick="abrirRecusa()" style="flex:1">✕ Recusar</button>
       </div>`;
+    setTimeout(() => {
+      const inp = document.getElementById('inp-preco-acordo');
+      if (inp) recalcAcordo(inp);
+    }, 50);
   } else if (a.status === 'ativo') {
     acoesHtml = `<div class="msg-ok">Aprovado em ${fmtDT(a.aprovado_em)} por ${escapeHtml(a.aprovado_por||'')}. Aguardando vencimento da validade para fechamento automático.</div>`;
   } else if (a.status === 'recusado') {
@@ -769,10 +783,46 @@ function renderDetalheAcordo() {
   `;
 }
 
+function recalcAcordo(inp) {
+  const acordo = acordoAtivo;
+  if (!acordo) return;
+  const novo = parseFloat(inp.value) || 0;
+  const atual = parseFloat(acordo.preco_atual) || 0;
+  const qtd = parseFloat(acordo.qtde_acordada) || 0;
+  const diff = atual - novo;
+  const valor = qtd * diff;
+  const orig = parseFloat(acordo.preco_acordo) || 0;
+  const renegociado = Math.abs(novo - orig) > 0.001;
+  const wrap = document.getElementById('acordo-recalc');
+  if (!wrap) return;
+  if (novo >= atual || novo <= 0) {
+    wrap.innerHTML = `<span style="color:#f87171">⚠️ Preço deve ser maior que zero e menor que R$ ${atual.toFixed(2)}</span>`;
+    return;
+  }
+  wrap.innerHTML = `
+    Diferença unitária: <strong style="color:#f87171">R$ ${diff.toFixed(2)}</strong> ·
+    Valor confessado: <strong style="color:#fbbf24">R$ ${valor.toFixed(2).replace('.', ',')}</strong>
+    ${renegociado ? '<span style="color:#fbbf24;margin-left:8px">🔄 Renegociado</span>' : ''}
+  `;
+}
+
 async function aprovarAcordo() {
   if (!acordoAtivoId) return;
-  if (!confirm('Aprovar o acordo? O produto será marcado como rebaixado para o repositor (etiqueta vermelha) e o débito do fornecedor será apurado a cada hora até a data de validade.')) return;
-  const r = await apiFetch(`${API}/api/acordos/${acordoAtivoId}/aprovar`, { method: 'POST' });
+  const inp = document.getElementById('inp-preco-acordo');
+  const precoNovo = inp ? parseFloat(inp.value) : null;
+  const acordo = acordoAtivo;
+  const orig = acordo ? parseFloat(acordo.preco_acordo) : null;
+  const renegociado = inp && orig != null && Math.abs(precoNovo - orig) > 0.001;
+  const msg = renegociado
+    ? `Aprovar acordo COM RENEGOCIAÇÃO?\n\nNovo preço: R$ ${precoNovo.toFixed(2)}\nOriginal: R$ ${orig.toFixed(2)}\n\nO cadastro vai receber instrução de rebaixar para o novo valor.`
+    : 'Aprovar o acordo? O produto será marcado como rebaixado para o repositor (etiqueta vermelha) e o débito do fornecedor será apurado a cada hora até a data de validade.';
+  if (!confirm(msg)) return;
+  const body = inp ? JSON.stringify({ preco_acordo: precoNovo }) : null;
+  const r = await apiFetch(`${API}/api/acordos/${acordoAtivoId}/aprovar`, {
+    method: 'POST',
+    headers: body ? { 'Content-Type': 'application/json' } : {},
+    body
+  });
   const d = await r.json();
   if (!r.ok) { alert(d.erro || 'Erro ao aprovar'); return; }
   await carregarAcordos();

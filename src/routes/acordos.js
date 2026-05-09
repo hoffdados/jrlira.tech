@@ -134,6 +134,7 @@ router.get('/:id/extrato', compradorOuAdmin, async (req, res) => {
 });
 
 // POST /api/acordos/:id/aprovar
+// body opcional: { preco_acordo } — comprador pode renegociar e enviar valor diferente
 router.post('/:id/aprovar', compradorOuAdmin, async (req, res) => {
   const client = await pool.connect();
   try {
@@ -147,12 +148,31 @@ router.post('/:id/aprovar', compradorOuAdmin, async (req, res) => {
       return res.status(409).json({ erro: `Acordo não está pendente (status atual: ${a.status})` });
     }
 
+    // Preço do acordo — se comprador renegociou, usa novo valor; senão mantém original
+    const precoOriginal = parseFloat(a.preco_acordo) || 0;
+    const precoNovo = req.body?.preco_acordo != null ? parseFloat(req.body.preco_acordo) : precoOriginal;
+    if (isNaN(precoNovo) || precoNovo < 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ erro: 'preco_acordo inválido' });
+    }
+    const precoAtual = parseFloat(a.preco_atual) || 0;
+    if (precoNovo >= precoAtual) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ erro: 'Preço acordo deve ser menor que o preço atual do produto' });
+    }
+    const qtdAcordada = parseFloat(a.qtde_acordada) || 0;
+    const diff = precoAtual - precoNovo;
+    const valorConfessado = qtdAcordada * diff;
+    const renegociado = Math.abs(precoNovo - precoOriginal) > 0.001;
+
     const aprovador = req.usuario.email || req.usuario.usuario || req.usuario.nome || `id:${req.usuario.id}`;
     await client.query(
       `UPDATE acordos_comerciais
-       SET status = 'ativo', aprovado_por = $1, aprovado_em = NOW(), updated_at = NOW()
-       WHERE id = $2`,
-      [aprovador, a.id]
+       SET status = 'ativo', aprovado_por = $1, aprovado_em = NOW(),
+           preco_acordo = $2, diferenca_unitaria = $3, valor_confessado = $4,
+           updated_at = NOW()
+       WHERE id = $5`,
+      [aprovador, precoNovo, diff, valorConfessado, a.id]
     );
 
     // Marca o validade_alertas como rebaixado pra etiqueta vermelha aparecer ao repositor
@@ -162,16 +182,20 @@ router.post('/:id/aprovar', compradorOuAdmin, async (req, res) => {
            data_rebaixamento = NOW(),
            preco_rebaixado_valor = $1
        WHERE id = $2`,
-      [a.preco_acordo, a.alerta_id]
+      [precoNovo, a.alerta_id]
     );
 
     await client.query('COMMIT');
+
+    const corpoNotif = renegociado
+      ? `${a.fornecedor_nome || ''} • ${a.produto_nome} • Rebaixar pra R$ ${precoNovo.toFixed(2)} (negociado, era R$ ${precoOriginal.toFixed(2)}) • ${a.qtde_acordada} un`
+      : `${a.fornecedor_nome || ''} • ${a.produto_nome} • Rebaixar pra R$ ${precoNovo.toFixed(2)} (${a.qtde_acordada} un)`;
     notificarCadastros({
-      titulo: '✅ Acordo aprovado',
-      corpo: `${a.fornecedor_nome || ''} • ${a.produto_nome} • R$ ${parseFloat(a.preco_acordo).toFixed(2)} (${a.qtde_acordada} un)`,
+      titulo: '✅ Acordo aprovado — rebaixar produto',
+      corpo: corpoNotif,
       url: `/acordo-extrato.html?id=${a.id}`
     }).catch(() => {});
-    res.json({ ok: true, id: a.id });
+    res.json({ ok: true, id: a.id, preco_acordo: precoNovo, renegociado });
   } catch (e) {
     await client.query('ROLLBACK').catch(() => {});
     res.status(500).json({ erro: e.message });
