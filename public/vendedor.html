@@ -71,6 +71,15 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:9px 1
 .tab-bar{display:flex;gap:0;margin-bottom:16px;background:#0f172a;border-radius:8px;padding:4px}
 .tab{flex:1;text-align:center;padding:8px;border-radius:6px;font-size:13px;cursor:pointer;color:#64748b;border:none;background:none}
 .tab.active{background:#1e293b;color:#e2e8f0;font-weight:700}
+.kpi-mini{background:#0f172a;border-radius:8px;padding:10px;border-left:3px solid #38bdf8}
+.kpi-mini.ok{border-left-color:#22c55e}
+.kpi-mini.warn{border-left-color:#fbbf24}
+.kpi-mini.danger{border-left-color:#ef4444}
+.kpi-mini .lbl{font-size:10px;color:#64748b;text-transform:uppercase;font-weight:700;letter-spacing:.04em}
+.kpi-mini .v{font-size:18px;font-weight:900;color:#e2e8f0;margin-top:2px}
+.kpi-mini .ext{font-size:10px;color:#64748b;margin-top:1px}
+.btn-pdf{background:#1e3a5f;color:#bfdbfe;padding:5px 10px;font-size:12px;border-radius:5px;text-decoration:none;display:inline-block;font-weight:600;white-space:nowrap}
+.btn-pdf:hover{background:#1e40af}
 </style>
 </head>
 <body>
@@ -170,8 +179,25 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:9px 1
 
   <!-- ABA: MEUS PEDIDOS -->
   <div id="abaListaP" style="display:none">
+    <div class="card" id="cardEstats" style="display:none">
+      <div class="card-title">Meu Histórico</div>
+      <div id="estatsBox" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px"></div>
+    </div>
     <div class="card">
-      <div class="card-title">Meus Pedidos</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:8px">
+        <div class="card-title" style="margin:0">Meus Pedidos</div>
+        <select id="filtroStatusVend" onchange="carregarMeusPedidos()" style="width:auto;padding:6px 10px;font-size:12px">
+          <option value="">Todos</option>
+          <option value="rascunho">Rascunho</option>
+          <option value="aguardando">Aguardando</option>
+          <option value="validado">Validados</option>
+          <option value="faturado">Faturados</option>
+          <option value="atrasado">Atrasados</option>
+          <option value="rejeitado">Rejeitados</option>
+          <option value="cancelado_pelo_vendedor">Cancelados</option>
+          <option value="vinculado">Vinculados</option>
+        </select>
+      </div>
       <div id="listaPedidos"><div style="color:#475569;text-align:center;padding:20px">Carregando...</div></div>
     </div>
   </div>
@@ -433,12 +459,40 @@ async function enviarPedido() {
 }
 
 // ── MEUS PEDIDOS ──────────────────────────────────────────────────
+function fmtBRL(v){ return 'R$ ' + (parseFloat(v||0)).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+
+async function carregarEstatisticas(){
+  try {
+    const r = await fetch(`${API}/api/vendedores/estatisticas`, { headers: authHeaders() });
+    if (!r.ok) return;
+    const k = await r.json();
+    if (!k || !k.qtd_total) { document.getElementById('cardEstats').style.display = 'none'; return; }
+    const taxaSucesso = k.qtd_total > 0
+      ? Math.round(((k.qtd_faturado||0)+(k.qtd_vinculado||0)) / k.qtd_total * 100)
+      : 0;
+    const html = `
+      <div class="kpi-mini ok"><div class="lbl">Total</div><div class="v">${k.qtd_total||0}</div><div class="ext">${fmtBRL(k.valor_total)}</div></div>
+      <div class="kpi-mini ok"><div class="lbl">Concretizados</div><div class="v">${(k.qtd_faturado||0)+(k.qtd_vinculado||0)}</div><div class="ext">${fmtBRL(k.valor_concretizado)} · ${taxaSucesso}%</div></div>
+      <div class="kpi-mini warn"><div class="lbl">Aguardando</div><div class="v">${k.qtd_aguardando||0}</div><div class="ext">+ ${k.qtd_validado||0} validado(s)</div></div>
+      <div class="kpi-mini danger"><div class="lbl">Atras/Rejeit/Canc</div><div class="v">${(k.qtd_atrasado||0)+(k.qtd_rejeitado||0)+(k.qtd_cancelado||0)}</div><div class="ext">prazo médio ${k.prazo_medio||0}d</div></div>
+    `;
+    document.getElementById('estatsBox').innerHTML = html;
+    document.getElementById('cardEstats').style.display = 'block';
+  } catch {}
+}
+
 async function carregarMeusPedidos() {
   const el = document.getElementById('listaPedidos');
   el.innerHTML = '<div style="color:#475569;text-align:center;padding:20px">Carregando...</div>';
+  carregarEstatisticas();
+  const filtro = document.getElementById('filtroStatusVend')?.value || '';
   try {
     const r = await fetch(`${API}/api/vendedores/meus-pedidos`, { headers: authHeaders() });
-    const pedidos = await r.json();
+    let pedidos = await r.json();
+    if (filtro) {
+      if (filtro === 'aguardando') pedidos = pedidos.filter(p => p.status==='aguardando_validacao' || p.status==='aguardando_auditoria');
+      else pedidos = pedidos.filter(p => p.status === filtro);
+    }
     if (!pedidos.length) { el.innerHTML = '<div style="color:#475569;text-align:center;padding:20px">Nenhum pedido encontrado.</div>'; return; }
     const STATUS = {
       rascunho:'Rascunho',
@@ -465,6 +519,10 @@ async function carregarMeusPedidos() {
                  <button class="btn-danger btn-sm" onclick="cancelarPedido(${p.id}, '${(p.numero_pedido||'').replace(/'/g,'')}', this)" style="white-space:nowrap">🚫 Cancelar</button>`;
       } else {
         acoes = `<button class="btn-ghost btn-sm" onclick="duplicarPedido(${p.id}, this)" style="white-space:nowrap">⎘ Duplicar</button>`;
+      }
+      if (p.status !== 'rascunho') {
+        const tk = encodeURIComponent(TOKEN_VEND || '');
+        acoes = `<a class="btn-pdf" href="/api/vendedores/pedido/${p.id}/pdf?token=${tk}" target="_blank" rel="noopener">📑 PDF</a>` + acoes;
       }
       let classeExtra = '';
       if (p.status === 'rejeitado') classeExtra = ' rejeitado';

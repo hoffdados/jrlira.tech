@@ -226,6 +226,71 @@ router.get('/meus-pedidos', autVendedor, async (req, res) => {
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
+// GET /api/vendedores/estatisticas — KPIs do historico do vendedor
+router.get('/estatisticas', autVendedor, async (req, res) => {
+  try {
+    const r = await dbQuery(
+      `SELECT
+         COUNT(*)::int                                             AS qtd_total,
+         COALESCE(SUM(valor_total),0)::numeric(14,2)               AS valor_total,
+         COUNT(*) FILTER (WHERE status = 'rascunho')::int          AS qtd_rascunho,
+         COUNT(*) FILTER (WHERE status IN ('aguardando_validacao','aguardando_auditoria'))::int AS qtd_aguardando,
+         COUNT(*) FILTER (WHERE status = 'validado')::int          AS qtd_validado,
+         COUNT(*) FILTER (WHERE status = 'faturado')::int          AS qtd_faturado,
+         COUNT(*) FILTER (WHERE status = 'atrasado')::int          AS qtd_atrasado,
+         COUNT(*) FILTER (WHERE status = 'rejeitado')::int         AS qtd_rejeitado,
+         COUNT(*) FILTER (WHERE status = 'cancelado_pelo_vendedor')::int AS qtd_cancelado,
+         COUNT(*) FILTER (WHERE status = 'vinculado')::int         AS qtd_vinculado,
+         COALESCE(SUM(valor_total) FILTER (WHERE status IN ('faturado','vinculado')),0)::numeric(14,2) AS valor_concretizado,
+         COALESCE(AVG(condicao_pagamento) FILTER (WHERE condicao_pagamento > 0),0)::numeric(10,1) AS prazo_medio
+       FROM pedidos
+       WHERE vendedor_id = $1`,
+      [req.vendedor.id]
+    );
+    res.json(r[0] || {});
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
+// GET /api/vendedores/pedido/:id/pdf — vendedor baixa PDF do proprio pedido.
+// Aceita token na query (link <a href>) ou no header.
+router.get('/pedido/:id/pdf', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '') || req.query.token;
+    if (!token) return res.status(401).send('Token nao fornecido');
+    let vendedorId;
+    try { vendedorId = jwt.verify(token, JWT_SECRET + '_vendedor').id; }
+    catch { return res.status(401).send('Token invalido'); }
+
+    const rows = await dbQuery(
+      `SELECT p.*,
+              COALESCE(f.razao_social, f2.razao_social) AS razao_social,
+              COALESCE(f.fantasia, f2.fantasia) AS fantasia,
+              COALESCE(f.cnpj, p.fornecedor_cnpj_snapshot, f2.cnpj) AS fornecedor_cnpj,
+              v.nome as vendedor_nome, v.email as vendedor_email, v.telefone as vendedor_tel,
+              l.nome as loja_nome, l.cnpj as loja_cnpj
+         FROM pedidos p
+         LEFT JOIN fornecedores f ON f.id=p.fornecedor_id
+         LEFT JOIN vendedores v ON v.id=p.vendedor_id
+         LEFT JOIN lojas l ON l.id=p.loja_id
+         LEFT JOIN LATERAL (
+           SELECT razao_social, fantasia, cnpj FROM fornecedores
+           WHERE p.fornecedor_id IS NULL AND v.fornecedor_cnpj IS NOT NULL
+             AND REGEXP_REPLACE(cnpj,'\\D','','g') = REGEXP_REPLACE(v.fornecedor_cnpj,'\\D','','g')
+           LIMIT 1
+         ) f2 ON TRUE
+        WHERE p.id = $1 AND p.vendedor_id = $2`,
+      [req.params.id, vendedorId]
+    );
+    if (!rows.length) return res.status(404).send('Pedido nao encontrado');
+    const itens = await dbQuery('SELECT * FROM itens_pedido WHERE pedido_id = $1 ORDER BY id', [req.params.id]);
+    const { gerarPDF } = require('./pedidos');
+    const buf = await gerarPDF(rows[0], itens);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="pedido-${rows[0].numero_pedido || req.params.id}.pdf"`);
+    res.send(buf);
+  } catch (e) { res.status(500).send('Erro: ' + e.message); }
+});
+
 // GET /api/vendedores/pedido/:id
 router.get('/pedido/:id', autVendedor, async (req, res) => {
   try {
