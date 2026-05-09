@@ -1993,21 +1993,29 @@ initDB().then(() => {
     const r = await dbQuery(`SELECT email FROM rh_usuarios WHERE perfil='admin' AND ativo=TRUE AND email IS NOT NULL AND email<>'' ORDER BY id`);
     return r.map(x => x.email);
   }
-  // Monitor SLA: verifica se sync de cada loja×tabela está atrasado em horário comercial.
-  // Usa lojas.ativo=TRUE como fonte de verdade — alerta também quando a loja NÃO TEM linha
-  // (caso clássico do KTR sobrescrevendo loja_id, que sumia do agrupamento).
+  // Monitor SLA: verifica se sync de cada loja×tabela está atrasado.
+  // Cadência real (watchdog v2):
+  //   VENDAS  — 30min
+  //   SLOW    — 3x/dia (08:00 / 14:00 / 20:00) → cobre compras + produtos
+  // Janelas inativas: 22:30-06:00 (backup) e 12:00-13:30 (PowerBI).
   async function verificarSlaSync() {
-    const hora = new Date().getHours();
-    if (hora < 7 || hora >= 22) return []; // só alerta em horário comercial
+    const agora = new Date();
+    const minDia = agora.getHours() * 60 + agora.getMinutes();
+    if (minDia < 7 * 60 || minDia >= 22 * 60) return [];      // fora do horário comercial
+    if (minDia >= 12 * 60 && minDia < 13 * 60 + 30) return []; // janela PowerBI
     const TABELAS = [
-      { nome: 'vendas_historico', col: 'sincronizado_em', max_atraso: 60 * 60 * 1000 },
-      { nome: 'compras_historico', col: 'sincronizado_em', max_atraso: 4 * 60 * 60 * 1000 },
-      { nome: 'produtos_externo', col: 'sincronizado_em', max_atraso: 4 * 60 * 60 * 1000 },
+      // VENDAS 30min → tolerância 90min (3 ciclos perdidos). Disponível desde 07:30.
+      { nome: 'vendas_historico',  col: 'sincronizado_em', max_atraso:  90 * 60 * 1000, inicio_min:  7 * 60 + 30 },
+      // SLOW 08/14/20 → maior gap diurno = 6h (entre 14→20). Tolerância 7h. Só checar após 09:30
+      // (último sync da noite anterior foi 20h → gap natural >11h até 08h da manhã).
+      { nome: 'compras_historico', col: 'sincronizado_em', max_atraso:   7 * 60 * 60 * 1000, inicio_min: 9 * 60 + 30 },
+      { nome: 'produtos_externo',  col: 'sincronizado_em', max_atraso:   7 * 60 * 60 * 1000, inicio_min: 9 * 60 + 30 },
     ];
     const lojas = await dbQuery(`SELECT id FROM lojas WHERE ativo = TRUE ORDER BY id`);
     const lojasIds = lojas.map(l => l.id);
     const atrasos = [];
     for (const t of TABELAS) {
+      if (minDia < t.inicio_min) continue;
       const r = await dbQuery(
         `SELECT l.id AS loja_id,
                 MAX(x.${t.col}) AS ult,
