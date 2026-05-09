@@ -402,15 +402,27 @@ async function rodarBackfill(){
 }
 
 // Pre-popula filtros via query string (vem de outras telas, ex /divergencias-preco)
-(function aplicarParamsURL(){
+const URL_PARAMS = (function(){
   const u = new URLSearchParams(location.search);
-  const ean = u.get('ean') || u.get('q');
-  const cnpj = u.get('fornecedor_cnpj') || u.get('cnpj');
-  if (ean) document.getElementById('fQ').value = ean;
-  if (cnpj) document.getElementById('fForn').value = cnpj;
+  return {
+    ean: u.get('ean') || u.get('q') || '',
+    cnpj: u.get('fornecedor_cnpj') || u.get('cnpj') || '',
+  };
 })();
+if (URL_PARAMS.ean) document.getElementById('fQ').value = URL_PARAMS.ean;
+if (URL_PARAMS.cnpj) document.getElementById('fForn').value = URL_PARAMS.cnpj;
+if (URL_PARAMS.ean || URL_PARAMS.cnpj) document.getElementById('fStatus').value = '';
 
-carregar();
+(async function init(){
+  await carregar();
+  // Se veio da URL com ean+cnpj e nao achou nada, abre modal de cadastro pre-preenchido
+  if ((URL_PARAMS.ean || URL_PARAMS.cnpj) && totalPagina === 0) {
+    abrirCadastro();
+    if (URL_PARAMS.ean) document.getElementById('cadEan').value = URL_PARAMS.ean;
+    if (URL_PARAMS.cnpj) document.getElementById('cadFornCnpj').value = URL_PARAMS.cnpj;
+    if (URL_PARAMS.ean) buscarSugestaoCadastro(); // auto-preenche descricao+nome se historico tiver
+  }
+})();
 </script>
 </body>
 </html>
