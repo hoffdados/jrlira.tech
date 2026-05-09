@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Divergências de Preço</title>
+<link rel="stylesheet" href="/shared.css">
+<script src="/shared.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+nav{background:#1e293b;padding:12px 20px;display:flex;align-items:center;gap:14px;border-bottom:1px solid #334155}
+.brand{font-family:'Segoe UI Black','Segoe UI',sans-serif;font-weight:900;font-size:18px;color:#38bdf8}
+.nav-user{margin-left:auto;font-size:12px;color:#475569}
+.btn-nav{background:#0ea5e9;color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:12px;cursor:pointer}
+.main{padding:18px 20px;max-width:1500px;margin:0 auto}
+input,select{background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;padding:7px 11px;font-size:13px}
+input:focus,select:focus{outline:none;border-color:#38bdf8}
+button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 14px;font-weight:600}
+.btn-primary{background:#0ea5e9;color:#fff}.btn-primary:hover{background:#0284c7}
+.btn-ghost{background:#1e293b;color:#94a3b8;border:1px solid #334155}.btn-ghost:hover{background:#273549}
+.filtros{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:18px;padding:14px;background:#1e293b;border-radius:10px}
+.filtros label{font-size:11px;color:#64748b;display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em}
+.kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:18px}
+.kpi{background:#1e293b;border-radius:10px;padding:14px;border-left:4px solid #475569}
+.kpi.danger{border-left-color:#ef4444}.kpi.warn{border-left-color:#fbbf24}.kpi.info{border-left-color:#38bdf8}
+.kpi .label{font-size:11px;color:#94a3b8;text-transform:uppercase;font-weight:700;letter-spacing:.04em}
+.kpi .v{font-size:24px;font-weight:900;color:#e2e8f0;margin-top:6px}
+.kpi .extra{font-size:11px;color:#64748b;margin-top:2px}
+.painel{background:#1e293b;border-radius:10px;padding:16px;margin-bottom:18px}
+.painel-titulo{font-size:13px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead th{background:#0f172a;padding:8px 10px;text-align:center;color:#64748b;font-weight:600;border-bottom:1px solid #334155;white-space:nowrap;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+thead th.left{text-align:left}
+tbody td{padding:7px 10px;border-bottom:1px solid #1e293b;vertical-align:middle}
+tbody td.right{text-align:right;font-variant-numeric:tabular-nums}
+tbody td.center{text-align:center}
+tbody tr:hover{background:#1a2744}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;white-space:nowrap}
+.b-igual{background:#1e3a8a;color:#bfdbfe}
+.b-maior{background:#7f1d1d;color:#fff;font-weight:700}
+.b-menor{background:#14532d;color:#4ade80}
+.b-auditagem{background:#92400e;color:#fef3c7;font-weight:700}
+.b-sem_cadastro{background:#2e1065;color:#a78bfa}
+.empty{text-align:center;color:#475569;padding:40px;font-size:13px}
+.dif-pos{color:#f87171;font-weight:700}
+.dif-neg{color:#4ade80;font-weight:700}
+.checks{display:flex;gap:10px;align-items:center}
+.checks label{font-size:12px;color:#94a3b8;cursor:pointer;user-select:none}
+.checks input{margin-right:4px}
+</style>
+</head>
+<body>
+<nav>
+  <span class="brand">JR Lira Tech</span>
+  <span style="color:#475569">/</span>
+  <span style="font-size:13px;color:#94a3b8">Divergências de Preço</span>
+  <span class="nav-user" id="nomeUsuario"></span>
+  <button class="btn-nav" onclick="location.href='/'">← Início</button>
+</nav>
+
+<div class="main">
+  <div class="filtros">
+    <div>
+      <label>Loja</label>
+      <select id="filtroLoja"><option value="">Todas</option></select>
+    </div>
+    <div>
+      <label>Emissão de</label>
+      <input type="date" id="filtroDataIni">
+    </div>
+    <div>
+      <label>até</label>
+      <input type="date" id="filtroDataFim">
+    </div>
+    <div style="flex:1;min-width:180px">
+      <label>Fornecedor</label>
+      <input type="text" id="filtroFornecedor" placeholder="Nome ou CNPJ">
+    </div>
+    <div>
+      <label>Tipos</label>
+      <div class="checks">
+        <label><input type="checkbox" value="maior" checked>Maior (até 15%)</label>
+        <label><input type="checkbox" value="auditagem" checked>Auditagem (>15%)</label>
+        <label><input type="checkbox" value="menor">Menor (ganho)</label>
+      </div>
+    </div>
+    <button class="btn-primary" onclick="carregar()">Atualizar</button>
+    <button class="btn-ghost" onclick="limparFiltros()">Limpar</button>
+  </div>
+
+  <div id="kpis" class="kpis"></div>
+
+  <div class="painel">
+    <div class="painel-titulo">Top Fornecedores com Divergência</div>
+    <div style="overflow-x:auto"><table id="tabelaFornecedores"></table></div>
+  </div>
+
+  <div class="painel">
+    <div class="painel-titulo" id="tituloItens">Itens com divergência (top 500)</div>
+    <div style="overflow-x:auto"><table id="tabelaItens"></table></div>
+  </div>
+</div>
+
+<script>
+const STATUS_LABEL = { igual:'Igual', maior:'Maior', menor:'Menor', auditagem:'Auditagem', sem_cadastro:'Sem Cadastro' };
+document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
+
+(function popularLojas(){
+  const sel = document.getElementById('filtroLoja');
+  Object.entries(LOJAS).forEach(([id,nome])=>{
+    const o = document.createElement('option');
+    o.value = id; o.textContent = `${id} — ${nome}`;
+    sel.appendChild(o);
+  });
+})();
+
+function tiposSelecionados(){
+  return [...document.querySelectorAll('.checks input:checked')].map(c=>c.value);
+}
+
+function limparFiltros(){
+  document.getElementById('filtroLoja').value='';
+  document.getElementById('filtroDataIni').value='';
+  document.getElementById('filtroDataFim').value='';
+  document.getElementById('filtroFornecedor').value='';
+  document.querySelectorAll('.checks input').forEach(c=>{
+    c.checked = (c.value === 'maior' || c.value === 'auditagem');
+  });
+  carregar();
+}
+
+async function carregar(){
+  const params = new URLSearchParams();
+  const loja = document.getElementById('filtroLoja').value;
+  const di = document.getElementById('filtroDataIni').value;
+  const df = document.getElementById('filtroDataFim').value;
+  const fn = document.getElementById('filtroFornecedor').value.trim();
+  const tipos = tiposSelecionados().join(',');
+  if (loja) params.set('loja', loja);
+  if (di) params.set('dataIni', di);
+  if (df) params.set('dataFim', df);
+  if (fn) params.set('fornecedor', fn);
+  if (tipos) params.set('tipos', tipos);
+
+  document.getElementById('kpis').innerHTML = '<div class="empty">Carregando...</div>';
+  document.getElementById('tabelaFornecedores').innerHTML = '';
+  document.getElementById('tabelaItens').innerHTML = '';
+
+  try {
+    const r = await apiFetch('/api/dashboard/divergencias-preco?'+params.toString());
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.erro || 'Erro');
+    renderKpis(data.kpis);
+    renderFornecedores(data.por_fornecedor);
+    renderItens(data.itens);
+  } catch (e) {
+    document.getElementById('kpis').innerHTML = `<div class="empty" style="color:#f87171">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function renderKpis(k){
+  if (!k) { document.getElementById('kpis').innerHTML='<div class="empty">Sem dados</div>'; return; }
+  const d = Number(k.dif_total||0);
+  const dm = Number(k.dif_maior||0);
+  const da = Number(k.dif_auditagem||0);
+  document.getElementById('kpis').innerHTML = `
+    <div class="kpi info"><div class="label">Itens divergentes</div><div class="v">${(k.qtd_itens||0).toLocaleString('pt-BR')}</div><div class="extra">${k.qtd_notas||0} nota(s) · ${k.qtd_fornecedores||0} fornecedor(es)</div></div>
+    <div class="kpi ${d>=0?'danger':'info'}"><div class="label">Diferença total</div><div class="v">R$ ${fmtMoeda(d)}</div><div class="extra">${d>=0?'sobrepreço':'ganho'}</div></div>
+    <div class="kpi danger"><div class="label">Sobrepreço (maior)</div><div class="v">R$ ${fmtMoeda(dm)}</div></div>
+    <div class="kpi warn"><div class="label">Auditagem (>15%)</div><div class="v">R$ ${fmtMoeda(da)}</div></div>
+  `;
+}
+
+function renderFornecedores(arr){
+  const t = document.getElementById('tabelaFornecedores');
+  if (!arr.length) { t.innerHTML='<thead><tr><th>Sem fornecedores divergentes</th></tr></thead>'; return; }
+  const head = `<thead><tr>
+    <th class="left">Fornecedor</th>
+    <th class="left">CNPJ</th>
+    <th>Itens</th>
+    <th>Diferença Total</th>
+  </tr></thead>`;
+  const body = arr.map(r=>{
+    const v = Number(r.dif_total||0);
+    return `<tr style="cursor:pointer" onclick="filtrarFornecedor('${escapeHtml(r.fornecedor_cnpj||r.fornecedor_nome||'')}')">
+      <td class="left">${escapeHtml(r.fornecedor_nome||'')}</td>
+      <td class="left" style="font-family:monospace">${escapeHtml(r.fornecedor_cnpj||'')}</td>
+      <td class="center">${r.qtd_itens}</td>
+      <td class="right ${v>=0?'dif-pos':'dif-neg'}">R$ ${fmtMoeda(v)}</td>
+    </tr>`;
+  }).join('');
+  t.innerHTML = head + '<tbody>' + body + '</tbody>';
+}
+
+function filtrarFornecedor(s){
+  document.getElementById('filtroFornecedor').value = s;
+  carregar();
+}
+
+function renderItens(arr){
+  document.getElementById('tituloItens').textContent = `Itens com divergência (${arr.length})`;
+  const t = document.getElementById('tabelaItens');
+  if (!arr.length) { t.innerHTML='<thead><tr><th>Sem divergências</th></tr></thead>'; return; }
+  const head = `<thead><tr>
+    <th class="left">Nº Nota</th>
+    <th class="left">Fornecedor</th>
+    <th class="left">Loja</th>
+    <th class="left">Item</th>
+    <th>EAN</th>
+    <th>Qtd</th>
+    <th>Preço Nota</th>
+    <th>Custo</th>
+    <th>Dif Unit</th>
+    <th>%</th>
+    <th>Dif Total</th>
+    <th>Tipo</th>
+    <th>Emissão</th>
+  </tr></thead>`;
+  const body = arr.map(r=>{
+    const dt = Number(r.diferenca_total||0);
+    const du = Number(r.diferenca_unit||0);
+    const pct = r.pct == null ? '-' : Number(r.pct).toFixed(2)+'%';
+    return `<tr onclick="abrirNota(${r.nota_id})" style="cursor:pointer">
+      <td class="left" style="font-family:monospace;color:#38bdf8;font-weight:700">${escapeHtml(r.numero_nota||'')}</td>
+      <td class="left">${escapeHtml(r.fornecedor_nome||'')}</td>
+      <td class="left">${escapeHtml(r.loja_nome||'')}</td>
+      <td class="left">${escapeHtml(r.descricao_nota||'')}</td>
+      <td class="center" style="font-family:monospace;font-size:11px">${escapeHtml(r.ean_validado||r.ean_nota||'')}</td>
+      <td class="right">${Number(r.quantidade||0).toLocaleString('pt-BR',{maximumFractionDigits:3})}</td>
+      <td class="right">R$ ${fmtMoeda(r.preco_unitario_nota)}</td>
+      <td class="right">R$ ${fmtMoeda(r.custo_fabrica)}</td>
+      <td class="right ${du>=0?'dif-pos':'dif-neg'}">R$ ${fmtMoeda(du)}</td>
+      <td class="right ${du>=0?'dif-pos':'dif-neg'}">${pct}</td>
+      <td class="right ${dt>=0?'dif-pos':'dif-neg'}">R$ ${fmtMoeda(dt)}</td>
+      <td class="center"><span class="badge b-${r.status_preco}">${STATUS_LABEL[r.status_preco]||r.status_preco}</span></td>
+      <td class="center">${fmtData(r.data_emissao)}</td>
+    </tr>`;
+  }).join('');
+  t.innerHTML = head + '<tbody>' + body + '</tbody>';
+}
+
+function abrirNota(id){ location.href = '/notas-cadastro?nota='+id; }
+
+carregar();
+</script>
+</body>
+</html>

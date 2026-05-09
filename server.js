@@ -79,6 +79,7 @@ app.get('/preview-icons', (req, res) => res.sendFile(path.join(__dirname, 'publi
 app.get('/auditoria-acordos', (req, res) => res.sendFile(path.join(__dirname, 'public/auditoria-acordos.html')));
 app.get('/devolucoes-divergencias', (req, res) => res.sendFile(path.join(__dirname, 'public/devolucoes-divergencias.html')));
 app.get('/dashboard-notas', (req, res) => res.sendFile(path.join(__dirname, 'public/dashboard-notas.html')));
+app.get('/divergencias-preco', (req, res) => res.sendFile(path.join(__dirname, 'public/divergencias-preco.html')));
 app.get('/index-novo', (req, res) => res.sendFile(path.join(__dirname, 'public/index-novo.html')));
 app.get('/index-novo-perfis', (req, res) => res.sendFile(path.join(__dirname, 'public/index-novo-perfis.html')));
 
