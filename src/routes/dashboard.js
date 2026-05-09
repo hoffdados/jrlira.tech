@@ -222,4 +222,103 @@ router.get('/divergencias-preco', autenticar, async (req, res) => {
   }
 });
 
+// GET /api/dashboard/produtos-novos
+// Itens com produto_novo=TRUE (sem cadastro no Ecocentauro). Mostra trabalho do cadastro.
+// Filtros: loja, dataIni/dataFim (data_emissao), fornecedor, status (pendente/validado/todos)
+router.get('/produtos-novos', autenticar, async (req, res) => {
+  try {
+    const lojaUsr = req.usuario.loja_id;
+    const lojaParam = req.query.loja ? parseInt(req.query.loja) : null;
+    const lojaId = lojaUsr || lojaParam;
+    const dataIni = req.query.dataIni || null;
+    const dataFim = req.query.dataFim || null;
+    const fornecedor = (req.query.fornecedor || '').trim();
+    const status = req.query.status || 'pendente'; // pendente | validado | todos
+
+    const conds = [`i.produto_novo = TRUE`];
+    const params = [];
+    if (status === 'pendente')  conds.push(`i.validado_cadastro = FALSE`);
+    if (status === 'validado')  conds.push(`i.validado_cadastro = TRUE`);
+    if (lojaId)  { params.push(lojaId);  conds.push(`n.loja_id = $${params.length}`); }
+    if (dataIni) { params.push(dataIni); conds.push(`n.data_emissao >= $${params.length}`); }
+    if (dataFim) { params.push(dataFim); conds.push(`n.data_emissao <= $${params.length}`); }
+    if (fornecedor) {
+      params.push(`%${fornecedor}%`);
+      conds.push(`(n.fornecedor_nome ILIKE $${params.length} OR n.fornecedor_cnpj ILIKE $${params.length})`);
+    }
+    const where = `WHERE ${conds.join(' AND ')}`;
+
+    const [kpis, porFornecedor, distintos, itens] = await Promise.all([
+      query(`
+        SELECT COUNT(*)::int AS qtd_itens,
+               COUNT(DISTINCT i.nota_id)::int AS qtd_notas,
+               COUNT(DISTINCT n.fornecedor_cnpj)::int AS qtd_fornecedores,
+               COUNT(DISTINCT COALESCE(NULLIF(i.ean_validado,''), NULLIF(i.ean_nota,''), i.descricao_nota))::int AS qtd_distintos,
+               SUM(i.preco_total_nota)::numeric(14,2) AS valor_total,
+               COUNT(*) FILTER (WHERE i.validado_cadastro = TRUE)::int AS qtd_validados,
+               COUNT(*) FILTER (WHERE i.validado_cadastro = FALSE)::int AS qtd_pendentes
+          FROM itens_nota i
+          JOIN notas_entrada n ON n.id = i.nota_id
+          ${where}
+      `, params),
+      query(`
+        SELECT n.fornecedor_nome, n.fornecedor_cnpj,
+               COUNT(*)::int AS qtd_itens,
+               COUNT(DISTINCT COALESCE(NULLIF(i.ean_validado,''), NULLIF(i.ean_nota,''), i.descricao_nota))::int AS qtd_distintos,
+               SUM(i.preco_total_nota)::numeric(14,2) AS valor_total,
+               COUNT(*) FILTER (WHERE i.validado_cadastro = FALSE)::int AS qtd_pendentes
+          FROM itens_nota i
+          JOIN notas_entrada n ON n.id = i.nota_id
+          ${where}
+         GROUP BY n.fornecedor_nome, n.fornecedor_cnpj
+         ORDER BY qtd_itens DESC
+         LIMIT 30
+      `, params),
+      query(`
+        SELECT
+          COALESCE(NULLIF(i.ean_validado,''), NULLIF(i.ean_nota,''), 'sem-ean') AS ean,
+          MIN(i.descricao_nota) AS descricao,
+          COUNT(*)::int AS ocorrencias,
+          COUNT(DISTINCT n.fornecedor_cnpj)::int AS qtd_fornecedores,
+          MIN(n.data_emissao) AS primeira,
+          MAX(n.data_emissao) AS ultima,
+          SUM(i.quantidade)::numeric(14,3) AS qtd_total,
+          SUM(i.preco_total_nota)::numeric(14,2) AS valor_total,
+          BOOL_OR(i.validado_cadastro) AS algum_validado
+        FROM itens_nota i
+        JOIN notas_entrada n ON n.id = i.nota_id
+        ${where}
+        GROUP BY 1
+        ORDER BY ocorrencias DESC
+        LIMIT 200
+      `, params),
+      query(`
+        SELECT i.id AS item_id, i.nota_id,
+               n.numero_nota, n.fornecedor_nome, n.fornecedor_cnpj, n.data_emissao,
+               n.loja_id, COALESCE(l.nome,'Sem loja') AS loja_nome,
+               i.descricao_nota, i.ean_nota, i.ean_validado,
+               i.quantidade, i.preco_unitario_nota, i.preco_total_nota,
+               i.validado_cadastro
+          FROM itens_nota i
+          JOIN notas_entrada n ON n.id = i.nota_id
+          LEFT JOIN lojas l ON l.id = n.loja_id
+          ${where}
+         ORDER BY n.data_emissao DESC, n.id DESC
+         LIMIT 300
+      `, params),
+    ]);
+
+    res.json({
+      kpis: kpis[0],
+      por_fornecedor: porFornecedor,
+      produtos_distintos: distintos,
+      itens,
+      filtros: { loja: lojaId, dataIni, dataFim, fornecedor, status }
+    });
+  } catch (err) {
+    console.error('[dashboard/produtos-novos]', err.message);
+    res.status(500).json({ erro: err.message });
+  }
+});
+
 module.exports = router;
