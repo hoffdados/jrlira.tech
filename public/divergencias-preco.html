@@ -78,6 +78,14 @@ tbody tr:hover{background:#1a2744}
       <input type="text" id="filtroFornecedor" placeholder="Nome ou CNPJ">
     </div>
     <div>
+      <label>Origem</label>
+      <select id="filtroOrigem">
+        <option value="todas">Todas</option>
+        <option value="fornecedor">Fornecedor</option>
+        <option value="cd">CD</option>
+      </select>
+    </div>
+    <div>
       <label>Divergência min</label>
       <select id="filtroPctMin">
         <option value="0">Todos</option>
@@ -130,6 +138,7 @@ function limparFiltros(){
   document.getElementById('filtroDataIni').value='';
   document.getElementById('filtroDataFim').value='';
   document.getElementById('filtroFornecedor').value='';
+  document.getElementById('filtroOrigem').value='todas';
   document.getElementById('filtroPctMin').value='5';
   document.getElementById('filtroSentido').value='todos';
   carregar();
@@ -141,12 +150,14 @@ async function carregar(){
   const di = document.getElementById('filtroDataIni').value;
   const df = document.getElementById('filtroDataFim').value;
   const fn = document.getElementById('filtroFornecedor').value.trim();
+  const origem = document.getElementById('filtroOrigem').value;
   const pct = document.getElementById('filtroPctMin').value;
   const sentido = document.getElementById('filtroSentido').value;
   if (loja) params.set('loja', loja);
   if (di) params.set('dataIni', di);
   if (df) params.set('dataFim', df);
   if (fn) params.set('fornecedor', fn);
+  if (origem && origem !== 'todas') params.set('origem', origem);
   if (pct) params.set('pctMin', pct);
   if (sentido) params.set('sentido', sentido);
 
@@ -212,6 +223,7 @@ function renderItens(arr){
   if (!arr.length) { t.innerHTML='<thead><tr><th>Sem divergências</th></tr></thead>'; return; }
   const head = `<thead><tr>
     <th class="left">Nº Nota</th>
+    <th>Origem</th>
     <th class="left">Fornecedor</th>
     <th class="left">Loja</th>
     <th class="left">Item</th>
@@ -252,8 +264,14 @@ function renderItens(arr){
       if (r.mat_codi) embCol += `<div style="font-size:10px;color:#475569;font-family:monospace">${escapeHtml(r.mat_codi)}</div>`;
     }
 
+    const origemBadge = r.origem === 'cd'
+      ? '<span style="background:#312e81;color:#a5b4fc;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700">CD</span>'
+      : r.origem === 'transferencia_loja'
+      ? '<span style="background:#1e293b;color:#94a3b8;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700">Transf</span>'
+      : '<span style="background:#1e3a5f;color:#bae6fd;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700">Forn</span>';
     return `<tr onclick="abrirNota(${r.nota_id})" style="cursor:pointer">
       <td class="left" style="font-family:monospace;color:#38bdf8;font-weight:700">${escapeHtml(r.numero_nota||'')}</td>
+      <td class="center">${origemBadge}</td>
       <td class="left">${escapeHtml(r.fornecedor_nome||'')}</td>
       <td class="left">${escapeHtml(r.loja_nome||'')}</td>
       <td class="left">${escapeHtml(r.descricao_nota||'')}</td>

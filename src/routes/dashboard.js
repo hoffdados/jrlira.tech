@@ -140,6 +140,7 @@ router.get('/divergencias-preco', autenticar, async (req, res) => {
     const dataIni = req.query.dataIni || new Date(Date.now() - 90 * 86400 * 1000).toISOString().slice(0,10);
     const dataFim = req.query.dataFim || null;
     const fornecedor = (req.query.fornecedor || '').trim();
+    const origem = req.query.origem || 'todas'; // todas | fornecedor | cd
     const pctMin = req.query.pctMin != null ? Math.abs(parseFloat(req.query.pctMin)) : 5; // % minimo absoluto pra entrar
     const sentido = req.query.sentido || 'todos'; // todos | sobrepreco | ganho
 
@@ -152,6 +153,8 @@ router.get('/divergencias-preco', autenticar, async (req, res) => {
       params.push(`%${fornecedor}%`);
       conds.push(`(n.fornecedor_nome ILIKE $${params.length} OR n.fornecedor_cnpj ILIKE $${params.length})`);
     }
+    if (origem === 'fornecedor') conds.push(`COALESCE(n.origem,'nfe') = 'nfe'`);
+    if (origem === 'cd')         conds.push(`n.origem = 'cd'`);
     const where = `WHERE ${conds.join(' AND ')}`;
 
     // CTE base: 3 hipoteses pra tratar inconsistencia de unidade entre NF-e e CD.
@@ -167,6 +170,7 @@ router.get('/divergencias-preco', autenticar, async (req, res) => {
       WITH itens_emb AS (
         SELECT i.id AS item_id, i.nota_id, i.cd_pro_codi,
                n.numero_nota, n.fornecedor_nome, n.fornecedor_cnpj, n.data_emissao,
+               COALESCE(n.origem,'nfe') AS origem,
                n.loja_id, COALESCE(l.nome,'Sem loja') AS loja_nome,
                i.descricao_nota, i.ean_nota, i.ean_validado,
                i.quantidade, i.preco_unitario_nota, i.custo_fabrica, i.status_preco,
