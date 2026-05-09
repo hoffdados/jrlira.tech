@@ -431,4 +431,106 @@ router.get('/emergenciais', autenticar, async (req, res) => {
   }
 });
 
+// GET /api/dashboard/sla-notas
+// Tempo medio que as notas ficam em cada etapa do fluxo. Identifica gargalos.
+// Etapas (calculo em horas):
+//   1. Cadastro:   importado_em -> validada_em
+//   2. Recepcao:   validada_em  -> recebida_em
+//   3. Conferencia: recebida_em -> liberada_em
+//   4. Auditoria:  liberada_em  -> fechado_em
+//   - Lead total:  importado_em -> fechado_em
+router.get('/sla-notas', autenticar, async (req, res) => {
+  try {
+    const lojaUsr = req.usuario.loja_id;
+    const lojaParam = req.query.loja ? parseInt(req.query.loja) : null;
+    const lojaId = lojaUsr || lojaParam;
+    const dataIni = req.query.dataIni || null;
+    const dataFim = req.query.dataFim || null;
+    const fornecedor = (req.query.fornecedor || '').trim();
+
+    const conds = [];
+    const params = [];
+    if (lojaId)  { params.push(lojaId);  conds.push(`n.loja_id = $${params.length}`); }
+    if (dataIni) { params.push(dataIni); conds.push(`n.data_emissao >= $${params.length}`); }
+    if (dataFim) { params.push(dataFim); conds.push(`n.data_emissao <= $${params.length}`); }
+    if (fornecedor) {
+      params.push(`%${fornecedor}%`);
+      conds.push(`(n.fornecedor_nome ILIKE $${params.length} OR n.fornecedor_cnpj ILIKE $${params.length})`);
+    }
+    const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+
+    // Etapas e KPIs gerais (em horas)
+    const etapas = await query(`
+      SELECT
+        COUNT(*) FILTER (WHERE n.validada_em IS NOT NULL)::int AS qtd_cadastro,
+        AVG(EXTRACT(EPOCH FROM (n.validada_em - n.importado_em))/3600) FILTER (WHERE n.validada_em IS NOT NULL)::numeric(10,2) AS h_cadastro_avg,
+        PERCENTILE_DISC(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (n.validada_em - n.importado_em))/3600) FILTER (WHERE n.validada_em IS NOT NULL)::numeric(10,2) AS h_cadastro_p50,
+        PERCENTILE_DISC(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (n.validada_em - n.importado_em))/3600) FILTER (WHERE n.validada_em IS NOT NULL)::numeric(10,2) AS h_cadastro_p95,
+
+        COUNT(*) FILTER (WHERE n.recebida_em IS NOT NULL AND n.validada_em IS NOT NULL)::int AS qtd_recepcao,
+        AVG(EXTRACT(EPOCH FROM (n.recebida_em - n.validada_em))/3600) FILTER (WHERE n.recebida_em IS NOT NULL AND n.validada_em IS NOT NULL)::numeric(10,2) AS h_recepcao_avg,
+        PERCENTILE_DISC(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (n.recebida_em - n.validada_em))/3600) FILTER (WHERE n.recebida_em IS NOT NULL AND n.validada_em IS NOT NULL)::numeric(10,2) AS h_recepcao_p50,
+        PERCENTILE_DISC(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (n.recebida_em - n.validada_em))/3600) FILTER (WHERE n.recebida_em IS NOT NULL AND n.validada_em IS NOT NULL)::numeric(10,2) AS h_recepcao_p95,
+
+        COUNT(*) FILTER (WHERE n.liberada_em IS NOT NULL AND n.recebida_em IS NOT NULL)::int AS qtd_conferencia,
+        AVG(EXTRACT(EPOCH FROM (n.liberada_em - n.recebida_em))/3600) FILTER (WHERE n.liberada_em IS NOT NULL AND n.recebida_em IS NOT NULL)::numeric(10,2) AS h_conferencia_avg,
+        PERCENTILE_DISC(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (n.liberada_em - n.recebida_em))/3600) FILTER (WHERE n.liberada_em IS NOT NULL AND n.recebida_em IS NOT NULL)::numeric(10,2) AS h_conferencia_p50,
+        PERCENTILE_DISC(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (n.liberada_em - n.recebida_em))/3600) FILTER (WHERE n.liberada_em IS NOT NULL AND n.recebida_em IS NOT NULL)::numeric(10,2) AS h_conferencia_p95,
+
+        COUNT(*) FILTER (WHERE n.fechado_em IS NOT NULL AND n.liberada_em IS NOT NULL)::int AS qtd_auditoria,
+        AVG(EXTRACT(EPOCH FROM (n.fechado_em - n.liberada_em))/3600) FILTER (WHERE n.fechado_em IS NOT NULL AND n.liberada_em IS NOT NULL)::numeric(10,2) AS h_auditoria_avg,
+        PERCENTILE_DISC(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (n.fechado_em - n.liberada_em))/3600) FILTER (WHERE n.fechado_em IS NOT NULL AND n.liberada_em IS NOT NULL)::numeric(10,2) AS h_auditoria_p50,
+        PERCENTILE_DISC(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (n.fechado_em - n.liberada_em))/3600) FILTER (WHERE n.fechado_em IS NOT NULL AND n.liberada_em IS NOT NULL)::numeric(10,2) AS h_auditoria_p95,
+
+        COUNT(*) FILTER (WHERE n.fechado_em IS NOT NULL)::int AS qtd_total_fechadas,
+        AVG(EXTRACT(EPOCH FROM (n.fechado_em - n.importado_em))/3600) FILTER (WHERE n.fechado_em IS NOT NULL)::numeric(10,2) AS h_total_avg,
+        PERCENTILE_DISC(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (n.fechado_em - n.importado_em))/3600) FILTER (WHERE n.fechado_em IS NOT NULL)::numeric(10,2) AS h_total_p50,
+        PERCENTILE_DISC(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (n.fechado_em - n.importado_em))/3600) FILTER (WHERE n.fechado_em IS NOT NULL)::numeric(10,2) AS h_total_p95
+      FROM notas_entrada n
+      ${where}
+    `, params);
+
+    // Por loja: lead time medio (importado -> fechado) e medias por etapa
+    const porLoja = await query(`
+      SELECT n.loja_id,
+             COALESCE(l.nome,'Sem loja') AS loja_nome,
+             COUNT(*) FILTER (WHERE n.fechado_em IS NOT NULL)::int AS qtd_fechadas,
+             AVG(EXTRACT(EPOCH FROM (n.validada_em - n.importado_em))/3600) FILTER (WHERE n.validada_em IS NOT NULL)::numeric(10,1) AS h_cadastro,
+             AVG(EXTRACT(EPOCH FROM (n.recebida_em - n.validada_em))/3600) FILTER (WHERE n.recebida_em IS NOT NULL AND n.validada_em IS NOT NULL)::numeric(10,1) AS h_recepcao,
+             AVG(EXTRACT(EPOCH FROM (n.liberada_em - n.recebida_em))/3600) FILTER (WHERE n.liberada_em IS NOT NULL AND n.recebida_em IS NOT NULL)::numeric(10,1) AS h_conferencia,
+             AVG(EXTRACT(EPOCH FROM (n.fechado_em - n.liberada_em))/3600) FILTER (WHERE n.fechado_em IS NOT NULL AND n.liberada_em IS NOT NULL)::numeric(10,1) AS h_auditoria,
+             AVG(EXTRACT(EPOCH FROM (n.fechado_em - n.importado_em))/3600) FILTER (WHERE n.fechado_em IS NOT NULL)::numeric(10,1) AS h_total
+        FROM notas_entrada n
+        LEFT JOIN lojas l ON l.id = n.loja_id
+        ${where}
+       GROUP BY n.loja_id, l.nome
+       ORDER BY n.loja_id
+    `, params);
+
+    // Notas em fluxo agora — quanto tempo no status atual
+    const condsAndar = [...conds, `n.status NOT IN ('fechada','cancelada')`];
+    const whereAndar = `WHERE ${condsAndar.join(' AND ')}`;
+    const emAndamento = await query(`
+      SELECT n.status,
+             COUNT(*)::int AS qtd,
+             AVG(EXTRACT(EPOCH FROM (NOW() - n.importado_em))/3600)::numeric(10,1) AS h_desde_importacao,
+             MAX(EXTRACT(EPOCH FROM (NOW() - n.importado_em))/3600)::numeric(10,1) AS h_max
+        FROM notas_entrada n
+        ${whereAndar}
+       GROUP BY n.status
+       ORDER BY n.status
+    `, params);
+
+    res.json({
+      etapas: etapas[0],
+      por_loja: porLoja,
+      em_andamento: emAndamento,
+      filtros: { loja: lojaId, dataIni, dataFim, fornecedor }
+    });
+  } catch (err) {
+    console.error('[dashboard/sla-notas]', err.message);
+    res.status(500).json({ erro: err.message });
+  }
+});
+
 module.exports = router;

@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SLA do Fluxo de Notas</title>
+<link rel="stylesheet" href="/shared.css">
+<script src="/shared.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+nav{background:#1e293b;padding:12px 20px;display:flex;align-items:center;gap:14px;border-bottom:1px solid #334155}
+.brand{font-family:'Segoe UI Black','Segoe UI',sans-serif;font-weight:900;font-size:18px;color:#38bdf8}
+.nav-user{margin-left:auto;font-size:12px;color:#475569}
+.btn-nav{background:#0ea5e9;color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:12px;cursor:pointer}
+.main{padding:18px 20px;max-width:1500px;margin:0 auto}
+input,select{background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;padding:7px 11px;font-size:13px}
+input:focus,select:focus{outline:none;border-color:#38bdf8}
+button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 14px;font-weight:600}
+.btn-primary{background:#0ea5e9;color:#fff}.btn-primary:hover{background:#0284c7}
+.btn-ghost{background:#1e293b;color:#94a3b8;border:1px solid #334155}.btn-ghost:hover{background:#273549}
+.filtros{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:18px;padding:14px;background:#1e293b;border-radius:10px}
+.filtros label{font-size:11px;color:#64748b;display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em}
+.painel{background:#1e293b;border-radius:10px;padding:16px;margin-bottom:18px}
+.painel-titulo{font-size:13px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px}
+.etapas{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;align-items:stretch}
+@media (max-width:1100px){.etapas{grid-template-columns:repeat(2,1fr)}}
+.etapa{background:#0f172a;border-radius:8px;padding:14px;border-top:4px solid #38bdf8}
+.etapa.cadastro{border-top-color:#a5b4fc}
+.etapa.recepcao{border-top-color:#bae6fd}
+.etapa.conferencia{border-top-color:#4ade80}
+.etapa.auditoria{border-top-color:#fbbf24}
+.etapa.total{border-top-color:#38bdf8;background:linear-gradient(135deg,#0c1a2e,#0f172a)}
+.etapa .label{font-size:11px;text-transform:uppercase;color:#94a3b8;font-weight:700;letter-spacing:.04em}
+.etapa .v{font-size:26px;font-weight:900;color:#e2e8f0;margin:6px 0 2px}
+.etapa .v small{font-size:13px;color:#64748b;font-weight:400}
+.etapa .ext{font-size:11px;color:#64748b;line-height:1.5}
+.etapa .ext b{color:#94a3b8;font-weight:600}
+.etapa .qtd{font-size:11px;color:#475569;margin-top:6px;border-top:1px solid #1e293b;padding-top:6px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead th{background:#0f172a;padding:8px 10px;text-align:center;color:#64748b;font-weight:600;border-bottom:1px solid #334155;white-space:nowrap;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+thead th.left{text-align:left}
+tbody td{padding:7px 10px;border-bottom:1px solid #1e293b;vertical-align:middle}
+tbody td.right{text-align:right;font-variant-numeric:tabular-nums}
+tbody td.center{text-align:center}
+tbody tr:hover{background:#1a2744}
+.empty{text-align:center;color:#475569;padding:40px;font-size:13px}
+.h-warn{color:#fbbf24;font-weight:700}
+.h-crit{color:#f87171;font-weight:700}
+</style>
+</head>
+<body>
+<nav>
+  <span class="brand">JR Lira Tech</span>
+  <span style="color:#475569">/</span>
+  <span style="font-size:13px;color:#94a3b8">SLA do Fluxo</span>
+  <span class="nav-user" id="nomeUsuario"></span>
+  <button class="btn-nav" onclick="location.href='/'">← Início</button>
+</nav>
+
+<div class="main">
+  <div class="filtros">
+    <div>
+      <label>Loja</label>
+      <select id="filtroLoja"><option value="">Todas</option></select>
+    </div>
+    <div>
+      <label>Emissão de</label>
+      <input type="date" id="filtroDataIni">
+    </div>
+    <div>
+      <label>até</label>
+      <input type="date" id="filtroDataFim">
+    </div>
+    <div style="flex:1;min-width:180px">
+      <label>Fornecedor</label>
+      <input type="text" id="filtroFornecedor" placeholder="Nome ou CNPJ">
+    </div>
+    <button class="btn-primary" onclick="carregar()">Atualizar</button>
+    <button class="btn-ghost" onclick="limparFiltros()">Limpar</button>
+  </div>
+
+  <div class="painel">
+    <div class="painel-titulo">Tempo médio em cada etapa (notas fechadas no período)</div>
+    <div class="etapas" id="etapasGrid"><div class="empty">Carregando...</div></div>
+  </div>
+
+  <div class="painel">
+    <div class="painel-titulo">Por Loja (médias em horas)</div>
+    <div style="overflow-x:auto"><table id="tabelaLoja"></table></div>
+  </div>
+
+  <div class="painel">
+    <div class="painel-titulo">Notas em andamento agora</div>
+    <div style="overflow-x:auto"><table id="tabelaAndar"></table></div>
+  </div>
+</div>
+
+<script>
+const STATUS_LABEL = {
+  importada:'Importada', emergencial_pendente:'Pendente Emergencial', em_validacao_cadastro:'Validação Cadastro',
+  validada:'Validada', recebida:'Recebida', em_conferencia:'Em Conferência',
+  em_auditoria:'Em Auditoria', aguardando_admin_validade:'Aguardando Admin',
+  aguardando_devolucao:'Devolução'
+};
+document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
+(function popularLojas(){
+  const sel = document.getElementById('filtroLoja');
+  Object.entries(LOJAS).forEach(([id,nome])=>{
+    const o = document.createElement('option'); o.value = id; o.textContent = `${id} — ${nome}`; sel.appendChild(o);
+  });
+})();
+
+function limparFiltros(){
+  document.getElementById('filtroLoja').value='';
+  document.getElementById('filtroDataIni').value='';
+  document.getElementById('filtroDataFim').value='';
+  document.getElementById('filtroFornecedor').value='';
+  carregar();
+}
+
+function fmtH(h){
+  const n = Number(h);
+  if (!n || isNaN(n)) return '–';
+  if (n < 1) return Math.round(n*60) + 'min';
+  if (n < 24) return n.toFixed(1) + 'h';
+  return (n/24).toFixed(1) + 'd';
+}
+
+function classeH(h, limCrit, limWarn){
+  const n = Number(h);
+  if (!n || isNaN(n)) return '';
+  if (n >= limCrit) return 'h-crit';
+  if (n >= limWarn) return 'h-warn';
+  return '';
+}
+
+async function carregar(){
+  const params = new URLSearchParams();
+  const loja = document.getElementById('filtroLoja').value;
+  const di = document.getElementById('filtroDataIni').value;
+  const df = document.getElementById('filtroDataFim').value;
+  const fn = document.getElementById('filtroFornecedor').value.trim();
+  if (loja) params.set('loja', loja);
+  if (di) params.set('dataIni', di);
+  if (df) params.set('dataFim', df);
+  if (fn) params.set('fornecedor', fn);
+
+  document.getElementById('etapasGrid').innerHTML = '<div class="empty">Carregando...</div>';
+  document.getElementById('tabelaLoja').innerHTML = '';
+  document.getElementById('tabelaAndar').innerHTML = '';
+
+  try {
+    const r = await apiFetch('/api/dashboard/sla-notas?'+params.toString());
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.erro || 'Erro');
+    renderEtapas(data.etapas);
+    renderLoja(data.por_loja);
+    renderAndar(data.em_andamento);
+  } catch (e) {
+    document.getElementById('etapasGrid').innerHTML = `<div class="empty" style="color:#f87171">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function renderEtapas(e){
+  if (!e) { document.getElementById('etapasGrid').innerHTML='<div class="empty">Sem dados</div>'; return; }
+  const html = `
+    <div class="etapa cadastro">
+      <div class="label">1. Cadastro</div>
+      <div class="v">${fmtH(e.h_cadastro_avg)} <small>média</small></div>
+      <div class="ext"><b>p50:</b> ${fmtH(e.h_cadastro_p50)} · <b>p95:</b> ${fmtH(e.h_cadastro_p95)}</div>
+      <div class="qtd">${e.qtd_cadastro||0} nota(s)</div>
+    </div>
+    <div class="etapa recepcao">
+      <div class="label">2. Recepção</div>
+      <div class="v">${fmtH(e.h_recepcao_avg)} <small>média</small></div>
+      <div class="ext"><b>p50:</b> ${fmtH(e.h_recepcao_p50)} · <b>p95:</b> ${fmtH(e.h_recepcao_p95)}</div>
+      <div class="qtd">${e.qtd_recepcao||0} nota(s)</div>
+    </div>
+    <div class="etapa conferencia">
+      <div class="label">3. Conferência</div>
+      <div class="v">${fmtH(e.h_conferencia_avg)} <small>média</small></div>
+      <div class="ext"><b>p50:</b> ${fmtH(e.h_conferencia_p50)} · <b>p95:</b> ${fmtH(e.h_conferencia_p95)}</div>
+      <div class="qtd">${e.qtd_conferencia||0} nota(s)</div>
+    </div>
+    <div class="etapa auditoria">
+      <div class="label">4. Auditoria</div>
+      <div class="v">${fmtH(e.h_auditoria_avg)} <small>média</small></div>
+      <div class="ext"><b>p50:</b> ${fmtH(e.h_auditoria_p50)} · <b>p95:</b> ${fmtH(e.h_auditoria_p95)}</div>
+      <div class="qtd">${e.qtd_auditoria||0} nota(s)</div>
+    </div>
+    <div class="etapa total">
+      <div class="label">Lead Total</div>
+      <div class="v">${fmtH(e.h_total_avg)} <small>média</small></div>
+      <div class="ext"><b>p50:</b> ${fmtH(e.h_total_p50)} · <b>p95:</b> ${fmtH(e.h_total_p95)}</div>
+      <div class="qtd">${e.qtd_total_fechadas||0} fechada(s)</div>
+    </div>
+  `;
+  document.getElementById('etapasGrid').innerHTML = html;
+}
+
+function renderLoja(arr){
+  const t = document.getElementById('tabelaLoja');
+  if (!arr.length) { t.innerHTML='<thead><tr><th>Sem dados</th></tr></thead>'; return; }
+  const head = `<thead><tr>
+    <th class="left">Loja</th>
+    <th>Fechadas</th>
+    <th>Cadastro</th>
+    <th>Recepção</th>
+    <th>Conferência</th>
+    <th>Auditoria</th>
+    <th>Lead Total</th>
+  </tr></thead>`;
+  const body = arr.map(r=>`
+    <tr>
+      <td class="left">${escapeHtml(r.loja_nome||'')}</td>
+      <td class="center">${r.qtd_fechadas||0}</td>
+      <td class="right ${classeH(r.h_cadastro,72,24)}">${fmtH(r.h_cadastro)}</td>
+      <td class="right ${classeH(r.h_recepcao,48,24)}">${fmtH(r.h_recepcao)}</td>
+      <td class="right ${classeH(r.h_conferencia,48,24)}">${fmtH(r.h_conferencia)}</td>
+      <td class="right ${classeH(r.h_auditoria,72,24)}">${fmtH(r.h_auditoria)}</td>
+      <td class="right ${classeH(r.h_total,168,72)}" style="font-weight:700">${fmtH(r.h_total)}</td>
+    </tr>`).join('');
+  t.innerHTML = head + '<tbody>' + body + '</tbody>';
+}
+
+function renderAndar(arr){
+  const t = document.getElementById('tabelaAndar');
+  if (!arr.length) { t.innerHTML='<thead><tr><th>Sem notas em andamento</th></tr></thead>'; return; }
+  const head = `<thead><tr>
+    <th class="left">Status</th>
+    <th>Qtd</th>
+    <th>Tempo desde importação (médio)</th>
+    <th>Mais antiga</th>
+  </tr></thead>`;
+  const body = arr.map(r=>`
+    <tr>
+      <td class="left">${STATUS_LABEL[r.status]||r.status}</td>
+      <td class="center" style="font-weight:700">${r.qtd}</td>
+      <td class="right">${fmtH(r.h_desde_importacao)}</td>
+      <td class="right ${classeH(r.h_max,720,168)}">${fmtH(r.h_max)}</td>
+    </tr>`).join('');
+  t.innerHTML = head + '<tbody>' + body + '</tbody>';
+}
+
+carregar();
+</script>
+</body>
+</html>
