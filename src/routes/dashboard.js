@@ -154,12 +154,17 @@ router.get('/divergencias-preco', autenticar, async (req, res) => {
     }
     const where = `WHERE ${conds.join(' AND ')}`;
 
-    // CTE base: usa 2 LEFT JOINs separados (mat_codi e ean) com COALESCE pra
-    // evitar OR no JOIN (que estoura statement timeout). Indices:
-    // produtos_embalagem(mat_codi PK) e idx_produtos_embalagem_ean_cd.
-    // Se qtd_embalagem nulo → trata como 1 (custo_emb = custo_fabrica).
+    // CTE base: 3 hipoteses pra tratar inconsistencia de unidade entre NF-e e CD.
+    // preco_unitario_nota ja vem unitario quando o parser detectou caixa, mas
+    // nem sempre acerta. Testa:
+    //   H1 unit:  preco_nota                 vs custo
+    //   H2 caixa: preco_nota / qtd_embalagem vs custo  (preco veio em caixa, parser falhou)
+    //   H3 mult:  preco_nota * qtd_embalagem vs custo  (caso reverso, raro)
+    // Vence a hipotese com menor |pct|. Se nao tiver embalagem (qtd null), usa H1.
+    //
+    // 2 LEFT JOINs separados (mat_codi e ean) pra evitar OR no JOIN (timeout).
     const baseCte = `
-      WITH base AS (
+      WITH itens_emb AS (
         SELECT i.id AS item_id, i.nota_id, i.cd_pro_codi,
                n.numero_nota, n.fornecedor_nome, n.fornecedor_cnpj, n.data_emissao,
                n.loja_id, COALESCE(l.nome,'Sem loja') AS loja_nome,
@@ -167,12 +172,7 @@ router.get('/divergencias-preco', autenticar, async (req, res) => {
                i.quantidade, i.preco_unitario_nota, i.custo_fabrica, i.status_preco,
                COALESCE(pe1.qtd_embalagem, pe2.qtd_embalagem) AS qtd_embalagem,
                COALESCE(pe1.mat_codi, pe2.mat_codi) AS mat_codi,
-               COALESCE(pe1.status, pe2.status) AS emb_status,
-               (i.custo_fabrica * COALESCE(pe1.qtd_embalagem, pe2.qtd_embalagem, 1))::numeric(14,4) AS custo_emb,
-               (i.preco_unitario_nota - i.custo_fabrica * COALESCE(pe1.qtd_embalagem, pe2.qtd_embalagem, 1))::numeric(14,4) AS diferenca_unit,
-               (i.quantidade * (i.preco_unitario_nota - i.custo_fabrica * COALESCE(pe1.qtd_embalagem, pe2.qtd_embalagem, 1)))::numeric(14,2) AS diferenca_total,
-               ((i.preco_unitario_nota - i.custo_fabrica * COALESCE(pe1.qtd_embalagem, pe2.qtd_embalagem, 1))
-                 / NULLIF(i.custo_fabrica * COALESCE(pe1.qtd_embalagem, pe2.qtd_embalagem, 1),0) * 100)::numeric(12,2) AS pct
+               COALESCE(pe1.status, pe2.status) AS emb_status
           FROM itens_nota i
           JOIN notas_entrada n ON n.id = i.nota_id
           LEFT JOIN lojas l ON l.id = n.loja_id
@@ -180,6 +180,49 @@ router.get('/divergencias-preco', autenticar, async (req, res) => {
           LEFT JOIN produtos_embalagem pe2 ON pe1.mat_codi IS NULL
                                            AND pe2.ean_principal_cd = COALESCE(NULLIF(i.ean_validado,''), NULLIF(i.ean_nota,''))
           ${where}
+      ),
+      hipoteses AS (
+        SELECT *,
+          -- pct das 3 hipoteses (NULL quando custo=0, tratado por NULLIF)
+          ((preco_unitario_nota - custo_fabrica) / NULLIF(custo_fabrica,0) * 100)::numeric(12,2) AS pct_h1,
+          CASE WHEN COALESCE(qtd_embalagem,1) > 1
+               THEN ((preco_unitario_nota / qtd_embalagem - custo_fabrica) / NULLIF(custo_fabrica,0) * 100)::numeric(12,2)
+          END AS pct_h2,
+          CASE WHEN COALESCE(qtd_embalagem,1) > 1
+               THEN ((preco_unitario_nota * qtd_embalagem - custo_fabrica) / NULLIF(custo_fabrica,0) * 100)::numeric(12,2)
+          END AS pct_h3
+          FROM itens_emb
+      ),
+      base AS (
+        SELECT *,
+          -- escolhe hipotese com menor abs(pct)
+          CASE
+            WHEN pct_h2 IS NOT NULL AND ABS(pct_h2) < ABS(pct_h1) AND (pct_h3 IS NULL OR ABS(pct_h2) <= ABS(pct_h3)) THEN 'h2'
+            WHEN pct_h3 IS NOT NULL AND ABS(pct_h3) < ABS(pct_h1) THEN 'h3'
+            ELSE 'h1'
+          END AS hipotese,
+          CASE
+            WHEN pct_h2 IS NOT NULL AND ABS(pct_h2) < ABS(pct_h1) AND (pct_h3 IS NULL OR ABS(pct_h2) <= ABS(pct_h3)) THEN preco_unitario_nota / qtd_embalagem
+            WHEN pct_h3 IS NOT NULL AND ABS(pct_h3) < ABS(pct_h1) THEN preco_unitario_nota * qtd_embalagem
+            ELSE preco_unitario_nota
+          END::numeric(14,4) AS preco_unit_efetivo,
+          CASE
+            WHEN pct_h2 IS NOT NULL AND ABS(pct_h2) < ABS(pct_h1) AND (pct_h3 IS NULL OR ABS(pct_h2) <= ABS(pct_h3)) THEN pct_h2
+            WHEN pct_h3 IS NOT NULL AND ABS(pct_h3) < ABS(pct_h1) THEN pct_h3
+            ELSE pct_h1
+          END AS pct,
+          -- diferenca em valor: usa preco_efetivo vs custo_fabrica, multiplicado por qtd da nota
+          (CASE
+            WHEN pct_h2 IS NOT NULL AND ABS(pct_h2) < ABS(pct_h1) AND (pct_h3 IS NULL OR ABS(pct_h2) <= ABS(pct_h3)) THEN (preco_unitario_nota / qtd_embalagem - custo_fabrica) * quantidade
+            WHEN pct_h3 IS NOT NULL AND ABS(pct_h3) < ABS(pct_h1) THEN (preco_unitario_nota * qtd_embalagem - custo_fabrica) * quantidade
+            ELSE (preco_unitario_nota - custo_fabrica) * quantidade
+          END)::numeric(14,2) AS diferenca_total,
+          (CASE
+            WHEN pct_h2 IS NOT NULL AND ABS(pct_h2) < ABS(pct_h1) AND (pct_h3 IS NULL OR ABS(pct_h2) <= ABS(pct_h3)) THEN preco_unitario_nota / qtd_embalagem - custo_fabrica
+            WHEN pct_h3 IS NOT NULL AND ABS(pct_h3) < ABS(pct_h1) THEN preco_unitario_nota * qtd_embalagem - custo_fabrica
+            ELSE preco_unitario_nota - custo_fabrica
+          END)::numeric(14,4) AS diferenca_unit
+          FROM hipoteses
       )
     `;
 
