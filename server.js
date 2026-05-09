@@ -83,6 +83,7 @@ app.get('/divergencias-preco', (req, res) => res.sendFile(path.join(__dirname, '
 app.get('/produtos-novos', (req, res) => res.sendFile(path.join(__dirname, 'public/produtos-novos.html')));
 app.get('/emergenciais', (req, res) => res.sendFile(path.join(__dirname, 'public/emergenciais.html')));
 app.get('/sla-notas', (req, res) => res.sendFile(path.join(__dirname, 'public/sla-notas.html')));
+app.get('/divergencias-estoque', (req, res) => res.sendFile(path.join(__dirname, 'public/divergencias-estoque.html')));
 app.get('/index-novo', (req, res) => res.sendFile(path.join(__dirname, 'public/index-novo.html')));
 app.get('/index-novo-perfis', (req, res) => res.sendFile(path.join(__dirname, 'public/index-novo-perfis.html')));
 

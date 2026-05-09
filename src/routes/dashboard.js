@@ -533,4 +533,122 @@ router.get('/sla-notas', autenticar, async (req, res) => {
   }
 });
 
+// GET /api/dashboard/divergencias-estoque
+// Itens da auditoria com status=divergente — diferenca entre qtd da NF e qtd contada.
+// Tipo: falta (contou menos) | sobra (contou mais).
+router.get('/divergencias-estoque', autenticar, async (req, res) => {
+  try {
+    const lojaUsr = req.usuario.loja_id;
+    const lojaParam = req.query.loja ? parseInt(req.query.loja) : null;
+    const lojaId = lojaUsr || lojaParam;
+    const dataIni = req.query.dataIni || null;
+    const dataFim = req.query.dataFim || null;
+    const fornecedor = (req.query.fornecedor || '').trim();
+    const produto = (req.query.produto || '').trim();
+    const tipo = req.query.tipo || 'todos'; // todos | falta | sobra
+
+    const conds = [`a.status = 'divergente'`];
+    const params = [];
+    if (lojaId)  { params.push(lojaId);  conds.push(`n.loja_id = $${params.length}`); }
+    if (dataIni) { params.push(dataIni); conds.push(`n.data_emissao >= $${params.length}`); }
+    if (dataFim) { params.push(dataFim); conds.push(`n.data_emissao <= $${params.length}`); }
+    if (fornecedor) {
+      params.push(`%${fornecedor}%`);
+      conds.push(`(n.fornecedor_nome ILIKE $${params.length} OR n.fornecedor_cnpj ILIKE $${params.length})`);
+    }
+    if (produto) {
+      params.push(`%${produto}%`);
+      conds.push(`(i.descricao_nota ILIKE $${params.length} OR i.ean_validado ILIKE $${params.length} OR i.ean_nota ILIKE $${params.length})`);
+    }
+    if (tipo === 'falta') conds.push(`a.qtd_contada < i.quantidade`);
+    if (tipo === 'sobra') conds.push(`a.qtd_contada > i.quantidade`);
+    const where = `WHERE ${conds.join(' AND ')}`;
+
+    const baseFrom = `
+      FROM auditoria_itens a
+      JOIN itens_nota i ON i.id = a.item_id
+      JOIN notas_entrada n ON n.id = i.nota_id
+      LEFT JOIN lojas l ON l.id = n.loja_id
+    `;
+
+    const [kpis, porFornecedor, porProduto, porLoja, itens] = await Promise.all([
+      query(`
+        SELECT COUNT(*)::int AS qtd_itens,
+               COUNT(*) FILTER (WHERE a.qtd_contada < i.quantidade)::int AS qtd_falta,
+               COUNT(*) FILTER (WHERE a.qtd_contada > i.quantidade)::int AS qtd_sobra,
+               COALESCE(SUM(GREATEST(i.quantidade - a.qtd_contada, 0) * i.preco_unitario_nota),0)::numeric(14,2) AS valor_falta,
+               COALESCE(SUM(GREATEST(a.qtd_contada - i.quantidade, 0) * i.preco_unitario_nota),0)::numeric(14,2) AS valor_sobra,
+               COALESCE(SUM((a.qtd_contada - i.quantidade) * i.preco_unitario_nota),0)::numeric(14,2) AS valor_liquido,
+               COUNT(DISTINCT i.nota_id)::int AS qtd_notas,
+               COUNT(DISTINCT n.fornecedor_cnpj)::int AS qtd_fornecedores
+          ${baseFrom}
+          ${where}
+      `, params),
+      query(`
+        SELECT n.fornecedor_nome, n.fornecedor_cnpj,
+               COUNT(*)::int AS qtd_itens,
+               COALESCE(SUM(GREATEST(i.quantidade - a.qtd_contada, 0) * i.preco_unitario_nota),0)::numeric(14,2) AS valor_falta,
+               COALESCE(SUM(GREATEST(a.qtd_contada - i.quantidade, 0) * i.preco_unitario_nota),0)::numeric(14,2) AS valor_sobra
+          ${baseFrom}
+          ${where}
+         GROUP BY n.fornecedor_nome, n.fornecedor_cnpj
+         ORDER BY (
+           COALESCE(SUM(GREATEST(i.quantidade - a.qtd_contada, 0) * i.preco_unitario_nota),0) +
+           COALESCE(SUM(GREATEST(a.qtd_contada - i.quantidade, 0) * i.preco_unitario_nota),0)
+         ) DESC
+         LIMIT 30
+      `, params),
+      query(`
+        SELECT
+          COALESCE(NULLIF(i.ean_validado,''), NULLIF(i.ean_nota,''), 'sem-ean') AS ean,
+          MIN(i.descricao_nota) AS descricao,
+          COUNT(*)::int AS ocorrencias,
+          COALESCE(SUM(i.quantidade - a.qtd_contada),0)::numeric(14,3) AS dif_qtd,
+          COALESCE(SUM((i.quantidade - a.qtd_contada) * i.preco_unitario_nota),0)::numeric(14,2) AS dif_valor
+          ${baseFrom}
+          ${where}
+         GROUP BY 1
+         ORDER BY ABS(SUM((i.quantidade - a.qtd_contada) * i.preco_unitario_nota)) DESC
+         LIMIT 50
+      `, params),
+      query(`
+        SELECT n.loja_id,
+               COALESCE(l.nome,'Sem loja') AS loja_nome,
+               COUNT(*)::int AS qtd_itens,
+               COALESCE(SUM(GREATEST(i.quantidade - a.qtd_contada, 0) * i.preco_unitario_nota),0)::numeric(14,2) AS valor_falta,
+               COALESCE(SUM(GREATEST(a.qtd_contada - i.quantidade, 0) * i.preco_unitario_nota),0)::numeric(14,2) AS valor_sobra
+          ${baseFrom}
+          ${where}
+         GROUP BY n.loja_id, l.nome
+         ORDER BY n.loja_id
+      `, params),
+      query(`
+        SELECT a.item_id, a.qtd_contada, a.lote, a.validade, a.observacao, a.auditado_em, a.auditado_por,
+               i.nota_id, i.descricao_nota, i.ean_validado, i.ean_nota,
+               i.quantidade AS qtd_nota, i.preco_unitario_nota,
+               (a.qtd_contada - i.quantidade)::numeric(14,3) AS diferenca,
+               ((a.qtd_contada - i.quantidade) * i.preco_unitario_nota)::numeric(14,2) AS dif_valor,
+               n.numero_nota, n.fornecedor_nome, n.fornecedor_cnpj, n.data_emissao, n.loja_id,
+               COALESCE(l.nome,'Sem loja') AS loja_nome
+          ${baseFrom}
+          ${where}
+         ORDER BY a.auditado_em DESC NULLS LAST
+         LIMIT 500
+      `, params),
+    ]);
+
+    res.json({
+      kpis: kpis[0],
+      por_fornecedor: porFornecedor,
+      por_produto: porProduto,
+      por_loja: porLoja,
+      itens,
+      filtros: { loja: lojaId, dataIni, dataFim, fornecedor, produto, tipo }
+    });
+  } catch (err) {
+    console.error('[dashboard/divergencias-estoque]', err.message);
+    res.status(500).json({ erro: err.message });
+  }
+});
+
 module.exports = router;

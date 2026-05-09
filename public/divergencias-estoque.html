@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Divergências de Estoque</title>
+<link rel="stylesheet" href="/shared.css">
+<script src="/shared.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+nav{background:#1e293b;padding:12px 20px;display:flex;align-items:center;gap:14px;border-bottom:1px solid #334155}
+.brand{font-family:'Segoe UI Black','Segoe UI',sans-serif;font-weight:900;font-size:18px;color:#38bdf8}
+.nav-user{margin-left:auto;font-size:12px;color:#475569}
+.btn-nav{background:#0ea5e9;color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:12px;cursor:pointer}
+.main{padding:18px 20px;max-width:1500px;margin:0 auto}
+input,select{background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;padding:7px 11px;font-size:13px}
+input:focus,select:focus{outline:none;border-color:#38bdf8}
+button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 14px;font-weight:600}
+.btn-primary{background:#0ea5e9;color:#fff}.btn-primary:hover{background:#0284c7}
+.btn-ghost{background:#1e293b;color:#94a3b8;border:1px solid #334155}.btn-ghost:hover{background:#273549}
+.filtros{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:18px;padding:14px;background:#1e293b;border-radius:10px}
+.filtros label{font-size:11px;color:#64748b;display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em}
+.kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:18px}
+.kpi{background:#1e293b;border-radius:10px;padding:14px;border-left:4px solid #475569}
+.kpi.danger{border-left-color:#ef4444}.kpi.warn{border-left-color:#fbbf24}.kpi.info{border-left-color:#38bdf8}.kpi.ok{border-left-color:#22c55e}
+.kpi .label{font-size:11px;color:#94a3b8;text-transform:uppercase;font-weight:700;letter-spacing:.04em}
+.kpi .v{font-size:24px;font-weight:900;color:#e2e8f0;margin-top:6px}
+.kpi .extra{font-size:11px;color:#64748b;margin-top:2px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px}
+@media (max-width:1100px){.row2{grid-template-columns:1fr}}
+.painel{background:#1e293b;border-radius:10px;padding:16px;margin-bottom:18px}
+.painel-titulo{font-size:13px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead th{background:#0f172a;padding:8px 10px;text-align:center;color:#64748b;font-weight:600;border-bottom:1px solid #334155;white-space:nowrap;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+thead th.left{text-align:left}
+tbody td{padding:7px 10px;border-bottom:1px solid #1e293b;vertical-align:middle}
+tbody td.right{text-align:right;font-variant-numeric:tabular-nums}
+tbody td.center{text-align:center}
+tbody tr:hover{background:#1a2744;cursor:pointer}
+.empty{text-align:center;color:#475569;padding:40px;font-size:13px}
+.dif-falta{color:#f87171;font-weight:700}
+.dif-sobra{color:#4ade80;font-weight:700}
+</style>
+</head>
+<body>
+<nav>
+  <span class="brand">JR Lira Tech</span>
+  <span style="color:#475569">/</span>
+  <span style="font-size:13px;color:#94a3b8">Divergências de Estoque</span>
+  <span class="nav-user" id="nomeUsuario"></span>
+  <button class="btn-nav" onclick="location.href='/'">← Início</button>
+</nav>
+
+<div class="main">
+  <div class="filtros">
+    <div>
+      <label>Loja</label>
+      <select id="filtroLoja"><option value="">Todas</option></select>
+    </div>
+    <div>
+      <label>Emissão de</label>
+      <input type="date" id="filtroDataIni">
+    </div>
+    <div>
+      <label>até</label>
+      <input type="date" id="filtroDataFim">
+    </div>
+    <div>
+      <label>Fornecedor</label>
+      <input type="text" id="filtroFornecedor" placeholder="Nome ou CNPJ">
+    </div>
+    <div style="flex:1;min-width:160px">
+      <label>Produto</label>
+      <input type="text" id="filtroProduto" placeholder="Descrição ou EAN">
+    </div>
+    <div>
+      <label>Tipo</label>
+      <select id="filtroTipo">
+        <option value="todos">Todos</option>
+        <option value="falta">Faltas</option>
+        <option value="sobra">Sobras</option>
+      </select>
+    </div>
+    <button class="btn-primary" onclick="carregar()">Atualizar</button>
+    <button class="btn-ghost" onclick="limparFiltros()">Limpar</button>
+  </div>
+
+  <div id="kpis" class="kpis"></div>
+
+  <div class="row2">
+    <div class="painel">
+      <div class="painel-titulo">Por Fornecedor (Top 30)</div>
+      <div style="overflow-x:auto;max-height:380px"><table id="tabelaForn"></table></div>
+    </div>
+    <div class="painel">
+      <div class="painel-titulo">Por Produto (Top 50)</div>
+      <div style="overflow-x:auto;max-height:380px"><table id="tabelaProd"></table></div>
+    </div>
+  </div>
+
+  <div class="painel">
+    <div class="painel-titulo">Por Loja</div>
+    <div style="overflow-x:auto"><table id="tabelaLoja"></table></div>
+  </div>
+
+  <div class="painel">
+    <div class="painel-titulo" id="tituloItens">Itens divergentes</div>
+    <div style="overflow-x:auto"><table id="tabelaItens"></table></div>
+  </div>
+</div>
+
+<script>
+document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
+(function popularLojas(){
+  const sel = document.getElementById('filtroLoja');
+  Object.entries(LOJAS).forEach(([id,nome])=>{
+    const o = document.createElement('option'); o.value = id; o.textContent = `${id} — ${nome}`; sel.appendChild(o);
+  });
+})();
+
+function limparFiltros(){
+  document.getElementById('filtroLoja').value='';
+  document.getElementById('filtroDataIni').value='';
+  document.getElementById('filtroDataFim').value='';
+  document.getElementById('filtroFornecedor').value='';
+  document.getElementById('filtroProduto').value='';
+  document.getElementById('filtroTipo').value='todos';
+  carregar();
+}
+
+async function carregar(){
+  const params = new URLSearchParams();
+  const loja = document.getElementById('filtroLoja').value;
+  const di = document.getElementById('filtroDataIni').value;
+  const df = document.getElementById('filtroDataFim').value;
+  const fn = document.getElementById('filtroFornecedor').value.trim();
+  const pr = document.getElementById('filtroProduto').value.trim();
+  const tp = document.getElementById('filtroTipo').value;
+  if (loja) params.set('loja', loja);
+  if (di) params.set('dataIni', di);
+  if (df) params.set('dataFim', df);
+  if (fn) params.set('fornecedor', fn);
+  if (pr) params.set('produto', pr);
+  if (tp) params.set('tipo', tp);
+
+  document.getElementById('kpis').innerHTML = '<div class="empty">Carregando...</div>';
+  try {
+    const r = await apiFetch('/api/dashboard/divergencias-estoque?'+params.toString());
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.erro || 'Erro');
+    renderKpis(data.kpis);
+    renderForn(data.por_fornecedor);
+    renderProd(data.por_produto);
+    renderLoja(data.por_loja);
+    renderItens(data.itens);
+  } catch (e) {
+    document.getElementById('kpis').innerHTML = `<div class="empty" style="color:#f87171">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function renderKpis(k){
+  if (!k) return;
+  document.getElementById('kpis').innerHTML = `
+    <div class="kpi info"><div class="label">Itens divergentes</div><div class="v">${(k.qtd_itens||0).toLocaleString('pt-BR')}</div><div class="extra">${k.qtd_notas||0} nota(s) · ${k.qtd_fornecedores||0} fornecedor(es)</div></div>
+    <div class="kpi danger"><div class="label">Faltas</div><div class="v">${(k.qtd_falta||0).toLocaleString('pt-BR')}</div><div class="extra">R$ ${fmtMoeda(k.valor_falta||0)}</div></div>
+    <div class="kpi ok"><div class="label">Sobras</div><div class="v">${(k.qtd_sobra||0).toLocaleString('pt-BR')}</div><div class="extra">R$ ${fmtMoeda(k.valor_sobra||0)}</div></div>
+    <div class="kpi ${Number(k.valor_liquido)>=0?'ok':'danger'}"><div class="label">Saldo Líquido</div><div class="v">R$ ${fmtMoeda(k.valor_liquido||0)}</div><div class="extra">sobras − faltas</div></div>
+  `;
+}
+
+function renderForn(arr){
+  const t = document.getElementById('tabelaForn');
+  if (!arr.length) { t.innerHTML='<thead><tr><th>Sem dados</th></tr></thead>'; return; }
+  const head = `<thead><tr><th class="left">Fornecedor</th><th>Itens</th><th>Falta</th><th>Sobra</th></tr></thead>`;
+  const body = arr.map(r=>`
+    <tr onclick="filtrarFornecedor('${escapeHtml(r.fornecedor_cnpj||r.fornecedor_nome||'')}')">
+      <td class="left">${escapeHtml(r.fornecedor_nome||'')}<div style="font-size:10px;color:#475569;font-family:monospace">${escapeHtml(r.fornecedor_cnpj||'')}</div></td>
+      <td class="center" style="font-weight:700">${r.qtd_itens}</td>
+      <td class="right dif-falta">R$ ${fmtMoeda(r.valor_falta)}</td>
+      <td class="right dif-sobra">R$ ${fmtMoeda(r.valor_sobra)}</td>
+    </tr>`).join('');
+  t.innerHTML = head + '<tbody>' + body + '</tbody>';
+}
+function filtrarFornecedor(s){ document.getElementById('filtroFornecedor').value=s; carregar(); }
+
+function renderProd(arr){
+  const t = document.getElementById('tabelaProd');
+  if (!arr.length) { t.innerHTML='<thead><tr><th>Sem dados</th></tr></thead>'; return; }
+  const head = `<thead><tr><th>EAN</th><th class="left">Descrição</th><th>Ocor</th><th>Dif Qtd</th><th>Dif Valor</th></tr></thead>`;
+  const body = arr.map(r=>{
+    const v = Number(r.dif_valor||0);
+    const q = Number(r.dif_qtd||0);
+    return `<tr>
+      <td class="center" style="font-family:monospace;font-size:11px">${escapeHtml(r.ean||'-')}</td>
+      <td class="left">${escapeHtml(r.descricao||'')}</td>
+      <td class="center">${r.ocorrencias}</td>
+      <td class="right ${q>0?'dif-falta':q<0?'dif-sobra':''}">${q.toLocaleString('pt-BR',{maximumFractionDigits:3})}</td>
+      <td class="right ${v>0?'dif-falta':v<0?'dif-sobra':''}">R$ ${fmtMoeda(Math.abs(v))}</td>
+    </tr>`;
+  }).join('');
+  t.innerHTML = head + '<tbody>' + body + '</tbody>';
+}
+
+function renderLoja(arr){
+  const t = document.getElementById('tabelaLoja');
+  if (!arr.length) { t.innerHTML='<thead><tr><th>Sem dados</th></tr></thead>'; return; }
+  const head = `<thead><tr><th class="left">Loja</th><th>Itens</th><th>Falta</th><th>Sobra</th></tr></thead>`;
+  const body = arr.map(r=>`
+    <tr onclick="filtrarLoja(${r.loja_id||''})">
+      <td class="left">${escapeHtml(r.loja_nome||'')}</td>
+      <td class="center" style="font-weight:700">${r.qtd_itens}</td>
+      <td class="right dif-falta">R$ ${fmtMoeda(r.valor_falta)}</td>
+      <td class="right dif-sobra">R$ ${fmtMoeda(r.valor_sobra)}</td>
+    </tr>`).join('');
+  t.innerHTML = head + '<tbody>' + body + '</tbody>';
+}
+function filtrarLoja(id){ document.getElementById('filtroLoja').value=id||''; carregar(); }
+
+function renderItens(arr){
+  document.getElementById('tituloItens').textContent = `Itens divergentes (${arr.length})`;
+  const t = document.getElementById('tabelaItens');
+  if (!arr.length) { t.innerHTML='<thead><tr><th>Sem itens</th></tr></thead>'; return; }
+  const head = `<thead><tr>
+    <th class="left">Nº</th><th class="left">Fornecedor</th><th class="left">Loja</th>
+    <th class="left">Descrição</th><th>EAN</th>
+    <th>Qtd Nota</th><th>Qtd Contada</th><th>Diferença</th><th>Valor</th>
+    <th>Auditado em</th>
+  </tr></thead>`;
+  const body = arr.map(r=>{
+    const dif = Number(r.diferenca||0);
+    const v = Number(r.dif_valor||0);
+    const cls = dif>0?'dif-sobra':dif<0?'dif-falta':'';
+    return `<tr onclick="abrirNota(${r.nota_id})">
+      <td class="left" style="font-family:monospace;color:#38bdf8;font-weight:700">${escapeHtml(r.numero_nota||'')}</td>
+      <td class="left">${escapeHtml(r.fornecedor_nome||'')}</td>
+      <td class="left">${escapeHtml(r.loja_nome||'')}</td>
+      <td class="left">${escapeHtml(r.descricao_nota||'')}</td>
+      <td class="center" style="font-family:monospace;font-size:11px">${escapeHtml(r.ean_validado||r.ean_nota||'')}</td>
+      <td class="right">${Number(r.qtd_nota||0).toLocaleString('pt-BR',{maximumFractionDigits:3})}</td>
+      <td class="right">${Number(r.qtd_contada||0).toLocaleString('pt-BR',{maximumFractionDigits:3})}</td>
+      <td class="right ${cls}">${dif>0?'+':''}${dif.toLocaleString('pt-BR',{maximumFractionDigits:3})}</td>
+      <td class="right ${v>0?'dif-sobra':v<0?'dif-falta':''}">R$ ${fmtMoeda(Math.abs(v))}</td>
+      <td class="center">${fmtData(r.auditado_em)}</td>
+    </tr>`;
+  }).join('');
+  t.innerHTML = head + '<tbody>' + body + '</tbody>';
+}
+
+function abrirNota(id){ location.href = '/notas-auditoria?nota='+id; }
+
+carregar();
+</script>
+</body>
+</html>
