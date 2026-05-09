@@ -78,6 +78,7 @@ app.get('/aguardando-devolucao', (req, res) => res.sendFile(path.join(__dirname,
 app.get('/preview-icons', (req, res) => res.sendFile(path.join(__dirname, 'public/preview-icons.html')));
 app.get('/auditoria-acordos', (req, res) => res.sendFile(path.join(__dirname, 'public/auditoria-acordos.html')));
 app.get('/devolucoes-divergencias', (req, res) => res.sendFile(path.join(__dirname, 'public/devolucoes-divergencias.html')));
+app.get('/dashboard-notas', (req, res) => res.sendFile(path.join(__dirname, 'public/dashboard-notas.html')));
 app.get('/index-novo', (req, res) => res.sendFile(path.join(__dirname, 'public/index-novo.html')));
 app.get('/index-novo-perfis', (req, res) => res.sendFile(path.join(__dirname, 'public/index-novo-perfis.html')));
 
