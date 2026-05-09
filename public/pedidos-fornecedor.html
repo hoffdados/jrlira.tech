@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pedidos por Fornecedor</title>
+<link rel="stylesheet" href="/shared.css">
+<script src="/shared.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+nav{background:#1e293b;padding:12px 20px;display:flex;align-items:center;gap:14px;border-bottom:1px solid #334155}
+.brand{font-family:'Segoe UI Black','Segoe UI',sans-serif;font-weight:900;font-size:18px;color:#38bdf8}
+.nav-user{margin-left:auto;font-size:12px;color:#475569}
+.btn-nav{background:#0ea5e9;color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:12px;cursor:pointer}
+.main{padding:18px 20px;max-width:1500px;margin:0 auto}
+input,select{background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;padding:7px 11px;font-size:13px}
+input:focus,select:focus{outline:none;border-color:#38bdf8}
+button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 14px;font-weight:600}
+.btn-primary{background:#0ea5e9;color:#fff}.btn-primary:hover{background:#0284c7}
+.btn-ghost{background:#1e293b;color:#94a3b8;border:1px solid #334155}.btn-ghost:hover{background:#273549}
+.filtros{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:18px;padding:14px;background:#1e293b;border-radius:10px}
+.filtros label{font-size:11px;color:#64748b;display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em}
+.kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:18px}
+.kpi{background:#1e293b;border-radius:10px;padding:14px;border-left:4px solid #475569}
+.kpi.ok{border-left-color:#22c55e}.kpi.warn{border-left-color:#fbbf24}.kpi.violet{border-left-color:#a78bfa}.kpi.info{border-left-color:#38bdf8}
+.kpi .label{font-size:11px;color:#94a3b8;text-transform:uppercase;font-weight:700;letter-spacing:.04em}
+.kpi .v{font-size:24px;font-weight:900;color:#e2e8f0;margin-top:6px}
+.kpi .extra{font-size:11px;color:#64748b;margin-top:2px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px}
+@media (max-width:1100px){.row2{grid-template-columns:1fr}}
+.painel{background:#1e293b;border-radius:10px;padding:16px;margin-bottom:18px}
+.painel-titulo{font-size:13px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead th{background:#0f172a;padding:8px 10px;text-align:center;color:#64748b;font-weight:600;border-bottom:1px solid #334155;white-space:nowrap;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+thead th.left{text-align:left}
+tbody td{padding:7px 10px;border-bottom:1px solid #1e293b;vertical-align:middle}
+tbody td.right{text-align:right;font-variant-numeric:tabular-nums}
+tbody td.center{text-align:center}
+tbody tr:hover{background:#1a2744;cursor:pointer}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;white-space:nowrap}
+.b-rascunho{background:#1e293b;color:#475569}
+.b-aguardando_auditoria{background:#451a03;color:#fbbf24}
+.b-validado{background:#14532d;color:#4ade80}
+.b-cancelado{background:#450a0a;color:#7f1d1d}
+.empty{text-align:center;color:#475569;padding:40px;font-size:13px}
+.alerta{color:#fbbf24;font-weight:700}
+</style>
+</head>
+<body>
+<nav>
+  <span class="brand">JR Lira Tech</span>
+  <span style="color:#475569">/</span>
+  <span style="font-size:13px;color:#94a3b8">Pedidos por Fornecedor</span>
+  <span class="nav-user" id="nomeUsuario"></span>
+  <button class="btn-nav" onclick="location.href='/'">← Início</button>
+</nav>
+
+<div class="main">
+  <div class="filtros">
+    <div>
+      <label>Loja</label>
+      <select id="filtroLoja"><option value="">Todas</option></select>
+    </div>
+    <div>
+      <label>Criação de</label>
+      <input type="date" id="filtroDataIni">
+    </div>
+    <div>
+      <label>até</label>
+      <input type="date" id="filtroDataFim">
+    </div>
+    <div style="flex:1;min-width:180px">
+      <label>Fornecedor</label>
+      <input type="text" id="filtroFornecedor" placeholder="Razão social ou CNPJ">
+    </div>
+    <button class="btn-primary" onclick="carregar()">Atualizar</button>
+    <button class="btn-ghost" onclick="limparFiltros()">Limpar</button>
+  </div>
+
+  <div id="kpis" class="kpis"></div>
+
+  <div class="row2">
+    <div class="painel">
+      <div class="painel-titulo">Por Loja</div>
+      <div style="overflow-x:auto"><table id="tabelaLoja"></table></div>
+    </div>
+    <div class="painel">
+      <div class="painel-titulo">Por Mês (últimos 24)</div>
+      <div style="overflow-x:auto;max-height:380px"><table id="tabelaMes"></table></div>
+    </div>
+  </div>
+
+  <div class="painel">
+    <div class="painel-titulo">Top 50 Fornecedores — pedidos vs emergenciais</div>
+    <div style="overflow-x:auto"><table id="tabelaForn"></table></div>
+  </div>
+
+  <div class="painel">
+    <div class="painel-titulo" id="tituloPedidos">Pedidos (300 mais recentes)</div>
+    <div style="overflow-x:auto"><table id="tabelaPedidos"></table></div>
+  </div>
+</div>
+
+<script>
+const STATUS_LABEL = {
+  rascunho:'Rascunho', aguardando_auditoria:'Aguardando Auditoria',
+  validado:'Validado', cancelado:'Cancelado'
+};
+document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
+(function popularLojas(){
+  const sel = document.getElementById('filtroLoja');
+  Object.entries(LOJAS).forEach(([id,nome])=>{
+    const o = document.createElement('option'); o.value = id; o.textContent = `${id} — ${nome}`; sel.appendChild(o);
+  });
+})();
+
+function limparFiltros(){
+  document.getElementById('filtroLoja').value='';
+  document.getElementById('filtroDataIni').value='';
+  document.getElementById('filtroDataFim').value='';
+  document.getElementById('filtroFornecedor').value='';
+  carregar();
+}
+
+async function carregar(){
+  const params = new URLSearchParams();
+  const loja = document.getElementById('filtroLoja').value;
+  const di = document.getElementById('filtroDataIni').value;
+  const df = document.getElementById('filtroDataFim').value;
+  const fn = document.getElementById('filtroFornecedor').value.trim();
+  if (loja) params.set('loja', loja);
+  if (di) params.set('dataIni', di);
+  if (df) params.set('dataFim', df);
+  if (fn) params.set('fornecedor', fn);
+
+  document.getElementById('kpis').innerHTML = '<div class="empty">Carregando...</div>';
+
+  try {
+    const r = await apiFetch('/api/dashboard/pedidos-fornecedor?'+params.toString());
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.erro || 'Erro');
+    renderKpis(data.kpis_pedidos, data.kpis_emergenciais);
+    renderLoja(data.por_loja);
+    renderMes(data.por_mes);
+    renderForn(data.por_fornecedor);
+    renderPedidos(data.lista);
+  } catch (e) {
+    document.getElementById('kpis').innerHTML = `<div class="empty" style="color:#f87171">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function renderKpis(kp, ke){
+  if (!kp) return;
+  const totalNotas = (kp.qtd||0) + (ke.qtd||0);
+  const pctEmerg = totalNotas > 0 ? ((ke.qtd||0) / totalNotas * 100).toFixed(1) : '0';
+  document.getElementById('kpis').innerHTML = `
+    <div class="kpi info"><div class="label">Pedidos</div><div class="v">${(kp.qtd||0).toLocaleString('pt-BR')}</div><div class="extra">${kp.qtd_fornecedores||0} fornecedor(es)</div></div>
+    <div class="kpi info"><div class="label">Valor Pedidos</div><div class="v">R$ ${fmtMoeda(kp.valor||0)}</div></div>
+    <div class="kpi ok"><div class="label">Validados</div><div class="v">${(kp.qtd_validados||0).toLocaleString('pt-BR')}</div><div class="extra">${(kp.qtd_aguardando||0).toLocaleString('pt-BR')} aguardando · ${(kp.qtd_rascunho||0).toLocaleString('pt-BR')} rascunho</div></div>
+    <div class="kpi violet"><div class="label">Emergenciais</div><div class="v">${(ke.qtd||0).toLocaleString('pt-BR')}</div><div class="extra">R$ ${fmtMoeda(ke.valor||0)} · ${pctEmerg}% do total</div></div>
+    <div class="kpi warn"><div class="label">Prazo médio</div><div class="v">${kp.prazo_medio||0} dias</div></div>
+  `;
+}
+
+function renderLoja(arr){
+  const t = document.getElementById('tabelaLoja');
+  if (!arr.length) { t.innerHTML='<thead><tr><th>Sem dados</th></tr></thead>'; return; }
+  const head = `<thead><tr><th class="left">Loja</th><th>Pedidos</th><th>Valor</th><th>Prazo</th></tr></thead>`;
+  const body = arr.map(r=>`
+    <tr>
+      <td class="left">${escapeHtml(r.loja_nome||'')}</td>
+      <td class="center" style="font-weight:700">${r.qtd}</td>
+      <td class="right">R$ ${fmtMoeda(r.valor)}</td>
+      <td class="right">${r.prazo_medio||0}d</td>
+    </tr>`).join('');
+  t.innerHTML = head + '<tbody>' + body + '</tbody>';
+}
+
+function renderMes(arr){
+  const t = document.getElementById('tabelaMes');
+  if (!arr.length) { t.innerHTML='<thead><tr><th>Sem dados</th></tr></thead>'; return; }
+  const head = `<thead><tr><th class="left">Mês</th><th>Pedidos</th><th>Valor</th></tr></thead>`;
+  const body = arr.map(r=>`
+    <tr>
+      <td class="left" style="font-family:monospace">${escapeHtml(r.mes||'')}</td>
+      <td class="center" style="font-weight:700">${r.qtd}</td>
+      <td class="right">R$ ${fmtMoeda(r.valor)}</td>
+    </tr>`).join('');
+  t.innerHTML = head + '<tbody>' + body + '</tbody>';
+}
+
+function renderForn(arr){
+  const t = document.getElementById('tabelaForn');
+  if (!arr.length) { t.innerHTML='<thead><tr><th>Sem dados</th></tr></thead>'; return; }
+  const head = `<thead><tr>
+    <th class="left">Fornecedor</th>
+    <th>Pedidos</th><th>Valor Pedidos</th><th>Prazo</th>
+    <th>Emergenciais</th><th>Valor Emergenc</th>
+    <th>% Emerg</th>
+  </tr></thead>`;
+  const body = arr.map(r=>{
+    const tot = (r.qtd_pedidos||0) + (r.qtd_emergenciais||0);
+    const pct = tot > 0 ? ((r.qtd_emergenciais||0) / tot * 100).toFixed(0) : '0';
+    return `<tr onclick="filtrarFornecedor('${escapeHtml(r.cnpj||r.nome||'')}')">
+      <td class="left">${escapeHtml(r.nome||'')}<div style="font-size:10px;color:#475569;font-family:monospace">${escapeHtml(r.cnpj||'')}</div></td>
+      <td class="center">${r.qtd_pedidos}</td>
+      <td class="right">R$ ${fmtMoeda(r.valor_pedidos)}</td>
+      <td class="right">${r.prazo_medio||0}d</td>
+      <td class="center ${(r.qtd_emergenciais||0)>0?'alerta':''}">${r.qtd_emergenciais}</td>
+      <td class="right">R$ ${fmtMoeda(r.valor_emergenciais)}</td>
+      <td class="center ${pct>=20?'alerta':''}">${pct}%</td>
+    </tr>`;
+  }).join('');
+  t.innerHTML = head + '<tbody>' + body + '</tbody>';
+}
+function filtrarFornecedor(s){ document.getElementById('filtroFornecedor').value=s; carregar(); }
+
+function renderPedidos(arr){
+  document.getElementById('tituloPedidos').textContent = `Pedidos (${arr.length})`;
+  const t = document.getElementById('tabelaPedidos');
+  if (!arr.length) { t.innerHTML='<thead><tr><th>Sem pedidos</th></tr></thead>'; return; }
+  const head = `<thead><tr>
+    <th class="left">Nº Pedido</th><th class="left">Fornecedor</th><th class="left">Loja</th>
+    <th>Criado</th><th>Validado</th><th>Status</th><th>Prazo</th><th>Valor</th>
+  </tr></thead>`;
+  const body = arr.map(p=>`
+    <tr onclick="abrirPedido(${p.id})">
+      <td class="left" style="font-family:monospace;color:#38bdf8;font-weight:700">${escapeHtml(p.numero_pedido||'')}</td>
+      <td class="left">${escapeHtml(p.fornecedor_nome||'')}</td>
+      <td class="left">${escapeHtml(p.loja_nome||'')}</td>
+      <td class="center">${fmtData(p.criado_em)}</td>
+      <td class="center">${fmtData(p.validado_em)}</td>
+      <td class="center"><span class="badge b-${p.status}">${STATUS_LABEL[p.status]||p.status}</span></td>
+      <td class="right">${p.condicao_pagamento||0}d</td>
+      <td class="right">R$ ${fmtMoeda(p.valor_total)}</td>
+    </tr>`).join('');
+  t.innerHTML = head + '<tbody>' + body + '</tbody>';
+}
+function abrirPedido(id){ location.href = '/pedidos-comprador?pedido='+id; }
+
+carregar();
+</script>
+</body>
+</html>

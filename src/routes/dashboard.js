@@ -651,4 +651,138 @@ router.get('/divergencias-estoque', autenticar, async (req, res) => {
   }
 });
 
+// GET /api/dashboard/pedidos-fornecedor
+// Volume e valor de pedidos por fornecedor/periodo, mais % emergenciais (notas
+// sem pedido vinculado) e prazo medio de pagamento.
+router.get('/pedidos-fornecedor', autenticar, async (req, res) => {
+  try {
+    const lojaUsr = req.usuario.loja_id;
+    const lojaParam = req.query.loja ? parseInt(req.query.loja) : null;
+    const lojaId = lojaUsr || lojaParam;
+    const dataIni = req.query.dataIni || null;
+    const dataFim = req.query.dataFim || null;
+    const fornecedor = (req.query.fornecedor || '').trim();
+
+    // pedidos: filtro por criado_em (nao data_emissao). Para emergenciais usa data_emissao da nota.
+    const condsP = [];
+    const condsN = [`n.emergencial = TRUE`];
+    const params = [];
+    if (lojaId)  { params.push(lojaId);  condsP.push(`p.loja_id = $${params.length}`); condsN.push(`n.loja_id = $${params.length}`); }
+    if (dataIni) { params.push(dataIni); condsP.push(`p.criado_em::date >= $${params.length}`); condsN.push(`n.data_emissao >= $${params.length}`); }
+    if (dataFim) { params.push(dataFim); condsP.push(`p.criado_em::date <= $${params.length}`); condsN.push(`n.data_emissao <= $${params.length}`); }
+    if (fornecedor) {
+      params.push(`%${fornecedor}%`);
+      condsP.push(`(f.razao_social ILIKE $${params.length} OR f.cnpj ILIKE $${params.length})`);
+      condsN.push(`(n.fornecedor_nome ILIKE $${params.length} OR n.fornecedor_cnpj ILIKE $${params.length})`);
+    }
+    const whereP = condsP.length ? `WHERE ${condsP.join(' AND ')}` : '';
+    const whereN = `WHERE ${condsN.join(' AND ')}`;
+
+    const [kpisPed, kpisEmerg, porFornecedor, porLoja, porMes, lista] = await Promise.all([
+      query(`
+        SELECT COUNT(*)::int AS qtd,
+               COALESCE(SUM(p.valor_total),0)::numeric AS valor,
+               COUNT(*) FILTER (WHERE p.status = 'validado')::int AS qtd_validados,
+               COUNT(*) FILTER (WHERE p.status = 'aguardando_auditoria')::int AS qtd_aguardando,
+               COUNT(*) FILTER (WHERE p.status = 'rascunho')::int AS qtd_rascunho,
+               COUNT(DISTINCT p.fornecedor_id)::int AS qtd_fornecedores,
+               COALESCE(AVG(p.condicao_pagamento) FILTER (WHERE p.condicao_pagamento > 0),0)::numeric(10,1) AS prazo_medio
+          FROM pedidos p
+          LEFT JOIN fornecedores f ON f.id = p.fornecedor_id
+          ${whereP}
+      `, params),
+      query(`
+        SELECT COUNT(*)::int AS qtd,
+               COALESCE(SUM(n.valor_total),0)::numeric AS valor
+          FROM notas_entrada n
+          ${whereN}
+      `, params),
+      query(`
+        WITH ped AS (
+          SELECT COALESCE(f.cnpj, '') AS cnpj,
+                 COALESCE(f.razao_social, '(sem nome)') AS nome,
+                 COUNT(*)::int AS qtd_pedidos,
+                 COALESCE(SUM(p.valor_total),0)::numeric AS valor_pedidos,
+                 COALESCE(AVG(p.condicao_pagamento) FILTER (WHERE p.condicao_pagamento > 0),0)::numeric(10,1) AS prazo_medio
+            FROM pedidos p
+            LEFT JOIN fornecedores f ON f.id = p.fornecedor_id
+            ${whereP}
+           GROUP BY f.cnpj, f.razao_social
+        ),
+        emerg AS (
+          SELECT COALESCE(n.fornecedor_cnpj,'') AS cnpj,
+                 COALESCE(MIN(n.fornecedor_nome),'(sem nome)') AS nome,
+                 COUNT(*)::int AS qtd_emergenciais,
+                 COALESCE(SUM(n.valor_total),0)::numeric AS valor_emergenciais
+            FROM notas_entrada n
+            ${whereN}
+           GROUP BY n.fornecedor_cnpj
+        )
+        SELECT COALESCE(p.cnpj, e.cnpj) AS cnpj,
+               COALESCE(p.nome, e.nome) AS nome,
+               COALESCE(p.qtd_pedidos,0) AS qtd_pedidos,
+               COALESCE(p.valor_pedidos,0) AS valor_pedidos,
+               COALESCE(p.prazo_medio,0) AS prazo_medio,
+               COALESCE(e.qtd_emergenciais,0) AS qtd_emergenciais,
+               COALESCE(e.valor_emergenciais,0) AS valor_emergenciais
+          FROM ped p
+          FULL OUTER JOIN emerg e ON e.cnpj = p.cnpj AND p.cnpj <> ''
+         ORDER BY (COALESCE(p.valor_pedidos,0) + COALESCE(e.valor_emergenciais,0)) DESC
+         LIMIT 50
+      `, params),
+      query(`
+        SELECT p.loja_id,
+               COALESCE(l.nome,'Sem loja') AS loja_nome,
+               COUNT(*)::int AS qtd,
+               COALESCE(SUM(p.valor_total),0)::numeric AS valor,
+               COALESCE(AVG(p.condicao_pagamento) FILTER (WHERE p.condicao_pagamento > 0),0)::numeric(10,1) AS prazo_medio
+          FROM pedidos p
+          LEFT JOIN lojas l ON l.id = p.loja_id
+          LEFT JOIN fornecedores f ON f.id = p.fornecedor_id
+          ${whereP}
+         GROUP BY p.loja_id, l.nome
+         ORDER BY p.loja_id
+      `, params),
+      query(`
+        SELECT TO_CHAR(p.criado_em, 'YYYY-MM') AS mes,
+               COUNT(*)::int AS qtd,
+               COALESCE(SUM(p.valor_total),0)::numeric AS valor
+          FROM pedidos p
+          LEFT JOIN fornecedores f ON f.id = p.fornecedor_id
+          ${whereP}
+         GROUP BY 1
+         ORDER BY 1 DESC
+         LIMIT 24
+      `, params),
+      query(`
+        SELECT p.id, p.numero_pedido, p.status, p.valor_total, p.condicao_pagamento,
+               p.criado_em, p.enviado_em, p.validado_em,
+               COALESCE(f.razao_social,'-') AS fornecedor_nome,
+               f.cnpj AS fornecedor_cnpj,
+               p.loja_id, COALESCE(l.nome,'Sem loja') AS loja_nome,
+               p.nota_id
+          FROM pedidos p
+          LEFT JOIN fornecedores f ON f.id = p.fornecedor_id
+          LEFT JOIN lojas l ON l.id = p.loja_id
+          ${whereP}
+         ORDER BY p.criado_em DESC
+         LIMIT 300
+      `, params),
+    ]);
+
+    res.json({
+      kpis_pedidos: kpisPed[0],
+      kpis_emergenciais: kpisEmerg[0],
+      por_fornecedor: porFornecedor,
+      por_loja: porLoja,
+      por_mes: porMes,
+      lista,
+      filtros: { loja: lojaId, dataIni, dataFim, fornecedor }
+    });
+  } catch (err) {
+    console.error('[dashboard/pedidos-fornecedor]', err.message);
+    res.status(500).json({ erro: err.message });
+  }
+});
+
 module.exports = router;
