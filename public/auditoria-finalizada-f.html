@@ -96,8 +96,11 @@ tbody tr:hover{background:#1a2744}
     <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <button class="btn-ghost btn-sm" onclick="rodarDeteccao(this)">⚡ Detectar agora</button>
       <button class="btn-ghost btn-sm" onclick="limparPreCutoff(this)" style="border-color:#dc2626;color:#fca5a5">🗑 Limpar lixo pré-10/05/2026</button>
-      <span class="muted" style="font-size:11px">(detector roda automaticamente 1x ao dia)</span>
+      <input id="diagNum" placeholder="Diagnosticar nº nota" style="width:160px">
+      <button class="btn-ghost btn-sm" onclick="diagnosticar()">🔍 Diagnóstico</button>
+      <span class="muted" style="font-size:11px">(detector roda 1x ao dia)</span>
     </div>
+    <pre id="diagResult" style="display:none;background:#0f172a;padding:10px;border-radius:5px;color:#86efac;font-size:11px;white-space:pre-wrap;word-break:break-all;max-height:50vh;overflow:auto;margin-top:10px"></pre>
   </div>
 
   <div class="card">
@@ -256,6 +259,18 @@ function reabrir(id) {
       <button class="btn-success btn-sm" onclick="justificar(${id})">Salvar</button>
     </div>
   `;
+}
+
+async function diagnosticar() {
+  const num = document.getElementById('diagNum').value.trim();
+  if (!num) { showMsg('Digite um número de nota', 'err'); return; }
+  const out = document.getElementById('diagResult');
+  out.style.display = 'block';
+  out.textContent = 'carregando...';
+  try {
+    const r = await api(`/api/finalizadas-f/diagnosticar/${encodeURIComponent(num)}`);
+    out.textContent = JSON.stringify(r, null, 2);
+  } catch (e) { out.textContent = 'ERRO: ' + e.message; }
 }
 
 async function limparPreCutoff(btn) {
