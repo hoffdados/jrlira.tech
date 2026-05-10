@@ -224,7 +224,7 @@ async function rodarDeteccao(btn) {
   btn.disabled = true; btn.textContent = 'Detectando...';
   try {
     const r = await api('/api/finalizadas-f/detectar', 'POST');
-    showMsg(`✅ ${r.total} nota(s) marcadas como finalizada_f`, 'ok');
+    showMsg(`✅ ${r.atualizadas} atualizadas + ${r.criadas} criadas (= ${r.total} no total)`, 'ok');
     carregarResumo();
     carregar();
   } catch (e) { showMsg(e.message, 'err'); }

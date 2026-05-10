@@ -2585,7 +2585,10 @@ initDB().then(() => {
   const detectarFf = async () => {
     try {
       const r = await finalizadasF.detectarFinalizadasF();
-      if (r.length) console.log(`[finalizadas_f] ${r.length} nota(s) marcadas como finalizada_f`);
+      const total = (r.updated?.length || 0) + (r.inserted?.length || 0);
+      if (total > 0) {
+        console.log(`[finalizadas_f] ${r.updated.length} atualizadas + ${r.inserted.length} criadas (= ${total} no total)`);
+      }
     } catch (e) { console.error('[finalizadas_f] falha:', e.message); }
   };
   setTimeout(detectarFf, 5 * 60 * 1000);

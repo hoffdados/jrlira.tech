@@ -29,9 +29,13 @@ function autenticarComQS(req, res, next) {
   } catch { res.status(401).json({ erro: 'Token invalido' }); }
 }
 
-// Detecta e marca notas como finalizada_f (chamada pelo cron e via endpoint)
+// Detecta e marca/cria notas como finalizada_f.
+// 2 cenários:
+//   A) Nota EXISTE em notas_entrada (origem=cd) mas pulou o fluxo → UPDATE pra finalizada_f
+//   B) Nota NÃO EXISTE em notas_entrada (Pentaho recebeu mas XML nunca foi importado) → INSERT como finalizada_f
 async function detectarFinalizadasF() {
-  const r = await dbQuery(`
+  // Cenário A: UPDATE
+  const updated = await dbQuery(`
     UPDATE notas_entrada
        SET status = 'finalizada_f',
            finalizada_f_em = NOW(),
@@ -49,14 +53,55 @@ async function detectarFinalizadasF() {
      )
      RETURNING id, loja_id, numero_nota, fornecedor_cnpj, fornecedor_nome
   `);
-  return r;
+
+  // Cenário B: INSERT — notas em compras_historico vindas de CDs cadastrados que nunca foram importadas
+  // Usa CNPJ dos destinos pra saber quais CNPJs são "CD origem"
+  const inserted = await dbQuery(`
+    WITH cnpjs_cd AS (
+      SELECT DISTINCT cnpj, nome FROM pedidos_distrib_destinos WHERE tipo = 'CD' AND cnpj IS NOT NULL
+    ),
+    candidatas AS (
+      SELECT c.loja_id, c.numeronfe, c.fornecedor_cnpj,
+             cd.nome AS fornecedor_nome,
+             MIN(c.data_emissao) AS data_emissao,
+             SUM(COALESCE(c.custo_total, 0)) AS valor_total
+        FROM compras_historico c
+        JOIN cnpjs_cd cd ON cd.cnpj = c.fornecedor_cnpj
+       WHERE NOT EXISTS (
+         SELECT 1 FROM notas_entrada n
+          WHERE n.loja_id = c.loja_id
+            AND n.numero_nota = c.numeronfe
+            AND COALESCE(NULLIF(n.fornecedor_cnpj,''),'') =
+                COALESCE(NULLIF(c.fornecedor_cnpj,''),'')
+       )
+       GROUP BY c.loja_id, c.numeronfe, c.fornecedor_cnpj, cd.nome
+    )
+    INSERT INTO notas_entrada (
+      loja_id, numero_nota, fornecedor_cnpj, fornecedor_nome, data_emissao, valor_total,
+      status, origem, finalizada_f_em, finalizada_f_motivo, importado_em
+    )
+    SELECT loja_id, numeronfe, fornecedor_cnpj, fornecedor_nome, data_emissao, valor_total,
+           'finalizada_f', 'cd', NOW(),
+           'NUNCA IMPORTADA — XML nao foi processado mas chegou na loja (compras_historico)',
+           NOW()
+      FROM candidatas
+    RETURNING id, loja_id, numero_nota, fornecedor_cnpj, fornecedor_nome
+  `);
+
+  return { updated, inserted };
 }
 
 // Endpoint manual pra disparar detecção
 router.post('/detectar', apenasAdmin, async (req, res) => {
   try {
-    const marcadas = await detectarFinalizadasF();
-    res.json({ ok: true, total: marcadas.length, notas: marcadas });
+    const r = await detectarFinalizadasF();
+    res.json({
+      ok: true,
+      atualizadas: r.updated.length,
+      criadas: r.inserted.length,
+      total: r.updated.length + r.inserted.length,
+      detalhes: { updated: r.updated, inserted: r.inserted },
+    });
   } catch (e) {
     console.error('[finalizadas_f detectar]', e.message);
     res.status(500).json({ erro: e.message });
