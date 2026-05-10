@@ -58,6 +58,12 @@ th.fix-desc,td.fix-desc{left:100px;width:260px;min-width:260px;text-align:left;b
 th.fix-ref,td.fix-ref{left:360px;width:110px;min-width:110px;text-align:left;border-right:1px solid #334155}
 th.fix-ult,td.fix-ult{left:470px;width:55px;min-width:55px;border-right:1px solid #334155}
 th.fix-est,td.fix-est{left:525px;width:55px;min-width:55px;border-right:2px solid #fde04766}
+.btn-dbg{background:transparent;border:1px solid #475569;color:#64748b;padding:1px 4px;border-radius:3px;font-size:9px;cursor:pointer}
+.btn-dbg:hover{background:#1e293b;color:#94a3b8}
+#dbgModal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;align-items:center;justify-content:center}
+#dbgModal.show{display:flex}
+#dbgModal .card{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:18px;max-width:80vw;max-height:80vh;overflow:auto}
+#dbgModal pre{background:#0f172a;padding:10px;border-radius:5px;color:#86efac;font-size:11px;white-space:pre-wrap;word-break:break-all}
 
 td.fix-desc,td.fix-ref{overflow:hidden;text-overflow:ellipsis}
 td.fix-cod,td.fix-rk{font-family:'Cascadia Code',Consolas,monospace;color:#7dd3fc;font-size:9px}
@@ -179,6 +185,14 @@ td.fix-ult{color:#86efac;font-size:9px}
       <a id="dlPedidos"   target="_blank">⬇ P_PEDIDOS.csv</a>
       <a id="dlItens"     target="_blank">⬇ P_PEDIDOS_ITENS.csv</a>
     </div>
+  </div>
+</div>
+
+<div id="dbgModal" onclick="if(event.target===this)fecharDbg()">
+  <div class="card">
+    <h3 style="color:#fde047;margin-bottom:10px;font-size:14px">Debug do produto</h3>
+    <pre id="dbgContent">carregando...</pre>
+    <button class="btn-ghost btn-sm" onclick="fecharDbg()" style="margin-top:10px">Fechar</button>
   </div>
 </div>
 
@@ -316,7 +330,7 @@ function renderBody() {
 
     // Fixos
     cells.push(`<td class="fixed fix-rk">${p.ranking || ''}</td>`);
-    cells.push(`<td class="fixed fix-cod">${escapeHtml(p.mat_codi)}</td>`);
+    cells.push(`<td class="fixed fix-cod"><button class="btn-dbg" onclick="debugProduto('${escapeHtml(p.mat_codi)}')" title="Debug match EAN">?</button> ${escapeHtml(p.mat_codi)}</td>`);
     cells.push(`<td class="fixed fix-desc" title="${escapeHtml(p.descricao)}">${escapeHtml(p.descricao)}</td>`);
     cells.push(`<td class="fixed fix-ref left muted" style="font-size:9px">${escapeHtml(p.referencia || '')}</td>`);
     cells.push(`<td class="fixed fix-ult">${fmtData(p.ultima_entrada)}</td>`);
@@ -427,6 +441,18 @@ async function gerarCsv(btn) {
   } catch (e) { showMsg('❌ ' + e.message, 'err'); }
   finally { btn.disabled = false; btn.textContent = 'Gerar CSVs'; }
 }
+
+async function debugProduto(matCodi) {
+  document.getElementById('dbgModal').classList.add('show');
+  document.getElementById('dbgContent').textContent = 'carregando...';
+  try {
+    const r = await api(`/api/pedidos-distribuidora/grade-debug?cd_origem=${encodeURIComponent(cdOrigemAtual)}&mat_codi=${encodeURIComponent(matCodi)}`);
+    document.getElementById('dbgContent').textContent = JSON.stringify(r, null, 2);
+  } catch (e) {
+    document.getElementById('dbgContent').textContent = 'ERRO: ' + e.message;
+  }
+}
+function fecharDbg() { document.getElementById('dbgModal').classList.remove('show'); }
 
 async function limparTudo() {
   if (!cdOrigemAtual) return;
