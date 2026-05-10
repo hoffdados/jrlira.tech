@@ -97,12 +97,19 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 1
 <div class="layout">
   <div class="sidebar">
     <h3>Notas em Auditoria</h3>
-    <div style="margin-bottom:12px">
+    <div style="margin-bottom:8px">
       <select id="fOrigem" onchange="carregarNotas()" style="width:100%;padding:7px 10px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:12px">
         <option value="">Todas (Fornecedor + Transferências)</option>
         <option value="nfe">Fornecedores</option>
         <option value="cd">Transferências CD</option>
         <option value="cd,transferencia_loja">Todas transferências</option>
+      </select>
+    </div>
+    <div style="margin-bottom:12px">
+      <select id="fStatus" onchange="carregarNotas()" style="width:100%;padding:7px 10px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:12px">
+        <option value="pendentes" selected>Pendentes (Em Auditoria)</option>
+        <option value="fechada">Fechadas</option>
+        <option value="todas">Todas (Em Auditoria + Fechadas)</option>
       </select>
     </div>
     <div id="listaNota"><p class="empty">Carregando...</p></div>
@@ -200,9 +207,14 @@ function showMsg(txt, tipo = 'ok') {
 async function carregarNotas() {
   try {
     const filtroOrigem = document.getElementById('fOrigem')?.value || '';
+    const filtroStatus = document.getElementById('fStatus')?.value || 'pendentes';
     const url = '/api/notas' + (filtroOrigem ? `?origem=${filtroOrigem}` : '');
     const notas = await fetchApi(url);
-    const auditoria = notas.filter(n => n.status === 'em_auditoria' || n.status === 'fechada');
+    const auditoria = notas.filter(n => {
+      if (filtroStatus === 'pendentes') return n.status === 'em_auditoria';
+      if (filtroStatus === 'fechada')   return n.status === 'fechada';
+      return n.status === 'em_auditoria' || n.status === 'fechada';
+    });
     const el = document.getElementById('listaNota');
     if (!auditoria.length) { el.innerHTML = '<p class="empty" style="padding:24px 0">Nenhuma nota em auditoria</p>'; return; }
     el.innerHTML = auditoria.map(n => {
