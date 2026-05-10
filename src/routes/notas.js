@@ -819,6 +819,13 @@ router.get('/', autenticar, async (req, res) => {
       conds.push(`NOT (n.origem IN ('cd','transferencia_loja') AND n.status = 'validada')`);
     }
 
+    // finalizada_f e ESCONDIDA de todos (cadastro, estoque, auditor) — só Diretor (admin)
+    // ve em /auditoria-finalizada-f via /api/finalizadas-f. Aqui na listagem geral, nunca aparece
+    // a menos que o filtro de status seja explicitamente 'finalizada_f'.
+    if (req.query.status !== 'finalizada_f') {
+      conds.push(`COALESCE(n.status,'') <> 'finalizada_f'`);
+    }
+
     const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
 
     const notas = await query(`

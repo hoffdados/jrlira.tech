@@ -22,6 +22,10 @@ const jwt = require('jsonwebtoken');
 
 const apenasAdmin = [autenticar, exigirPerfil('admin')];
 
+// Histórico anterior a esta data é considerado "lixo" (notas legadas, sem rastreabilidade no app).
+// Detector só processa notas que entraram no ERP a partir desta data.
+const DATA_CORTE_ECO = '2026-05-10';
+
 function autenticarComQS(req, res, next) {
   let token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
   if (!token && req.query.token) token = String(req.query.token);
@@ -94,11 +98,12 @@ async function detectarStatusEco() {
            finalizada_f_em = NOW(),
            finalizada_f_motivo = 'chegou no ERP mas pulou cadastro/conferencia/auditoria do app'
      WHERE chegou_no_erp_em IS NOT NULL
+       AND chegou_no_erp_em >= $1::date
        AND origem IN ('cd','transferencia_loja')
        AND status NOT IN ('fechada','validada','arquivada','cancelada','finalizada_f')
        AND COALESCE(mcp_status_cd, 'A') <> 'C'
      RETURNING id, loja_id, numero_nota, fornecedor_cnpj
-  `);
+  `, [DATA_CORTE_ECO]);
 
   // Cenário B: notas que NAO existem em notas_entrada mas chegaram no ERP via CD
   const insertedB = await dbQuery(`
@@ -113,12 +118,13 @@ async function detectarStatusEco() {
              SUM(COALESCE(c.custo_total, 0)) AS valor_total
         FROM compras_historico c
         JOIN cnpjs_cd cd ON cd.cnpj = c.fornecedor_cnpj
-       WHERE NOT EXISTS (
-         SELECT 1 FROM notas_entrada n
-          WHERE n.loja_id = c.loja_id AND n.numero_nota = c.numeronfe
-            AND COALESCE(NULLIF(n.fornecedor_cnpj,''),'') =
-                COALESCE(NULLIF(c.fornecedor_cnpj,''),'')
-       )
+       WHERE c.data_entrada >= $1::date
+         AND NOT EXISTS (
+           SELECT 1 FROM notas_entrada n
+            WHERE n.loja_id = c.loja_id AND n.numero_nota = c.numeronfe
+              AND COALESCE(NULLIF(n.fornecedor_cnpj,''),'') =
+                  COALESCE(NULLIF(c.fornecedor_cnpj,''),'')
+         )
        GROUP BY c.loja_id, c.numeronfe, c.fornecedor_cnpj, cd.nome
     )
     INSERT INTO notas_entrada (
@@ -135,7 +141,7 @@ async function detectarStatusEco() {
            data_entrada, NOW()
       FROM candidatas
     RETURNING id, loja_id, numero_nota, fornecedor_cnpj
-  `);
+  `, [DATA_CORTE_ECO]);
 
   // Cenário C: notas FECHADAS no app que NAO chegaram no ERP em >24h
   const updatedC = await dbQuery(`
@@ -146,10 +152,11 @@ async function detectarStatusEco() {
        AND origem IN ('cd','transferencia_loja')
        AND chegou_no_erp_em IS NULL
        AND importado_em < NOW() - INTERVAL '24 hours'
+       AND importado_em >= $1::date
        AND auditoria_eco_status IS NULL
        AND COALESCE(mcp_status_cd, 'A') <> 'C'
      RETURNING id, loja_id, numero_nota, fornecedor_cnpj
-  `);
+  `, [DATA_CORTE_ECO]);
 
   return {
     updated_finalizadas_eco: updatedA,
