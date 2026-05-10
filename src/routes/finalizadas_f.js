@@ -71,6 +71,9 @@ async function detectarStatusEco() {
   `);
 
   // Atualiza cache chegou_no_erp_em via compras_historico
+  // Match pra transferências CD: c.numeronfe = n.cd_mov_codi (MCP_CODI)
+  // Match pra NF-e fornecedor: c.numeronfe = n.numero_nota (já tratado em outras rotas; aqui só CD)
+  // CNPJ do fornecedor: precisa bater (loja registra CNPJ do CD na compras_historico)
   await dbQuery(`
     UPDATE notas_entrada n
        SET chegou_no_erp_em = sub.data_entrada
@@ -79,9 +82,15 @@ async function detectarStatusEco() {
           FROM notas_entrada n2
           JOIN compras_historico c
             ON c.loja_id = n2.loja_id
-           AND c.numeronfe = n2.numero_nota
            AND COALESCE(NULLIF(c.fornecedor_cnpj,''),'') =
                COALESCE(NULLIF(n2.fornecedor_cnpj,''),'')
+           AND (
+             (n2.origem = 'nfe' AND c.numeronfe = n2.numero_nota)
+             OR
+             (n2.origem IN ('cd','transferencia_loja') AND
+              REGEXP_REPLACE(c.numeronfe, '^0+', '') =
+              REGEXP_REPLACE(COALESCE(n2.cd_mov_codi, n2.numero_nota), '^0+', ''))
+           )
          WHERE n2.origem IN ('cd','transferencia_loja')
            AND n2.chegou_no_erp_em IS NULL
          GROUP BY n2.id
