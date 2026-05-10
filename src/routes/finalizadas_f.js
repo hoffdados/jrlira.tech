@@ -124,5 +124,77 @@ router.get('/resumo', apenasAdmin, async (req, res) => {
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
+// Diagnóstico de uma nota: por que não foi marcada como finalizada_f?
+router.get('/diagnosticar/:numero_nota', apenasAdmin, async (req, res) => {
+  try {
+    const num = String(req.params.numero_nota).trim();
+
+    const noNotas = await dbQuery(
+      `SELECT id, numero_nota, serie, fornecedor_cnpj, fornecedor_nome,
+              loja_id, status, origem, data_emissao, valor_total,
+              importado_em, finalizada_f_em
+         FROM notas_entrada
+        WHERE numero_nota = $1
+        ORDER BY id DESC`, [num]
+    );
+
+    const noCompras = await dbQuery(
+      `SELECT loja_id, numeronfe, fornecedor_cnpj,
+              MIN(data_emissao) AS data_emissao, MIN(data_entrada) AS data_entrada,
+              COUNT(*)::int AS itens, SUM(qtd_comprada)::float AS qtd_total
+         FROM compras_historico
+        WHERE numeronfe = $1
+        GROUP BY loja_id, numeronfe, fornecedor_cnpj
+        ORDER BY loja_id`, [num]
+    );
+
+    // Pra cada nota_entrada, simula o JOIN
+    const matches = await dbQuery(
+      `SELECT n.id AS nota_id, n.loja_id AS nota_loja, n.numero_nota, n.fornecedor_cnpj AS nota_cnpj, n.status, n.origem,
+              c.loja_id AS compra_loja, c.fornecedor_cnpj AS compra_cnpj, c.data_entrada
+         FROM notas_entrada n
+         LEFT JOIN compras_historico c
+           ON c.loja_id = n.loja_id
+          AND c.numeronfe = n.numero_nota
+          AND COALESCE(NULLIF(c.fornecedor_cnpj,''),'') =
+              COALESCE(NULLIF(n.fornecedor_cnpj,''),'')
+        WHERE n.numero_nota = $1
+        ORDER BY n.id DESC`, [num]
+    );
+
+    // Critérios atuais
+    const criterio = {
+      origem_aceitas: ['cd','transferencia_loja'],
+      status_excluidos: ['fechada','validada','arquivada','cancelada','finalizada_f'],
+    };
+
+    res.json({
+      numero_nota: num,
+      em_notas_entrada: noNotas,
+      em_compras_historico: noCompras,
+      tentativa_join: matches,
+      criterio,
+      diagnostico: noNotas.map(n => {
+        const motivos = [];
+        if (!criterio.origem_aceitas.includes(n.origem))
+          motivos.push(`origem='${n.origem}' nao esta em (${criterio.origem_aceitas.join(',')})`);
+        if (criterio.status_excluidos.includes(n.status))
+          motivos.push(`status='${n.status}' esta na lista de exclusao`);
+        const compraMatch = noCompras.find(c =>
+          c.loja_id === n.loja_id &&
+          (c.fornecedor_cnpj || '') === (n.fornecedor_cnpj || ''));
+        if (!compraMatch)
+          motivos.push(`sem match em compras_historico (loja_id=${n.loja_id}, fornecedor_cnpj=${n.fornecedor_cnpj || '(vazio)'})`);
+        return {
+          nota_id: n.id, loja_id: n.loja_id, status: n.status, origem: n.origem,
+          fornecedor_cnpj: n.fornecedor_cnpj,
+          ja_finalizada_f: !!n.finalizada_f_em,
+          motivos_pra_nao_marcar: motivos.length ? motivos : ['DEVERIA ESTAR MARCADA — bug ou cron nao rodou ainda'],
+        };
+      }),
+    });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
 router.detectarFinalizadasF = detectarFinalizadasF;
 module.exports = router;
