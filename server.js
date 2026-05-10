@@ -1942,6 +1942,14 @@ async function initDB() {
          ('3628', 'SUPERASA SANTAREM',       '07961363000728')
        ON CONFLICT (cli_codi) DO NOTHING`);
 
+    // Flag pra distinguir CDs que podem EMITIR pedido (origem) dos que só recebem (destino)
+    await runMigration(client, '20260510_destinos_pode_emitir', `
+      ALTER TABLE pedidos_distrib_destinos ADD COLUMN IF NOT EXISTS pode_emitir BOOLEAN DEFAULT FALSE;
+      UPDATE pedidos_distrib_destinos SET pode_emitir = TRUE
+        WHERE cd_codigo IN ('srv1-itautuba','srv2-asafrio','srv2-asasantarem');
+      UPDATE pedidos_distrib_destinos SET ativo = FALSE WHERE codigo = 'CD-casa-branca';
+    `);
+
     // Modelo novo (2026-05-10 tarde): destinos unificados (lojas + CDs).
     // CLI_CODI no CD origem é descoberto dinamicamente via relay (CLIENTE WHERE CLI_CGC = cnpj),
     // não precisa cadastrar 5 origens × 11 destinos manualmente.

@@ -41,13 +41,13 @@ router.get('/destinos', autenticar, async (req, res) => {
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
-// CDs origem: lista CDs cadastrados em /admin-cds que tem destino correspondente em pedidos_distrib_destinos
+// CDs origem: só os que tem pode_emitir=TRUE no destino + estão ativos em /admin-cds
 router.get('/cds-origem', adminOuCeo, async (req, res) => {
   try {
-    const cds = await listarCds(true); // só ativos
-    // Vincula com destinos pra mostrar nome amigável
+    const cds = await listarCds(true);
     const destinos = await dbQuery(
-      `SELECT cd_codigo, cnpj, nome FROM pedidos_distrib_destinos WHERE tipo='CD' AND cd_codigo IS NOT NULL`
+      `SELECT cd_codigo, cnpj, nome FROM pedidos_distrib_destinos
+        WHERE tipo='CD' AND cd_codigo IS NOT NULL AND pode_emitir = TRUE AND ativo = TRUE`
     );
     const destMap = new Map(destinos.map(d => [d.cd_codigo, d]));
     const out = cds
@@ -107,6 +107,8 @@ router.get('/grade', adminOuCeo, async (req, res) => {
     const busca = (req.query.busca || '').toString().trim().toLowerCase();
     const soPedir = req.query.so_pedir === 'true';
     const limit = Math.min(parseInt(req.query.limit) || 500, 3000);
+    // Ordenação: 'descricao' (default) | 'ultima_entrada' (MCP_DTEN desc) | 'ranking'
+    const ordem = (req.query.ordem || 'descricao').toString().trim();
 
     // 1) Destinos (todos exceto o CD origem mesmo)
     const [origemRow] = await dbQuery(
@@ -137,20 +139,34 @@ router.get('/grade', adminOuCeo, async (req, res) => {
                               WHERE q.cd_origem_codigo = $1 AND q.mat_codi = cd_m.mat_codi AND q.qtd > 0)`;
     }
     params.push(limit);
+    let orderBy = 'descricao';
+    if (ordem === 'ultima_entrada') orderBy = 'ultima_entrada DESC NULLS LAST, descricao';
+    if (ordem === 'ranking') orderBy = 'descricao'; // ranking só calcula depois, mantém alfabético no SQL
     const produtos = await dbQuery(`
+      WITH ult_compra AS (
+        SELECT i.cd_codigo, i.pro_codi, MAX(m.mcp_dten) AS ultima_entrada,
+               MAX(m.mcp_codi::text) AS ultimo_mcp_codi
+          FROM cd_itemcompra i
+          JOIN cd_movcompra  m ON m.cd_codigo = i.cd_codigo AND m.mcp_codi = i.mcp_codi AND m.mcp_tipomov = i.mcp_tipomov
+         WHERE i.cd_codigo = $1
+         GROUP BY i.cd_codigo, i.pro_codi
+      )
       SELECT cd_m.mat_codi,
              cd_m.ean_codi,
-             COALESCE(pe.descricao_atual, cd_m.mat_desc) AS descricao,
+             cd_m.mat_desc AS descricao,
              cd_m.mat_refe AS referencia,
              cd_e.est_quan AS est_dist,
              cd_c.pro_prad AS preco_admin,
-             pe.qtd_embalagem
+             pe.qtd_embalagem,
+             uc.ultima_entrada,
+             uc.ultimo_mcp_codi
         FROM cd_material cd_m
         LEFT JOIN cd_estoque   cd_e ON cd_e.cd_codigo = cd_m.cd_codigo AND cd_e.pro_codi = cd_m.mat_codi
         LEFT JOIN cd_custoprod cd_c ON cd_c.cd_codigo = cd_m.cd_codigo AND cd_c.pro_codi = cd_m.mat_codi
         LEFT JOIN produtos_embalagem pe ON pe.mat_codi = cd_m.mat_codi
+        LEFT JOIN ult_compra uc ON uc.cd_codigo = cd_m.cd_codigo AND uc.pro_codi = cd_m.mat_codi
        WHERE ${where}
-       ORDER BY descricao
+       ORDER BY ${orderBy}
        LIMIT $${params.length}
     `, params);
     if (!produtos.length) return res.json({ cd_origem: cdOrigem, destinos, produtos: [] });
