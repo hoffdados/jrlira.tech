@@ -12,9 +12,22 @@
 const express = require('express');
 const router = express.Router();
 const { query: dbQuery } = require('../db');
-const { autenticar, exigirPerfil } = require('../auth');
+const { autenticar, exigirPerfil, JWT_SECRET } = require('../auth');
+const jwt = require('jsonwebtoken');
 
 const apenasAdmin = [autenticar, exigirPerfil('admin')];
+
+// Aceita token via Authorization header OU ?token= (pra abrir url no browser)
+function autenticarComQS(req, res, next) {
+  let token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+  if (!token && req.query.token) token = String(req.query.token);
+  if (!token) return res.status(401).json({ erro: 'Token ausente' });
+  try {
+    req.usuario = jwt.verify(token, JWT_SECRET);
+    if (req.usuario.perfil !== 'admin') return res.status(403).json({ erro: 'Acesso negado' });
+    next();
+  } catch { res.status(401).json({ erro: 'Token invalido' }); }
+}
 
 // Detecta e marca notas como finalizada_f (chamada pelo cron e via endpoint)
 async function detectarFinalizadasF() {
@@ -125,7 +138,7 @@ router.get('/resumo', apenasAdmin, async (req, res) => {
 });
 
 // Diagnóstico de uma nota: por que não foi marcada como finalizada_f?
-router.get('/diagnosticar/:numero_nota', apenasAdmin, async (req, res) => {
+router.get('/diagnosticar/:numero_nota', autenticarComQS, async (req, res) => {
   try {
     const num = String(req.params.numero_nota).trim();
 
