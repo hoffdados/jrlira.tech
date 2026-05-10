@@ -443,8 +443,13 @@ async function debugProduto(matCodi) {
   document.getElementById('dbgModal').classList.add('show');
   document.getElementById('dbgContent').textContent = 'carregando...';
   try {
-    const r = await api(`/api/pedidos-distribuidora/grade-debug?cd_origem=${encodeURIComponent(cdOrigemAtual)}&mat_codi=${encodeURIComponent(matCodi)}`);
-    document.getElementById('dbgContent').textContent = JSON.stringify(r, null, 2);
+    const [r, t] = await Promise.all([
+      api(`/api/pedidos-distribuidora/grade-debug?cd_origem=${encodeURIComponent(cdOrigemAtual)}&mat_codi=${encodeURIComponent(matCodi)}`),
+      api(`/api/pedidos-distribuidora/grade-trace?cd_origem=${encodeURIComponent(cdOrigemAtual)}&mat_codi=${encodeURIComponent(matCodi)}`),
+    ]);
+    document.getElementById('dbgContent').textContent =
+      '=== GRADE-TRACE (caminho do /grade) ===\n' + JSON.stringify(t, null, 2) +
+      '\n\n=== GRADE-DEBUG (info bruta) ===\n' + JSON.stringify(r, null, 2);
   } catch (e) {
     document.getElementById('dbgContent').textContent = 'ERRO: ' + e.message;
   }

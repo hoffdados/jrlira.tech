@@ -446,6 +446,79 @@ router.delete('/qtd-tudo', adminOuCeo, async (req, res) => {
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
+// Trace — executa a MESMA logica do /grade limitada a 1 produto e retorna estados intermediarios
+router.get('/grade-trace', adminOuCeo, async (req, res) => {
+  try {
+    const cdOrigem = String(req.query.cd_origem || '').trim();
+    const matCodi  = String(req.query.mat_codi  || '').trim();
+    if (!cdOrigem || !matCodi) return res.status(400).json({ erro: 'cd_origem e mat_codi obrigatorios' });
+
+    const trace = {};
+
+    const [origemRow] = await dbQuery(`SELECT cnpj FROM pedidos_distrib_destinos WHERE cd_codigo = $1`, [cdOrigem]);
+    const cnpjOrigem = origemRow?.cnpj || '';
+    const destinos = await dbQuery(
+      `SELECT id, tipo, codigo, nome, cnpj, loja_id, cd_codigo
+         FROM pedidos_distrib_destinos
+        WHERE ativo = TRUE AND cnpj <> $1
+        ORDER BY tipo DESC, nome`, [cnpjOrigem]
+    );
+    trace.lojaIds = destinos.filter(d => d.tipo === 'LOJA' && d.loja_id).map(d => d.loja_id);
+
+    const produtos = await dbQuery(`
+      SELECT cd_m.mat_codi, cd_m.ean_codi AS ean_cd_material,
+             pe.ean_principal_cd, pe.qtd_embalagem,
+             COALESCE(
+               NULLIF(pe.ean_principal_cd,''),
+               NULLIF(cd_m.ean_codi,''),
+               (SELECT NULLIF(LTRIM(ean_codi,'0'),'') FROM cd_ean
+                 WHERE cd_codigo = cd_m.cd_codigo AND mat_codi = cd_m.mat_codi
+                 ORDER BY CASE WHEN ean_nota='S' THEN 0 ELSE 1 END, ordem LIMIT 1)
+             ) AS ean_resolvido,
+             cd_e.est_quan AS est_dist
+        FROM cd_material cd_m
+        LEFT JOIN cd_estoque cd_e ON cd_e.cd_codigo = cd_m.cd_codigo AND cd_e.pro_codi = cd_m.mat_codi
+        LEFT JOIN produtos_embalagem pe ON pe.mat_codi = cd_m.mat_codi
+       WHERE cd_m.cd_codigo = $1 AND cd_m.mat_codi = $2`,
+      [cdOrigem, matCodi]
+    );
+    trace.produtos = produtos;
+    if (!produtos.length) return res.json({ ...trace, erro: 'mat_codi nao existe nesse CD' });
+
+    const ean = produtos[0].ean_resolvido;
+    const eanNorm = String(ean || '').replace(/^0+/, '') || ean;
+    trace.ean_resolvido = ean;
+    trace.ean_normalizado = eanNorm;
+
+    if (!ean) return res.json({ ...trace, erro: 'sem ean — não dá pra fazer match' });
+
+    trace.estLojas = await dbQuery(
+      `SELECT loja_id, NULLIF(LTRIM(codigobarra,'0'),'') AS codbarra,
+              NULLIF(LTRIM(produtoprincipal,'0'),'') AS principal, estdisponivel, prsugerido
+         FROM produtos_externo
+        WHERE loja_id = ANY($1::int[])
+          AND (NULLIF(LTRIM(codigobarra,'0'),'') = $2 OR NULLIF(LTRIM(produtoprincipal,'0'),'') = $2)`,
+      [trace.lojaIds, eanNorm]
+    );
+    trace.vendas = await dbQuery(
+      `SELECT loja_id, NULLIF(LTRIM(codigobarra,'0'),'') AS codbarra,
+              SUM(qtd_vendida) AS qtd_total, MAX(data_venda) AS ultima
+         FROM vendas_historico
+        WHERE loja_id = ANY($1::int[])
+          AND NULLIF(LTRIM(codigobarra,'0'),'') = $2
+          AND data_venda >= CURRENT_DATE - INTERVAL '90 days'
+          AND COALESCE(tipo_saida,'venda')='venda'
+        GROUP BY loja_id, codbarra`,
+      [trace.lojaIds, eanNorm]
+    );
+    trace.cd_ean_count = await dbQuery(
+      `SELECT cd_codigo, COUNT(*)::int AS total FROM cd_ean GROUP BY cd_codigo ORDER BY cd_codigo`
+    );
+
+    res.json(trace);
+  } catch (e) { res.status(500).json({ erro: e.message, stack: e.stack }); }
+});
+
 // Debug — investiga match de um produto entre cd_material e dados das lojas/CDs
 // GET /grade-debug?cd_origem=X&mat_codi=Y
 router.get('/grade-debug', adminOuCeo, async (req, res) => {
