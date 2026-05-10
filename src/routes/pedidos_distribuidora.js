@@ -453,8 +453,17 @@ router.get('/grade-debug', adminOuCeo, async (req, res) => {
     );
     if (!prod) return res.json({ erro: 'mat_codi nao existe nesse CD', cd_origem: cdOrigem });
 
-    const eanRaw = prod.ean_codi;
+    // Cruzamento via produtos_embalagem (preferido pro CD ITAUTUBA)
+    const [emProdEmb] = await dbQuery(
+      `SELECT mat_codi, ean_principal_cd, ean_principal_jrlira, qtd_embalagem, descricao_atual
+         FROM produtos_embalagem WHERE mat_codi = $1`,
+      [matCodi]
+    );
+
+    // EAN usado pra match: primeiro produtos_embalagem (validado pelo time), depois cd_material
+    const eanRaw = prod.ean_codi || emProdEmb?.ean_principal_cd || null;
     const eanNorm = String(eanRaw || '').replace(/^0+/, '') || eanRaw;
+    const eanFonte = prod.ean_codi ? 'cd_material' : (emProdEmb?.ean_principal_cd ? 'produtos_embalagem' : 'nenhum');
 
     // Cd_material em outros CDs (com mesmo EAN)
     const cross = await dbQuery(
@@ -499,17 +508,10 @@ router.get('/grade-debug', adminOuCeo, async (req, res) => {
         GROUP BY cd_codigo ORDER BY cd_codigo`
     );
 
-    // Cruzamento via produtos_embalagem (preferido pro CD ITAUTUBA)
-    const [emProdEmb] = await dbQuery(
-      `SELECT mat_codi, ean_principal_cd, ean_principal_jrlira, qtd_embalagem, descricao_atual
-         FROM produtos_embalagem WHERE mat_codi = $1`,
-      [matCodi]
-    );
-
     res.json({
       produto_no_cd: prod,
       em_produtos_embalagem: emProdEmb || null,
-      ean_raw: eanRaw, ean_normalizado: eanNorm,
+      ean_raw: eanRaw, ean_normalizado: eanNorm, ean_fonte: eanFonte,
       em_outros_cds: cross,
       em_lojas: externos,
       vendas_90d_por_loja: vendas,
