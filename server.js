@@ -45,6 +45,7 @@ app.use('/api/sync-status', require('./src/routes/sync_status'));
 app.use('/api/notificacoes', require('./src/routes/notificacoes'));
 app.use('/api/dashboard', require('./src/routes/dashboard'));
 app.use('/api/precos-otimizados', require('./src/routes/precos_otimizados'));
+app.use('/api/admin/cds', require('./src/routes/cds'));
 
 // ── PÁGINAS ───────────────────────────────────────────────────────
 app.get('/favicon.ico', (req, res) => res.redirect(301, '/favicon.svg'));
@@ -74,6 +75,7 @@ app.get('/embalagens-fornecedor', (req, res) => res.sendFile(path.join(__dirname
 app.get('/precos-otimizados', (req, res) => res.sendFile(path.join(__dirname, 'public/precos-otimizados.html')));
 app.get('/precos-otimizados-pendentes', (req, res) => res.sendFile(path.join(__dirname, 'public/precos-otimizados-pendentes.html')));
 app.get('/precos-otimizados-status', (req, res) => res.sendFile(path.join(__dirname, 'public/precos-otimizados-status.html')));
+app.get('/admin-cds', (req, res) => res.sendFile(path.join(__dirname, 'public/admin-cds.html')));
 app.get('/acordo-extrato', (req, res) => res.sendFile(path.join(__dirname, 'public/acordo-extrato.html')));
 app.get('/auditagem-divergencias', (req, res) => res.sendFile(path.join(__dirname, 'public/auditagem-divergencias.html')));
 app.get('/validades-em-risco', (req, res) => res.sendFile(path.join(__dirname, 'public/validades-em-risco.html')));
@@ -1856,6 +1858,21 @@ async function initDB() {
          WHERE aplicado_em IS NULL`);
     await runMigration(client, '20260509_rh_usuarios_telefone',
       `ALTER TABLE rh_usuarios ADD COLUMN IF NOT EXISTS telefone VARCHAR(20)`);
+
+    // Multi-CD — fonte de verdade dos relays UltraSyst dos centros de distribuição
+    await runMigration(client, '20260510_cds',
+      `CREATE TABLE IF NOT EXISTS cds (
+         id SERIAL PRIMARY KEY,
+         codigo VARCHAR(20) UNIQUE NOT NULL,
+         nome VARCHAR(120) NOT NULL,
+         url TEXT NOT NULL,
+         token TEXT NOT NULL,
+         emp_codi VARCHAR(10) DEFAULT '001',
+         loc_codi VARCHAR(10) DEFAULT '001',
+         ativo BOOLEAN DEFAULT TRUE,
+         criado_em TIMESTAMPTZ DEFAULT NOW(),
+         atualizado_em TIMESTAMPTZ DEFAULT NOW()
+       )`);
 
     console.log('[DB] Tabelas inicializadas');
   } finally {

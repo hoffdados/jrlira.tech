@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CDs — Admin</title>
+<link rel="stylesheet" href="/shared.css">
+<script src="/shared.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+nav{background:#1e293b;padding:12px 20px;display:flex;align-items:center;gap:14px;border-bottom:1px solid #334155}
+.brand{font-family:'Segoe UI Black','Segoe UI',sans-serif;font-weight:900;font-size:18px;color:#38bdf8}
+.btn-nav{background:#0ea5e9;color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:12px;cursor:pointer;text-decoration:none}
+.main{padding:20px;max-width:1200px;margin:0 auto}
+h1{font-size:18px;color:#e2e8f0;margin-bottom:14px}
+
+.card{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:14px;margin-bottom:14px}
+.card h3{font-size:13px;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px}
+
+.form{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.form .full{grid-column:1/-1}
+.form label{font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;display:block}
+input,select{width:100%;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;padding:7px 10px;font-size:13px}
+input:focus,select:focus{outline:none;border-color:#38bdf8}
+button{cursor:pointer;border:none;border-radius:6px;font-size:12px;padding:7px 14px;font-weight:600}
+.btn-primary{background:#0ea5e9;color:#fff}.btn-primary:hover{background:#0284c7}
+.btn-ghost{background:#1e293b;color:#94a3b8;border:1px solid #334155}.btn-ghost:hover{background:#273549}
+.btn-danger{background:#dc2626;color:#fff}.btn-danger:hover{background:#b91c1c}
+.btn-sm{padding:4px 10px;font-size:11px}
+
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead th{text-align:left;padding:8px 10px;color:#64748b;text-transform:uppercase;letter-spacing:.04em;font-size:10px;border-bottom:1px solid #334155;background:#0f172a}
+tbody td{padding:8px 10px;border-bottom:1px solid #1a2744;vertical-align:middle}
+tbody tr:hover{background:#1a2744}
+.code{font-family:'Cascadia Code',Consolas,monospace;color:#7dd3fc;font-size:11px}
+.muted{color:#64748b;font-size:11px}
+.ok{color:#4ade80}
+.err{color:#f87171}
+.tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;text-transform:uppercase}
+.tag-on{background:#14532d;color:#4ade80}
+.tag-off{background:#451a03;color:#fb923c}
+
+.health-result{margin-top:10px;font-size:11px;font-family:'Cascadia Code',Consolas,monospace;background:#0f172a;padding:10px;border-radius:6px;max-height:300px;overflow:auto;white-space:pre-wrap}
+.row-actions{display:flex;gap:6px;flex-wrap:wrap}
+
+.msg{padding:10px 14px;border-radius:6px;margin-bottom:14px;font-size:13px;display:none}
+.msg.ok{background:#14532d44;color:#4ade80;border:1px solid #14532d;display:block}
+.msg.err{background:#7f1d1d44;color:#f87171;border:1px solid #7f1d1d;display:block}
+</style>
+</head>
+<body>
+
+<nav>
+  <a href="/" class="brand">JR Lira Tech</a>
+  <span style="color:#64748b;font-size:12px">› CDs (Admin)</span>
+  <span style="margin-left:auto;color:#475569;font-size:12px" id="nomeUsuario"></span>
+  <a href="/" class="btn-nav">Voltar</a>
+</nav>
+
+<div class="main">
+  <h1>Centros de Distribuição</h1>
+  <div id="msg" class="msg"></div>
+
+  <div class="card">
+    <h3>Cadastrar novo CD</h3>
+    <div class="form">
+      <div>
+        <label>Código (slug)</label>
+        <input id="nCodigo" placeholder="vca, brasilia, ...">
+      </div>
+      <div>
+        <label>Nome</label>
+        <input id="nNome" placeholder="VCA Lira / Atacadão Asa Branca">
+      </div>
+      <div>
+        <label>EMP_CODI</label>
+        <input id="nEmp" placeholder="001" value="001">
+      </div>
+      <div>
+        <label>LOC_CODI</label>
+        <input id="nLoc" placeholder="001" value="001">
+      </div>
+      <div class="full">
+        <label>URL do relay (sem trailing slash)</label>
+        <input id="nUrl" placeholder="https://relay-cd2.cloudflare-tunnel.example/...">
+      </div>
+      <div class="full">
+        <label>Token (Bearer)</label>
+        <input id="nToken" placeholder="••• cole aqui ••• (não fica visível depois)">
+      </div>
+      <div class="full" style="text-align:right">
+        <button class="btn-primary" onclick="criarCd(this)">Cadastrar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>CDs cadastrados</h3>
+    <table id="tab">
+      <thead>
+        <tr>
+          <th>Código</th>
+          <th>Nome</th>
+          <th>URL</th>
+          <th>EMP/LOC</th>
+          <th>Token</th>
+          <th>Status</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"><tr><td colspan="7" class="muted">Carregando...</td></tr></tbody>
+    </table>
+    <div id="testResult"></div>
+  </div>
+</div>
+
+<script>
+const token = () => localStorage.getItem('jrlira_token');
+(function(){ const p = localStorage.getItem('jrlira_perfil'); if (!token() || p !== 'admin') location.href = '/'; })();
+document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
+
+function showMsg(txt, tipo = 'ok') {
+  const el = document.getElementById('msg');
+  el.className = 'msg ' + tipo;
+  el.textContent = txt;
+  setTimeout(() => { el.className = 'msg'; el.textContent = ''; }, 4000);
+}
+
+async function api(path, method = 'GET', body) {
+  const r = await fetch(path, {
+    method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.erro || `HTTP ${r.status}`);
+  return data;
+}
+
+async function carregar() {
+  try {
+    const cds = await api('/api/admin/cds');
+    const tb = document.getElementById('tbody');
+    if (!cds.length) {
+      tb.innerHTML = '<tr><td colspan="7" class="muted">Nenhum CD cadastrado ainda.</td></tr>';
+      return;
+    }
+    tb.innerHTML = cds.map(c => `
+      <tr data-id="${c.id}">
+        <td class="code">${escapeHtml(c.codigo)}</td>
+        <td>${escapeHtml(c.nome)}</td>
+        <td class="muted" style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(c.url)}">${escapeHtml(c.url)}</td>
+        <td class="code">${c.emp_codi}/${c.loc_codi}</td>
+        <td class="muted code">${c.tem_token ? c.token : '<span class="err">vazio</span>'}</td>
+        <td><span class="tag ${c.ativo ? 'tag-on' : 'tag-off'}">${c.ativo ? 'Ativo' : 'Inativo'}</span></td>
+        <td>
+          <div class="row-actions">
+            <button class="btn-sm btn-primary" onclick="testHealth('${escapeHtml(c.codigo)}')">Health</button>
+            <button class="btn-sm btn-ghost" onclick="testSample('${escapeHtml(c.codigo)}')">Amostra</button>
+            <button class="btn-sm btn-ghost" onclick="toggleAtivo(${c.id}, ${c.ativo})">${c.ativo ? 'Desativar' : 'Ativar'}</button>
+            <button class="btn-sm btn-ghost" onclick="editar(${c.id})">Editar</button>
+            <button class="btn-sm btn-danger" onclick="remover(${c.id}, '${escapeHtml(c.codigo)}')">Excluir</button>
+          </div>
+        </td>
+      </tr>
+    `).join('');
+  } catch (e) { showMsg(e.message, 'err'); }
+}
+
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+async function criarCd(btn) {
+  btn.disabled = true;
+  try {
+    const body = {
+      codigo: document.getElementById('nCodigo').value.trim().toLowerCase(),
+      nome:   document.getElementById('nNome').value.trim(),
+      url:    document.getElementById('nUrl').value.trim(),
+      token:  document.getElementById('nToken').value.trim(),
+      emp_codi: document.getElementById('nEmp').value.trim() || '001',
+      loc_codi: document.getElementById('nLoc').value.trim() || '001',
+    };
+    if (!body.codigo || !body.nome || !body.url || !body.token) {
+      showMsg('Preencha código, nome, URL e token', 'err'); return;
+    }
+    await api('/api/admin/cds', 'POST', body);
+    showMsg(`CD "${body.codigo}" cadastrado`, 'ok');
+    ['nCodigo','nNome','nUrl','nToken'].forEach(id => document.getElementById(id).value = '');
+    carregar();
+  } catch (e) { showMsg(e.message, 'err'); }
+  finally { btn.disabled = false; }
+}
+
+async function testHealth(codigo) {
+  const out = document.getElementById('testResult');
+  out.innerHTML = `<div class="card"><h3>Health: ${escapeHtml(codigo)}</h3><div class="muted">testando...</div></div>`;
+  try {
+    const r = await api(`/api/admin/cds/${encodeURIComponent(codigo)}/health`);
+    out.innerHTML = `<div class="card">
+      <h3>Health: ${escapeHtml(codigo)}</h3>
+      <div class="${r.ok ? 'ok' : 'err'}" style="margin-bottom:8px;font-weight:700">
+        ${r.ok ? `OK em ${r.ms}ms` : `FALHA: ${escapeHtml(r.erro)}`}
+      </div>
+      <pre class="health-result">${escapeHtml(JSON.stringify(r, null, 2))}</pre>
+    </div>`;
+  } catch (e) { out.innerHTML = `<div class="card"><div class="err">${escapeHtml(e.message)}</div></div>`; }
+}
+
+async function testSample(codigo) {
+  const tabela = prompt('Tabela pra amostrar:', 'MATERIAL');
+  if (!tabela) return;
+  const out = document.getElementById('testResult');
+  out.innerHTML = `<div class="card"><h3>Amostra: ${escapeHtml(codigo)} / ${escapeHtml(tabela)}</h3><div class="muted">consultando...</div></div>`;
+  try {
+    const r = await api(`/api/admin/cds/${encodeURIComponent(codigo)}/sample?tabela=${encodeURIComponent(tabela)}`);
+    out.innerHTML = `<div class="card">
+      <h3>Amostra: ${escapeHtml(codigo)} / ${escapeHtml(tabela)}</h3>
+      <div class="${r.ok ? 'ok' : 'err'}" style="margin-bottom:8px;font-weight:700">
+        ${r.ok ? `OK em ${r.ms}ms — total: ${r.total}` : `FALHA: ${escapeHtml(r.erro)}`}
+      </div>
+      <pre class="health-result">${escapeHtml(JSON.stringify(r, null, 2))}</pre>
+    </div>`;
+  } catch (e) { out.innerHTML = `<div class="card"><div class="err">${escapeHtml(e.message)}</div></div>`; }
+}
+
+async function toggleAtivo(id, ativo) {
+  try { await api(`/api/admin/cds/${id}`, 'PATCH', { ativo: !ativo }); carregar(); }
+  catch (e) { showMsg(e.message, 'err'); }
+}
+
+async function editar(id) {
+  const novoNome  = prompt('Novo nome (deixe vazio pra manter):');
+  const novaUrl   = prompt('Nova URL (deixe vazio pra manter):');
+  const novoToken = prompt('Novo token (deixe vazio pra manter):');
+  const body = {};
+  if (novoNome)  body.nome = novoNome;
+  if (novaUrl)   body.url = novaUrl;
+  if (novoToken) body.token = novoToken;
+  if (!Object.keys(body).length) return;
+  try { await api(`/api/admin/cds/${id}`, 'PATCH', body); showMsg('Atualizado', 'ok'); carregar(); }
+  catch (e) { showMsg(e.message, 'err'); }
+}
+
+async function remover(id, codigo) {
+  if (!confirm(`Excluir CD "${codigo}"? Essa ação não pode ser desfeita.`)) return;
+  try { await api(`/api/admin/cds/${id}`, 'DELETE'); showMsg('CD removido', 'ok'); carregar(); }
+  catch (e) { showMsg(e.message, 'err'); }
+}
+
+carregar();
+</script>
+</body>
+</html>
