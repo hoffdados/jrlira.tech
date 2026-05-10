@@ -46,6 +46,7 @@ app.use('/api/notificacoes', require('./src/routes/notificacoes'));
 app.use('/api/dashboard', require('./src/routes/dashboard'));
 app.use('/api/precos-otimizados', require('./src/routes/precos_otimizados'));
 app.use('/api/admin/cds', require('./src/routes/cds'));
+app.use('/api/pedidos-distribuidora', require('./src/routes/pedidos_distribuidora'));
 
 // ── PÁGINAS ───────────────────────────────────────────────────────
 app.get('/favicon.ico', (req, res) => res.redirect(301, '/favicon.svg'));
@@ -76,6 +77,7 @@ app.get('/precos-otimizados', (req, res) => res.sendFile(path.join(__dirname, 'p
 app.get('/precos-otimizados-pendentes', (req, res) => res.sendFile(path.join(__dirname, 'public/precos-otimizados-pendentes.html')));
 app.get('/precos-otimizados-status', (req, res) => res.sendFile(path.join(__dirname, 'public/precos-otimizados-status.html')));
 app.get('/admin-cds', (req, res) => res.sendFile(path.join(__dirname, 'public/admin-cds.html')));
+app.get('/pedidos-distribuidora', (req, res) => res.sendFile(path.join(__dirname, 'public/pedidos-distribuidora.html')));
 app.get('/acordo-extrato', (req, res) => res.sendFile(path.join(__dirname, 'public/acordo-extrato.html')));
 app.get('/auditagem-divergencias', (req, res) => res.sendFile(path.join(__dirname, 'public/auditagem-divergencias.html')));
 app.get('/validades-em-risco', (req, res) => res.sendFile(path.join(__dirname, 'public/validades-em-risco.html')));
@@ -1876,6 +1878,36 @@ async function initDB() {
     // Multi-banco no mesmo relay: 1 entrada por (servidor × banco). Repete URL+token, varia banco.
     await runMigration(client, '20260510_cds_banco',
       `ALTER TABLE cds ADD COLUMN IF NOT EXISTS banco VARCHAR(40)`);
+
+    // Pedidos pra Distribuidora — mapeamento loja_id → cli_codi no UltraSyst do CD
+    await runMigration(client, '20260510_pedidos_distrib_lojas',
+      `CREATE TABLE IF NOT EXISTS pedidos_distrib_lojas_clientes (
+         loja_id INTEGER PRIMARY KEY,
+         cli_codi VARCHAR(20) NOT NULL,
+         cli_nome VARCHAR(120),
+         cli_cpf VARCHAR(20),
+         atualizado_em TIMESTAMPTZ DEFAULT NOW()
+       )`);
+
+    // Histórico dos pedidos emitidos pelo app (espelho local pra rastreabilidade)
+    await runMigration(client, '20260510_pedidos_distrib_hist',
+      `CREATE TABLE IF NOT EXISTS pedidos_distrib_historico (
+         id SERIAL PRIMARY KEY,
+         cod_pedido INTEGER NOT NULL,
+         loja_id_destino INTEGER NOT NULL,
+         emitido_por VARCHAR(120) NOT NULL,
+         emitido_em TIMESTAMPTZ DEFAULT NOW(),
+         valor_total NUMERIC(14,2) NOT NULL,
+         total_itens INTEGER NOT NULL,
+         observacao TEXT,
+         payload_pedido JSONB,
+         payload_itens JSONB,
+         status VARCHAR(20) DEFAULT 'enviado',
+         erro_msg TEXT
+       )`);
+    await runMigration(client, '20260510_idx_pedidos_distrib_hist',
+      `CREATE INDEX IF NOT EXISTS idx_pedidos_distrib_hist_data
+         ON pedidos_distrib_historico (emitido_em DESC)`);
 
     console.log('[DB] Tabelas inicializadas');
   } finally {
