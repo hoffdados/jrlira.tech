@@ -1,24 +1,21 @@
 // Pedidos pra Distribuidora — Diretor/CEO emite pedido que vira CSV pro importador do UltraSyst.
 //
-// Estratégia A (CSV):
-// 1. Operador escolhe loja(s) destino + busca produtos + define qtd
-// 2. Backend gera 2 CSVs (P_PEDIDOS.csv + P_PEDIDOS_ITENS.csv) no formato oficial
-// 3. Salva em pedidos_distrib_geracoes pra histórico/rastreabilidade
-// 4. Operador baixa os 2 arquivos e cola na pasta de importação do CD
-//
-// Formato dos CSVs (do exemplo 06/06/2025):
-// - Separador: ';'  ·  Decimal: '.'
-// - Data: 'YYYY-MM-DD HH:MM:SS.000'  ·  Hora: 'HH:MM'
-// - NOME_CLIENTE com padding de espaços até 60 chars
+// Modelo:
+// - 6 LOJAS (SUPERASA) recebem; 5 CDs (ASA BRANCA, ASA FRIOS, CASA BRANCA) emitem e podem receber entre si.
+// - Operador escolhe o CD ORIGEM (de onde sai a mercadoria) + destinos (lojas e/ou outros CDs).
+// - CLI_CODI de cada destino é descoberto via relay do CD origem (CLIENTE WHERE CLI_CGC = cnpj).
+// - Backend gera 2 CSVs (P_PEDIDOS.csv + P_PEDIDOS_ITENS.csv) no formato oficial.
+// - Operador baixa e cola na pasta de importação do UltraSyst do CD origem.
 
 const express = require('express');
 const router = express.Router();
 const { query: dbQuery } = require('../db');
 const { autenticar, exigirPerfil } = require('../auth');
+const { listarCds, clientePorCodigo } = require('../cds');
 
 const adminOuCeo = [autenticar, exigirPerfil('admin', 'ceo')];
 
-// Configuração padrão (do CSV de exemplo)
+// Defaults do CSV de exemplo
 const EMPRESA_PADRAO        = '1';
 const LOCALIZACAO_PADRAO    = '1';
 const VEN_CODI_PADRAO       = '19';   // IMPORTADOR
@@ -26,67 +23,76 @@ const COD_CONDICAO_PADRAO   = '2';
 const COD_PAGAMENTO_PADRAO  = '9';
 const COD_TIPOVENDA_PADRAO  = '12';
 const COD_TABELA_PADRAO     = '1';
-const TIPO_CALCULO_PADRAO   = 'E';    // E=embalagem
+const TIPO_CALCULO_PADRAO   = 'E';
 const NOME_EMBALAGEM_PADRAO = 'EMB';
 const UNIDADE_PADRAO        = 'CX';
 
-// ── Lojas (mapeamento loja_id → cli_codi) ──
+// ── Destinos (lojas + CDs) ──
 
-router.get('/lojas', autenticar, async (req, res) => {
+router.get('/destinos', autenticar, async (req, res) => {
   try {
     const rows = await dbQuery(`
-      SELECT plc.loja_id, plc.cli_codi, plc.cli_nome, plc.cli_cpf, l.nome AS loja_nome
-        FROM pedidos_distrib_lojas_clientes plc
-        LEFT JOIN lojas l ON l.id = plc.loja_id
-       ORDER BY plc.loja_id
+      SELECT id, tipo, codigo, nome, cnpj, loja_id, cd_codigo, ativo
+        FROM pedidos_distrib_destinos
+       WHERE ativo = TRUE
+       ORDER BY tipo, nome
     `);
     res.json(rows);
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
-router.put('/lojas/:loja_id', adminOuCeo, async (req, res) => {
+// CDs origem: lista CDs cadastrados em /admin-cds que tem destino correspondente em pedidos_distrib_destinos
+router.get('/cds-origem', adminOuCeo, async (req, res) => {
   try {
-    const lojaId = parseInt(req.params.loja_id);
-    const { cli_codi, cli_nome, cli_cpf } = req.body || {};
-    if (!cli_codi) return res.status(400).json({ erro: 'cli_codi obrigatorio' });
-    await dbQuery(
-      `INSERT INTO pedidos_distrib_lojas_clientes (loja_id, cli_codi, cli_nome, cli_cpf, atualizado_em)
-       VALUES ($1, $2, $3, $4, NOW())
-       ON CONFLICT (loja_id) DO UPDATE SET
-         cli_codi = EXCLUDED.cli_codi,
-         cli_nome = EXCLUDED.cli_nome,
-         cli_cpf  = EXCLUDED.cli_cpf,
-         atualizado_em = NOW()`,
-      [lojaId, String(cli_codi).trim(), cli_nome?.trim() || null, cli_cpf?.trim() || null]
+    const cds = await listarCds(true); // só ativos
+    // Vincula com destinos pra mostrar nome amigável
+    const destinos = await dbQuery(
+      `SELECT cd_codigo, cnpj, nome FROM pedidos_distrib_destinos WHERE tipo='CD' AND cd_codigo IS NOT NULL`
     );
-    res.json({ ok: true });
+    const destMap = new Map(destinos.map(d => [d.cd_codigo, d]));
+    const out = cds
+      .filter(c => destMap.has(c.codigo))
+      .map(c => ({
+        codigo: c.codigo,
+        nome: destMap.get(c.codigo).nome,
+        cnpj: destMap.get(c.codigo).cnpj,
+        banco: c.banco,
+        url: c.url,
+      }));
+    res.json(out);
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
-router.delete('/lojas/:loja_id', adminOuCeo, async (req, res) => {
+// Diagnóstico: dado um CD origem, busca CLI_CODI de cada destino via relay
+router.get('/cli-codi-lookup', adminOuCeo, async (req, res) => {
   try {
-    await dbQuery(`DELETE FROM pedidos_distrib_lojas_clientes WHERE loja_id = $1`, [parseInt(req.params.loja_id)]);
-    res.json({ ok: true });
+    const cdOrigem = String(req.query.cd_origem || '').trim();
+    if (!cdOrigem) return res.status(400).json({ erro: 'cd_origem obrigatorio' });
+    const destinos = await dbQuery(`SELECT id, tipo, codigo, nome, cnpj FROM pedidos_distrib_destinos WHERE ativo=TRUE`);
+    const cli = await clientePorCodigo(cdOrigem);
+    const result = [];
+    for (const d of destinos) {
+      try {
+        const r = await cli.query(
+          `SELECT TOP 1 CLI_CODI, CLI_RAZS, CLI_CGC FROM CLIENTE WITH (NOLOCK) WHERE REPLACE(REPLACE(REPLACE(CLI_CGC,'.',''),'/',''),'-','') = '${d.cnpj}'`
+        );
+        const row = r.rows?.[0];
+        result.push({
+          destino_id: d.id,
+          tipo: d.tipo, nome: d.nome, cnpj: d.cnpj,
+          cli_codi: row?.CLI_CODI || null,
+          cli_razs: row?.CLI_RAZS?.trim() || null,
+          ok: !!row,
+        });
+      } catch (e) {
+        result.push({ destino_id: d.id, tipo: d.tipo, nome: d.nome, cnpj: d.cnpj, ok: false, erro: e.message });
+      }
+    }
+    res.json({ cd_origem: cdOrigem, destinos: result });
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
-// Lista clientes do CD pré-cadastrados (pra associar com loja_id)
-router.get('/clientes-cd', adminOuCeo, async (req, res) => {
-  try {
-    const rows = await dbQuery(`SELECT cli_codi, cli_nome, cli_cpf FROM pedidos_distrib_clientes_cd ORDER BY cli_nome`);
-    res.json(rows);
-  } catch (e) { res.status(500).json({ erro: e.message }); }
-});
-
-// Lojas do JR Lira (pra UI escolher)
-router.get('/lojas-disponiveis', adminOuCeo, async (req, res) => {
-  try {
-    const rows = await dbQuery(`SELECT id, nome FROM lojas ORDER BY id`);
-    res.json(rows);
-  } catch (e) { res.status(500).json({ erro: e.message }); }
-});
-
-// ── Produtos ──
+// ── Catálogo de produtos (do CD legado já sincronizado) ──
 
 router.get('/produtos', adminOuCeo, async (req, res) => {
   try {
@@ -101,15 +107,12 @@ router.get('/produtos', adminOuCeo, async (req, res) => {
     }
     params.push(limit);
     const rows = await dbQuery(`
-      SELECT cd_m.mat_codi,
-             cd_m.mat_desc,
-             cd_m.mat_refe,
-             cd_m.ean_codi,
-             cd_c.pro_prad                AS preco_admin,
-             cd_c.pro_prcr                AS preco_compra,
-             cd_e.est_quan                AS estoque_cd,
+      SELECT cd_m.mat_codi, cd_m.mat_desc, cd_m.mat_refe, cd_m.ean_codi,
+             cd_c.pro_prad   AS preco_admin,
+             cd_c.pro_prcr   AS preco_compra,
+             cd_e.est_quan   AS estoque_cd,
              pe.qtd_embalagem,
-             pe.descricao_atual           AS desc_local
+             pe.descricao_atual AS desc_local
         FROM cd_material cd_m
         LEFT JOIN cd_custoprod cd_c ON cd_c.pro_codi = cd_m.mat_codi
         LEFT JOIN cd_estoque   cd_e ON cd_e.pro_codi = cd_m.mat_codi
@@ -127,13 +130,8 @@ router.get('/produtos', adminOuCeo, async (req, res) => {
 
 // ── Helpers de CSV ──
 
-function padNomeCliente(nome) {
-  // No exemplo o NOME_CLIENTE tem padding de espaços até 60 chars
-  return String(nome || '').padEnd(60, ' ').slice(0, 60);
-}
-
+function padNomeCliente(nome) { return String(nome || '').padEnd(60, ' ').slice(0, 60); }
 function fmtData(d) {
-  // 'YYYY-MM-DD HH:MM:SS.000'
   const pad = n => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.000`;
 }
@@ -141,9 +139,7 @@ function fmtHora(d) {
   const pad = n => String(n).padStart(2, '0');
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
-function fmtNum(n, casas = 2) {
-  return Number(n || 0).toFixed(casas);
-}
+function fmtNum(n, casas = 2) { return Number(n || 0).toFixed(casas); }
 
 const HEADER_PEDIDOS = 'COD_PEDIDO;EMPRESA;LOCALIZACAO;COD_VENDEDOR;COD_CLIENTE;COD_CLIENTE_CADASTRO;COD_CONDICAO;COD_PAGAMENTO;COD_TIPOVENDA;COD_TABELA;DATA_EMISSAO;VALOR_PEDIDO;OBSERVACAO;RETORNO;SIT_RETORNO;NUMPEDIDO;HORA_EMISSAO;COD_MOTIVO;ID;LATITUDE;LONGITUDE;CPF_CNPJ;NOME_CLIENTE';
 const HEADER_ITENS   = 'COD_PEDIDO;COD_VENDEDOR;COD_PRODUTO;UNIDADE;QUANTIDADE;VALOR;DESCONTO_UNI;DESCONTO_PER;VALOR_TABELA;TIPO_CALCULO;NOME_EMBALAGEM;QTD_EMBALAGEM;ID';
@@ -151,53 +147,98 @@ const HEADER_ITENS   = 'COD_PEDIDO;COD_VENDEDOR;COD_PRODUTO;UNIDADE;QUANTIDADE;V
 // ── Geração de CSV ──
 //
 // Body: {
+//   cd_origem_codigo: "srv1-itautuba",
 //   observacao?: string,
-//   lojas: [
-//     { loja_id, itens: [{ mat_codi, quantidade, valor?, qtd_embalagem? }] }
-//   ]
+//   destinos: [{ destino_id, qtd_unica }],
+//   itens:    [{ mat_codi, valor?, qtd_embalagem? }]
 // }
-//
-// Cada loja vira 1 pedido (1 linha no P_PEDIDOS.csv) com seus itens (N linhas em P_PEDIDOS_ITENS.csv).
+// Cesta única replicada pra cada destino (qtd_unica multiplica todas as quantidades).
 router.post('/', adminOuCeo, async (req, res) => {
   try {
-    const { observacao, lojas } = req.body || {};
-    if (!Array.isArray(lojas) || !lojas.length) return res.status(400).json({ erro: 'pedido sem lojas' });
+    const { cd_origem_codigo, observacao, destinos, itens } = req.body || {};
+    if (!cd_origem_codigo) return res.status(400).json({ erro: 'cd_origem_codigo obrigatorio' });
+    if (!Array.isArray(destinos) || !destinos.length) return res.status(400).json({ erro: 'destinos vazio' });
+    if (!Array.isArray(itens) || !itens.length) return res.status(400).json({ erro: 'itens vazio' });
     const por = req.usuario.email || req.usuario.usuario || req.usuario.nome || `id:${req.usuario.id}`;
 
-    // Lookup de lojas → cli_codi
-    const lojaIds = lojas.map(l => parseInt(l.loja_id)).filter(Boolean);
-    if (!lojaIds.length) return res.status(400).json({ erro: 'lojas sem loja_id' });
-    const cliRows = await dbQuery(
-      `SELECT loja_id, cli_codi, cli_nome, cli_cpf
-         FROM pedidos_distrib_lojas_clientes
-        WHERE loja_id = ANY($1::int[])`,
-      [lojaIds]
+    // 1) Resolve dados do CD origem (pra excluir do destino e usar relay)
+    const [cdOrigem] = await dbQuery(
+      `SELECT codigo, nome, cnpj FROM pedidos_distrib_destinos WHERE tipo='CD' AND cd_codigo = $1`,
+      [cd_origem_codigo]
     );
-    const cliMap = new Map(cliRows.map(r => [r.loja_id, r]));
-    for (const l of lojaIds) {
-      if (!cliMap.has(l)) return res.status(400).json({ erro: `loja_id ${l} sem cli_codi cadastrado em /admin-pedidos-distribuidora` });
+    if (!cdOrigem) return res.status(400).json({ erro: `CD origem "${cd_origem_codigo}" nao cadastrado em destinos` });
+
+    // 2) Carrega dados dos destinos
+    const destIds = destinos.map(d => parseInt(d.destino_id)).filter(Boolean);
+    if (!destIds.length) return res.status(400).json({ erro: 'destinos sem destino_id' });
+    const destRows = await dbQuery(
+      `SELECT id, tipo, codigo, nome, cnpj, loja_id FROM pedidos_distrib_destinos
+        WHERE id = ANY($1::int[]) AND ativo = TRUE`,
+      [destIds]
+    );
+    const destMap = new Map(destRows.map(d => [d.id, d]));
+    for (const d of destinos) {
+      const id = parseInt(d.destino_id);
+      if (!destMap.has(id)) return res.status(400).json({ erro: `destino_id ${id} nao encontrado/ativo` });
+      // Não permite enviar pro próprio CD origem
+      const dest = destMap.get(id);
+      if (dest.tipo === 'CD' && dest.cnpj === cdOrigem.cnpj) {
+        return res.status(400).json({ erro: `nao pode enviar pra si mesmo: ${dest.nome}` });
+      }
     }
 
-    // Hidrata todos itens com preço admin do CD
-    const todosMatCodi = [...new Set(lojas.flatMap(l => (l.itens || []).map(i => String(i.mat_codi).trim())))].filter(Boolean);
-    if (!todosMatCodi.length) return res.status(400).json({ erro: 'nenhum item enviado' });
+    // 3) Resolve CLI_CODI de cada destino via relay do CD origem
+    let cli;
+    try { cli = await clientePorCodigo(cd_origem_codigo); }
+    catch (e) { return res.status(400).json({ erro: `relay do CD ${cd_origem_codigo} indisponivel: ${e.message}` }); }
+
+    const cliMap = new Map(); // destino_id -> { CLI_CODI }
+    for (const d of destRows) {
+      try {
+        const r = await cli.query(
+          `SELECT TOP 1 CLI_CODI FROM CLIENTE WITH (NOLOCK)
+            WHERE REPLACE(REPLACE(REPLACE(CLI_CGC,'.',''),'/',''),'-','') = '${d.cnpj}'`
+        );
+        const cliCodi = r.rows?.[0]?.CLI_CODI;
+        if (!cliCodi) {
+          return res.status(400).json({ erro: `CLI_CODI nao encontrado pra "${d.nome}" (CNPJ ${d.cnpj}) no banco do CD ${cd_origem_codigo}` });
+        }
+        cliMap.set(d.id, String(cliCodi).trim());
+      } catch (e) {
+        return res.status(500).json({ erro: `falha consultando CLIENTE pra "${d.nome}": ${e.message}` });
+      }
+    }
+
+    // 4) Hidrata itens com preço admin do CD legado (catálogo cd_material/cd_custoprod)
+    const matCodis = [...new Set(itens.map(i => String(i.mat_codi).trim()))].filter(Boolean);
     const dadosCd = await dbQuery(
       `SELECT cd_m.mat_codi, cd_m.mat_desc, cd_c.pro_prad, pe.qtd_embalagem
          FROM cd_material cd_m
          LEFT JOIN cd_custoprod cd_c ON cd_c.pro_codi = cd_m.mat_codi
          LEFT JOIN produtos_embalagem pe ON pe.mat_codi = cd_m.mat_codi
         WHERE cd_m.mat_codi = ANY($1::text[])`,
-      [todosMatCodi]
+      [matCodis]
     );
     const cdMap = new Map(dadosCd.map(x => [x.mat_codi, x]));
 
-    // Determina próximo COD_PEDIDO (sequencial local)
+    const itensBase = itens.map(it => {
+      const cd = cdMap.get(String(it.mat_codi).trim());
+      if (!cd) throw Object.assign(new Error(`mat_codi ${it.mat_codi} nao encontrado no catalogo`), { status: 400 });
+      const valor = parseFloat(it.valor) > 0 ? parseFloat(it.valor) : parseFloat(cd.pro_prad);
+      if (!(valor > 0)) throw Object.assign(new Error(`mat_codi ${it.mat_codi} sem preco admin`), { status: 400 });
+      return {
+        mat_codi: cd.mat_codi,
+        valor,
+        qtd_embalagem: parseInt(it.qtd_embalagem) || parseInt(cd.qtd_embalagem) || 1,
+      };
+    });
+
+    // 5) Próximo COD_PEDIDO pra esse CD origem
     const [{ proximo }] = await dbQuery(`
-      SELECT COALESCE(
-        (SELECT MAX(cod_pedido) FROM pedidos_distrib_historico),
-        0
-      ) + 1 AS proximo
-    `);
+      SELECT COALESCE(MAX(cod_pedido), 0) + 1 AS proximo
+        FROM pedidos_distrib_historico
+       WHERE cd_origem_codigo = $1
+    `, [cd_origem_codigo]);
 
     const agora = new Date();
     const dataEmissao = fmtData(agora);
@@ -211,85 +252,47 @@ router.post('/', adminOuCeo, async (req, res) => {
     let totalItensGeral = 0;
     const pedidosResumo = [];
 
-    for (const lojaInput of lojas) {
-      const lojaId = parseInt(lojaInput.loja_id);
-      const cli = cliMap.get(lojaId);
-      const itens = lojaInput.itens || [];
-      if (!itens.length) continue;
+    for (const dInput of destinos) {
+      const id = parseInt(dInput.destino_id);
+      const dest = destMap.get(id);
+      const qtdMul = parseFloat(dInput.qtd_unica) || 1;
+      if (!(qtdMul > 0)) throw Object.assign(new Error(`destino "${dest.nome}" sem qtd_unica valida`), { status: 400 });
+      const cliCodi = cliMap.get(id);
 
-      // Hidrata itens da loja
-      const itensHidr = itens.map(it => {
-        const cd = cdMap.get(String(it.mat_codi).trim());
-        if (!cd) throw Object.assign(new Error(`mat_codi ${it.mat_codi} nao encontrado no CD`), { status: 400 });
-        const valor = parseFloat(it.valor) > 0 ? parseFloat(it.valor) : parseFloat(cd.pro_prad);
-        if (!(valor > 0)) throw Object.assign(new Error(`mat_codi ${it.mat_codi} sem preco admin`), { status: 400 });
-        const qtd = parseFloat(it.quantidade);
-        if (!(qtd > 0)) throw Object.assign(new Error(`mat_codi ${it.mat_codi} qtd invalida`), { status: 400 });
-        return {
-          mat_codi: cd.mat_codi,
-          quantidade: qtd,
-          valor,
-          qtd_embalagem: parseInt(it.qtd_embalagem) || parseInt(cd.qtd_embalagem) || 1,
-        };
-      });
+      const valorPedido = itensBase.reduce((s, x) => s + x.valor * qtdMul, 0);
 
-      const valorPedido = itensHidr.reduce((s, x) => s + x.quantidade * x.valor, 0);
-
-      // Linha do P_PEDIDOS
       linhasPedidos.push([
-        codPedido,                    // COD_PEDIDO
-        EMPRESA_PADRAO,               // EMPRESA
-        LOCALIZACAO_PADRAO,           // LOCALIZACAO
-        VEN_CODI_PADRAO,              // COD_VENDEDOR
-        cli.cli_codi,                 // COD_CLIENTE
-        '0',                          // COD_CLIENTE_CADASTRO (ERP resolve)
-        COD_CONDICAO_PADRAO,          // COD_CONDICAO
-        COD_PAGAMENTO_PADRAO,         // COD_PAGAMENTO
-        COD_TIPOVENDA_PADRAO,         // COD_TIPOVENDA
-        COD_TABELA_PADRAO,            // COD_TABELA
-        dataEmissao,                  // DATA_EMISSAO
-        fmtNum(valorPedido, 2),       // VALOR_PEDIDO
-        obser,                        // OBSERVACAO
-        '0',                          // RETORNO
-        '1',                          // SIT_RETORNO
-        '0',                          // NUMPEDIDO
-        horaEmissao,                  // HORA_EMISSAO
-        '0',                          // COD_MOTIVO
-        '0',                          // ID
-        '00.00000',                   // LATITUDE
-        '00.00000',                   // LONGITUDE
-        cli.cli_cpf || '',            // CPF_CNPJ
-        padNomeCliente(cli.cli_nome), // NOME_CLIENTE
+        codPedido,                EMPRESA_PADRAO,         LOCALIZACAO_PADRAO,
+        VEN_CODI_PADRAO,          cliCodi,                '0',
+        COD_CONDICAO_PADRAO,      COD_PAGAMENTO_PADRAO,   COD_TIPOVENDA_PADRAO,
+        COD_TABELA_PADRAO,        dataEmissao,            fmtNum(valorPedido, 2),
+        obser,                    '0',                    '1',
+        '0',                      horaEmissao,            '0',
+        '0',                      '00.00000',             '00.00000',
+        dest.cnpj,                padNomeCliente(dest.nome),
       ].join(';'));
 
-      // Linhas do P_PEDIDOS_ITENS
-      for (const it of itensHidr) {
+      for (const it of itensBase) {
         linhasItens.push([
-          codPedido,                   // COD_PEDIDO
-          VEN_CODI_PADRAO,             // COD_VENDEDOR
-          it.mat_codi,                 // COD_PRODUTO
-          UNIDADE_PADRAO,              // UNIDADE (CX)
-          fmtNum(it.quantidade, 0),    // QUANTIDADE (no exemplo é inteiro; ajuste casas se for fracionado)
-          fmtNum(it.valor, 2),         // VALOR
-          '0',                         // DESCONTO_UNI
-          '0',                         // DESCONTO_PER
-          fmtNum(it.valor, 2),         // VALOR_TABELA
-          TIPO_CALCULO_PADRAO,         // TIPO_CALCULO
-          NOME_EMBALAGEM_PADRAO,       // NOME_EMBALAGEM
-          it.qtd_embalagem,            // QTD_EMBALAGEM
-          '',                          // ID (vazio)
+          codPedido,               VEN_CODI_PADRAO,        it.mat_codi,
+          UNIDADE_PADRAO,          fmtNum(qtdMul, 0),      fmtNum(it.valor, 2),
+          '0',                     '0',                    fmtNum(it.valor, 2),
+          TIPO_CALCULO_PADRAO,     NOME_EMBALAGEM_PADRAO,  it.qtd_embalagem,
+          '',
         ].join(';'));
       }
 
       pedidosResumo.push({
         cod_pedido: codPedido,
-        loja_id: lojaId,
-        cli_codi: cli.cli_codi,
+        destino_id: dest.id,
+        destino_tipo: dest.tipo,
+        destino_nome: dest.nome,
+        cli_codi: cliCodi,
         valor: valorPedido,
-        itens: itensHidr.length,
+        itens: itensBase.length,
       });
       valorTotalGeral += valorPedido;
-      totalItensGeral += itensHidr.length;
+      totalItensGeral += itensBase.length;
       codPedido += 1;
     }
 
@@ -301,20 +304,24 @@ router.post('/', adminOuCeo, async (req, res) => {
     // Salva geração
     const [ger] = await dbQuery(
       `INSERT INTO pedidos_distrib_geracoes
-         (gerado_por, total_pedidos, total_itens, valor_total, observacao,
+         (gerado_por, cd_origem_codigo, total_pedidos, total_itens, valor_total, observacao,
           p_pedidos_csv, p_pedidos_itens_csv)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, gerado_em`,
-      [por, pedidosResumo.length, totalItensGeral, valorTotalGeral, obser, csvPedidos, csvItens]
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, gerado_em`,
+      [por, cd_origem_codigo, pedidosResumo.length, totalItensGeral, valorTotalGeral, obser, csvPedidos, csvItens]
     );
 
-    // Salva também no histórico (1 linha por pedido) — preserva rastreabilidade
+    // Histórico (1 linha por pedido)
     for (const p of pedidosResumo) {
+      const dest = destMap.get(p.destino_id);
       await dbQuery(
         `INSERT INTO pedidos_distrib_historico
-           (cod_pedido, loja_id_destino, emitido_por, valor_total, total_itens,
-            observacao, payload_pedido, payload_itens, status)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'csv_gerado')`,
-        [p.cod_pedido, p.loja_id, por, p.valor, p.itens, obser, JSON.stringify(p), JSON.stringify({ geracao_id: ger.id })]
+           (cod_pedido, cd_origem_codigo, loja_id_destino, destino_id, destino_nome, destino_tipo,
+            emitido_por, valor_total, total_itens, observacao,
+            payload_pedido, payload_itens, status)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'csv_gerado')`,
+        [p.cod_pedido, cd_origem_codigo, dest.loja_id, p.destino_id, p.destino_nome, p.destino_tipo,
+         por, p.valor, p.itens, obser,
+         JSON.stringify(p), JSON.stringify({ geracao_id: ger.id })]
       );
     }
 
@@ -322,6 +329,7 @@ router.post('/', adminOuCeo, async (req, res) => {
       ok: true,
       geracao_id: ger.id,
       gerado_em: ger.gerado_em,
+      cd_origem: cdOrigem,
       total_pedidos: pedidosResumo.length,
       total_itens: totalItensGeral,
       valor_total: valorTotalGeral,
@@ -337,8 +345,7 @@ router.post('/', adminOuCeo, async (req, res) => {
   }
 });
 
-// ── Download dos CSVs gerados ──
-// Aceita token via Authorization header OU ?token= (porque <a download> nao pode mandar header).
+// ── Download dos CSVs ──
 async function autoricar(req, res, next) {
   let token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
   if (!token && req.query.token) token = String(req.query.token);
@@ -365,7 +372,6 @@ async function enviarCsv(req, res, coluna, filename) {
       [parseInt(req.params.geracao_id)]
     );
     if (!r) return res.status(404).json({ erro: 'geracao nao encontrada' });
-    // Marca baixado
     await dbQuery(`UPDATE pedidos_distrib_geracoes SET baixado_em = COALESCE(baixado_em, NOW()) WHERE id = $1`,
       [parseInt(req.params.geracao_id)]);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -380,8 +386,8 @@ router.get('/geracoes', autenticar, async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit) || 30, 100);
     const rows = await dbQuery(`
-      SELECT id, gerado_em, gerado_por, total_pedidos, total_itens, valor_total,
-             observacao, baixado_em
+      SELECT id, gerado_em, gerado_por, cd_origem_codigo, total_pedidos, total_itens,
+             valor_total, observacao, baixado_em
         FROM pedidos_distrib_geracoes
        ORDER BY gerado_em DESC
        LIMIT $1
@@ -394,11 +400,10 @@ router.get('/historico', autenticar, async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit) || 50, 200);
     const rows = await dbQuery(`
-      SELECT h.id, h.cod_pedido, h.loja_id_destino, l.nome AS loja_nome,
+      SELECT h.id, h.cod_pedido, h.cd_origem_codigo, h.destino_tipo, h.destino_nome,
              h.emitido_por, h.emitido_em, h.valor_total, h.total_itens,
              h.observacao, h.status, h.erro_msg
         FROM pedidos_distrib_historico h
-        LEFT JOIN lojas l ON l.id = h.loja_id_destino
        ORDER BY h.emitido_em DESC
        LIMIT $1
     `, [limit]);

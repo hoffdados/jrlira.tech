@@ -24,6 +24,7 @@ h1{font-size:20px;color:#fde047;margin-bottom:14px}
 label{font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;display:block}
 input,select,textarea{width:100%;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;padding:7px 10px;font-size:13px;font-family:inherit}
 input:focus,select:focus,textarea:focus{outline:none;border-color:#fbbf24}
+textarea{resize:vertical;min-height:50px}
 button{cursor:pointer;border:none;border-radius:6px;font-size:12px;padding:7px 14px;font-weight:600}
 .btn-primary{background:#fbbf24;color:#1a1a1a}.btn-primary:hover{background:#f59e0b}
 .btn-ghost{background:#1e293b;color:#94a3b8;border:1px solid #334155}.btn-ghost:hover{background:#273549}
@@ -43,14 +44,13 @@ tbody tr:hover{background:#1a2744}
 .right{text-align:right}
 .center{text-align:center}
 
-.qtd-input{width:60px;padding:3px 6px;font-size:11px;text-align:center}
-
-.lojas-cesta{display:grid;gap:8px;margin-bottom:10px}
-.loja-row{display:grid;grid-template-columns:auto 1fr 70px 70px 24px;gap:8px;align-items:center;padding:6px 8px;background:#0f172a;border-radius:6px;font-size:12px}
-.loja-row .nome{font-weight:600}
-.loja-row .nome small{color:#64748b;font-weight:normal;display:block;font-size:10px;margin-top:2px}
-.loja-row input.qtd{padding:4px 6px;font-size:11px;text-align:center}
-.loja-row .x{color:#f87171;cursor:pointer;text-align:center;font-weight:700}
+.dest-grupo{margin-bottom:12px}
+.dest-grupo-titulo{font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+.dest-row{display:grid;grid-template-columns:auto 1fr 80px 50px;gap:8px;align-items:center;padding:6px 10px;background:#0f172a;border-radius:6px;font-size:12px;margin-bottom:4px}
+.dest-row.disabled{opacity:0.4}
+.dest-row .nome{font-weight:600}
+.dest-row .nome small{color:#64748b;font-weight:normal;display:block;font-size:10px;margin-top:2px}
+.dest-row input.qtd{padding:4px 6px;font-size:11px;text-align:center}
 
 .cart-row{display:grid;grid-template-columns:1fr auto 60px 24px;gap:6px;padding:6px;border-bottom:1px solid #1a2744;align-items:center;font-size:11px}
 .cart-row .desc{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -65,14 +65,8 @@ tbody tr:hover{background:#1a2744}
 .msg.err{background:#7f1d1d44;color:#f87171;border:1px solid #7f1d1d;display:block}
 
 .tag{display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;text-transform:uppercase}
-.tag-ok{background:#14532d;color:#4ade80}
-.tag-warn{background:#451a03;color:#fde047}
-.tag-err{background:#7f1d1d;color:#f87171}
-
-.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;align-items:center;justify-content:center}
-.modal.show{display:flex}
-.modal-card{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:20px;max-width:700px;width:92%;max-height:80vh;overflow:auto}
-.modal-card h2{color:#fde047;margin-bottom:14px;font-size:16px}
+.tag-loja{background:#1e3a5f;color:#60a5fa}
+.tag-cd{background:#451a03;color:#fde047}
 
 .download-bloco{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
 .download-bloco a{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#14532d;border-radius:6px;color:#bbf7d0;text-decoration:none;font-size:13px;font-weight:600;justify-content:center}
@@ -96,12 +90,18 @@ tbody tr:hover{background:#1a2744}
 
     <div>
       <div class="card">
-        <h3>Lojas destino · pedido pode ir pra várias de uma vez</h3>
-        <div id="lojas" class="lojas-cesta"><p class="muted">Carregando...</p></div>
-        <div style="display:flex;gap:8px;align-items:center;margin-top:10px">
-          <button class="btn-ghost btn-sm" onclick="abrirConfig()">⚙ Configurar lojas</button>
-          <span class="muted" style="font-size:11px">Marca as lojas que vão receber. A quantidade pode ser ajustada por loja.</span>
-        </div>
+        <h3>Origem · qual CD emite o pedido</h3>
+        <select id="cdOrigem" onchange="onOrigemChange()">
+          <option value="">Carregando...</option>
+        </select>
+        <p class="muted" style="font-size:11px;margin-top:6px">
+          O CSV será importado no UltraSyst desse CD. CLI_CODI dos destinos é descoberto automaticamente via relay (CNPJ → CLIENTE).
+        </p>
+      </div>
+
+      <div class="card">
+        <h3>Destinos · marque pra quem vai (lojas e/ou outros CDs)</h3>
+        <div id="destinos"><p class="muted">Aguardando origem...</p></div>
         <div style="margin-top:10px">
           <label>Observação do pedido</label>
           <input id="obs" placeholder="Transferência semanal, etc">
@@ -113,7 +113,7 @@ tbody tr:hover{background:#1a2744}
         <div class="busca">
           <input id="busca" placeholder="Nome, código ou EAN..." oninput="onBuscaChange()">
         </div>
-        <div style="max-height:55vh;overflow:auto">
+        <div style="max-height:50vh;overflow:auto">
           <table>
             <thead>
               <tr>
@@ -132,14 +132,14 @@ tbody tr:hover{background:#1a2744}
 
     <div>
       <div class="card" style="position:sticky;top:14px">
-        <h3>Cesta única (replicada pras lojas selecionadas)</h3>
-        <div id="cesta" style="max-height:50vh;overflow:auto;margin-bottom:10px">
+        <h3>Cesta única (replicada pros destinos)</h3>
+        <div id="cesta" style="max-height:45vh;overflow:auto;margin-bottom:10px">
           <p class="muted center" style="padding:20px 0">Vazio</p>
         </div>
         <div class="totais">
           <div class="row"><span>Itens distintos</span><span id="totalItens">0</span></div>
-          <div class="row"><span>Lojas selecionadas</span><span id="totalLojas">0</span></div>
-          <div class="row total"><span>Valor (1 loja)</span><span id="totalValor">R$ 0,00</span></div>
+          <div class="row"><span>Destinos</span><span id="totalDestinos">0</span></div>
+          <div class="row total"><span>Valor (1 destino)</span><span id="totalValor">R$ 0,00</span></div>
           <div class="row"><span class="muted" style="font-size:11px">Total geral</span><span id="totalGeral" class="muted" style="font-size:11px">R$ 0,00</span></div>
         </div>
         <button class="btn-primary" style="width:100%;padding:10px;margin-top:10px;font-size:14px" onclick="gerarCsv(this)">
@@ -152,26 +152,11 @@ tbody tr:hover{background:#1a2744}
             <a id="dlPedidos"   target="_blank">⬇ P_PEDIDOS.csv</a>
             <a id="dlItens"     target="_blank">⬇ P_PEDIDOS_ITENS.csv</a>
           </div>
-          <p class="muted" style="font-size:11px;margin-top:8px">Cole os 2 arquivos na pasta de importação do UltraSyst do CD.</p>
+          <p class="muted" style="font-size:11px;margin-top:8px">Cole os 2 arquivos na pasta de importação do UltraSyst do CD origem.</p>
         </div>
       </div>
     </div>
 
-  </div>
-</div>
-
-<!-- MODAL CONFIGURAÇÃO -->
-<div id="modalConfig" class="modal" onclick="if(event.target===this)fecharConfig()">
-  <div class="modal-card">
-    <h2>Configurar lojas (cli_codi do UltraSyst)</h2>
-    <p class="muted" style="font-size:12px;margin-bottom:14px">Pra cada loja JR Lira, escolha o cli_codi correspondente no UltraSyst do CD.</p>
-    <table>
-      <thead><tr><th>Loja JR Lira</th><th>cli_codi (CD)</th><th></th></tr></thead>
-      <tbody id="modalConfigBody"></tbody>
-    </table>
-    <div style="text-align:right;margin-top:14px">
-      <button class="btn-ghost" onclick="fecharConfig()">Fechar</button>
-    </div>
   </div>
 </div>
 
@@ -180,8 +165,9 @@ const token = () => localStorage.getItem('jrlira_token');
 (function(){ const p = localStorage.getItem('jrlira_perfil'); if (!token() || !['admin','ceo'].includes(p)) location.href = '/'; })();
 document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
 
-const cesta = new Map();          // mat_codi → { mat_codi, mat_desc, valor, qtd_embalagem }
-const lojasMap = new Map();       // loja_id → { loja_id, loja_nome, cli_codi, cli_nome, qtd_unica }
+const cesta = new Map();             // mat_codi → { mat_codi, mat_desc, valor, qtd_embalagem }
+const destinosMap = new Map();       // destino_id → { destino_id, tipo, nome, cnpj, qtd_unica }
+let cdOrigemAtual = null;            // { codigo, nome, cnpj }
 let buscaTimeout = null;
 
 function showMsg(txt, tipo = 'ok') {
@@ -204,48 +190,80 @@ async function api(path, method = 'GET', body) {
 
 function fmtBRL(n) { return Number(n || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
 
-async function carregarLojas() {
+async function carregarOrigens() {
   try {
-    const lojas = await api('/api/pedidos-distribuidora/lojas');
-    const div = document.getElementById('lojas');
-    if (!lojas.length) {
-      div.innerHTML = '<p class="muted">Nenhuma loja configurada. Clica em ⚙ Configurar lojas pra associar.</p>';
+    const cds = await api('/api/pedidos-distribuidora/cds-origem');
+    const sel = document.getElementById('cdOrigem');
+    if (!cds.length) {
+      sel.innerHTML = '<option value="">Nenhum CD ativo cadastrado em /admin-cds</option>';
       return;
     }
-    div.innerHTML = lojas.map(l => `
-      <div class="loja-row" data-loja="${l.loja_id}">
-        <input type="checkbox" id="lj-${l.loja_id}" onchange="toggleLoja(${l.loja_id}, this.checked)">
-        <div class="nome">
-          ${escapeHtml(l.loja_nome || ('Loja ' + l.loja_id))}
-          <small>${escapeHtml(l.cli_codi)} · ${escapeHtml(l.cli_nome || '')}</small>
-        </div>
-        <input type="number" class="qtd" id="qmul-${l.loja_id}" value="1" min="0.01" step="any" disabled
-               onchange="setMultiplicador(${l.loja_id}, this.value)">
-        <span class="muted" style="font-size:11px">×qtd</span>
-        <span></span>
-      </div>
-    `).join('');
+    sel.innerHTML = '<option value="">Selecione...</option>' +
+      cds.map(c => `<option value="${escapeHtml(c.codigo)}" data-cnpj="${escapeHtml(c.cnpj)}" data-nome="${escapeHtml(c.nome)}">${escapeHtml(c.nome)} (${escapeHtml(c.codigo)})</option>`).join('');
   } catch (e) { showMsg(e.message, 'err'); }
 }
 
-function toggleLoja(lojaId, checked) {
-  const div = document.querySelector(`[data-loja="${lojaId}"]`);
-  const nome = div.querySelector('.nome').firstChild.textContent.trim();
-  const cliCodi = div.querySelector('small').textContent.split('·')[0].trim();
-  const cliNome = (div.querySelector('small').textContent.split('·')[1] || '').trim();
-  const qtdInput = div.querySelector('.qtd');
+async function onOrigemChange() {
+  const sel = document.getElementById('cdOrigem');
+  const codigo = sel.value;
+  if (!codigo) { cdOrigemAtual = null; document.getElementById('destinos').innerHTML = '<p class="muted">Selecione a origem</p>'; return; }
+  const opt = sel.selectedOptions[0];
+  cdOrigemAtual = { codigo, nome: opt.dataset.nome, cnpj: opt.dataset.cnpj };
+  destinosMap.clear();
+  await carregarDestinos();
+}
+
+async function carregarDestinos() {
+  try {
+    const dests = await api('/api/pedidos-distribuidora/destinos');
+    const div = document.getElementById('destinos');
+    const lojas = dests.filter(d => d.tipo === 'LOJA');
+    const cds   = dests.filter(d => d.tipo === 'CD' && d.cnpj !== cdOrigemAtual?.cnpj);
+
+    const renderRow = (d) => `
+      <div class="dest-row" data-id="${d.id}">
+        <input type="checkbox" id="dst-${d.id}" onchange="toggleDestino(${d.id}, this.checked)">
+        <div class="nome">
+          <span class="tag tag-${d.tipo === 'LOJA' ? 'loja' : 'cd'}">${d.tipo}</span>
+          ${escapeHtml(d.nome)}
+          <small>${escapeHtml(d.cnpj)}</small>
+        </div>
+        <input type="number" class="qtd" id="qmul-${d.id}" value="1" min="0.01" step="any" disabled
+               onchange="setQtd(${d.id}, this.value)">
+        <span class="muted" style="font-size:11px">×qtd</span>
+      </div>
+    `;
+
+    div.innerHTML = `
+      <div class="dest-grupo">
+        <div class="dest-grupo-titulo">Lojas SUPERASA (${lojas.length})</div>
+        ${lojas.map(renderRow).join('')}
+      </div>
+      <div class="dest-grupo">
+        <div class="dest-grupo-titulo">Outros CDs (${cds.length})</div>
+        ${cds.length ? cds.map(renderRow).join('') : '<p class="muted" style="font-size:11px">Nenhum CD destino disponivel</p>'}
+      </div>
+    `;
+    atualizarTotais();
+  } catch (e) { showMsg(e.message, 'err'); }
+}
+
+function toggleDestino(destId, checked) {
+  const row = document.querySelector(`.dest-row[data-id="${destId}"]`);
+  const qtdInput = row.querySelector('.qtd');
   qtdInput.disabled = !checked;
   if (checked) {
-    lojasMap.set(lojaId, { loja_id: lojaId, loja_nome: nome, cli_codi: cliCodi, cli_nome: cliNome, qtd_unica: parseFloat(qtdInput.value) || 1 });
+    const nome = row.querySelector('.nome').textContent.trim().replace(/^(LOJA|CD)\s*/, '');
+    destinosMap.set(destId, { destino_id: destId, nome, qtd_unica: parseFloat(qtdInput.value) || 1 });
   } else {
-    lojasMap.delete(lojaId);
+    destinosMap.delete(destId);
   }
   atualizarTotais();
 }
 
-function setMultiplicador(lojaId, valor) {
-  const l = lojasMap.get(lojaId);
-  if (l) { l.qtd_unica = parseFloat(valor) || 1; atualizarTotais(); }
+function setQtd(destId, valor) {
+  const d = destinosMap.get(destId);
+  if (d) { d.qtd_unica = parseFloat(valor) || 1; atualizarTotais(); }
 }
 
 function onBuscaChange() {
@@ -319,38 +337,36 @@ function renderCesta() {
 
 function atualizarTotais() {
   const totalItens = cesta.size;
-  const totalLojas = lojasMap.size;
-  const valorPorLoja = [...cesta.values()].reduce((s, x) => s + x.valor, 0); // 1 unidade base por item
-  const valorGeral = [...lojasMap.values()].reduce((s, l) => s + valorPorLoja * l.qtd_unica, 0);
-  document.getElementById('totalItens').textContent = totalItens;
-  document.getElementById('totalLojas').textContent = totalLojas;
-  document.getElementById('totalValor').textContent = fmtBRL(valorPorLoja);
-  document.getElementById('totalGeral').textContent = fmtBRL(valorGeral);
+  const totalDest  = destinosMap.size;
+  const valorPorDest = [...cesta.values()].reduce((s, x) => s + x.valor, 0);
+  const valorGeral = [...destinosMap.values()].reduce((s, d) => s + valorPorDest * d.qtd_unica, 0);
+  document.getElementById('totalItens').textContent    = totalItens;
+  document.getElementById('totalDestinos').textContent = totalDest;
+  document.getElementById('totalValor').textContent    = fmtBRL(valorPorDest);
+  document.getElementById('totalGeral').textContent    = fmtBRL(valorGeral);
 }
 
 async function gerarCsv(btn) {
-  if (!lojasMap.size) { showMsg('Selecione ao menos uma loja destino', 'err'); return; }
-  if (!cesta.size)    { showMsg('Adicione ao menos um produto na cesta', 'err'); return; }
-  if (!confirm(`Gerar CSVs?\n\n${lojasMap.size} pedido(s), ${cesta.size} item(ns) cada\nTotal: ${document.getElementById('totalGeral').textContent}`)) return;
+  if (!cdOrigemAtual)  { showMsg('Selecione o CD origem', 'err'); return; }
+  if (!destinosMap.size){ showMsg('Selecione ao menos um destino', 'err'); return; }
+  if (!cesta.size)     { showMsg('Adicione ao menos um produto na cesta', 'err'); return; }
+  if (!confirm(`Gerar CSVs?\n\nOrigem: ${cdOrigemAtual.nome}\nDestinos: ${destinosMap.size}\nItens: ${cesta.size}\nTotal: ${document.getElementById('totalGeral').textContent}`)) return;
 
   btn.disabled = true; btn.textContent = 'Gerando...';
   document.getElementById('downloadArea').style.display = 'none';
   try {
     const body = {
+      cd_origem_codigo: cdOrigemAtual.codigo,
       observacao: document.getElementById('obs').value.trim() || undefined,
-      lojas: [...lojasMap.values()].map(l => ({
-        loja_id: l.loja_id,
-        itens: [...cesta.values()].map(it => ({
-          mat_codi: it.mat_codi,
-          quantidade: l.qtd_unica,  // mesma qtd pra todos itens dessa loja
-          valor: it.valor,
-          qtd_embalagem: it.qtd_embalagem,
-        })),
+      destinos: [...destinosMap.values()].map(d => ({ destino_id: d.destino_id, qtd_unica: d.qtd_unica })),
+      itens: [...cesta.values()].map(it => ({
+        mat_codi: it.mat_codi,
+        valor: it.valor,
+        qtd_embalagem: it.qtd_embalagem,
       })),
     };
     const r = await api('/api/pedidos-distribuidora', 'POST', body);
-    showMsg(`✅ ${r.total_pedidos} pedido(s) gerados · ${fmtBRL(r.valor_total)}`, 'ok');
-    // Botões de download (token na query pra <a download>)
+    showMsg(`✅ ${r.total_pedidos} pedido(s) gerados a partir de ${r.cd_origem.nome} · ${fmtBRL(r.valor_total)}`, 'ok');
     const t = encodeURIComponent(token());
     document.getElementById('dlPedidos').href = `/api/pedidos-distribuidora/csv/${r.geracao_id}/P_PEDIDOS.csv?token=${t}`;
     document.getElementById('dlItens'  ).href = `/api/pedidos-distribuidora/csv/${r.geracao_id}/P_PEDIDOS_ITENS.csv?token=${t}`;
@@ -362,68 +378,7 @@ async function gerarCsv(btn) {
   }
 }
 
-// ── Modal de configuração de lojas ↔ cli_codi ──
-
-async function abrirConfig() {
-  document.getElementById('modalConfig').classList.add('show');
-  await renderConfig();
-}
-function fecharConfig() {
-  document.getElementById('modalConfig').classList.remove('show');
-  carregarLojas();
-}
-
-async function renderConfig() {
-  try {
-    const [lojas, clientes, atuais] = await Promise.all([
-      api('/api/pedidos-distribuidora/lojas-disponiveis'),
-      api('/api/pedidos-distribuidora/clientes-cd'),
-      api('/api/pedidos-distribuidora/lojas'),
-    ]);
-    const atuaisMap = new Map(atuais.map(a => [a.loja_id, a]));
-    const tbody = document.getElementById('modalConfigBody');
-    tbody.innerHTML = lojas.map(l => {
-      const cur = atuaisMap.get(l.id);
-      const opcoes = '<option value="">— sem mapeamento —</option>' + clientes.map(c =>
-        `<option value="${escapeHtml(c.cli_codi)}" ${cur?.cli_codi === c.cli_codi ? 'selected' : ''}>${escapeHtml(c.cli_codi)} — ${escapeHtml(c.cli_nome)}</option>`
-      ).join('');
-      return `
-        <tr data-loja="${l.id}">
-          <td><strong>L${l.id}</strong> ${escapeHtml(l.nome)}</td>
-          <td><select id="cfg-${l.id}">${opcoes}</select></td>
-          <td><button class="btn-sm btn-success" onclick="salvarConfig(${l.id})">Salvar</button></td>
-        </tr>
-      `;
-    }).join('');
-  } catch (e) { showMsg(e.message, 'err'); }
-}
-
-async function salvarConfig(lojaId) {
-  const sel = document.getElementById(`cfg-${lojaId}`);
-  const cliCodi = sel.value;
-  if (!cliCodi) {
-    if (!confirm('Remover o mapeamento dessa loja?')) return;
-    try { await api(`/api/pedidos-distribuidora/lojas/${lojaId}`, 'DELETE'); showMsg('Removido', 'ok'); }
-    catch (e) { showMsg(e.message, 'err'); }
-    return;
-  }
-  const opt = sel.options[sel.selectedIndex];
-  const txt = opt.text;
-  const nome = txt.split('—').slice(1).join('—').trim();
-  // Pega CPF do clientes-cd (ja em memoria nao temos — vamos buscar)
-  const clientes = await api('/api/pedidos-distribuidora/clientes-cd');
-  const c = clientes.find(x => x.cli_codi === cliCodi);
-  try {
-    await api(`/api/pedidos-distribuidora/lojas/${lojaId}`, 'PUT', {
-      cli_codi: cliCodi,
-      cli_nome: c?.cli_nome || nome,
-      cli_cpf:  c?.cli_cpf  || null,
-    });
-    showMsg(`L${lojaId} mapeada pra ${cliCodi}`, 'ok');
-  } catch (e) { showMsg(e.message, 'err'); }
-}
-
-carregarLojas();
+carregarOrigens();
 renderCesta();
 </script>
 </body>

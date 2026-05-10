@@ -1942,6 +1942,49 @@ async function initDB() {
          ('3628', 'SUPERASA SANTAREM',       '07961363000728')
        ON CONFLICT (cli_codi) DO NOTHING`);
 
+    // Modelo novo (2026-05-10 tarde): destinos unificados (lojas + CDs).
+    // CLI_CODI no CD origem é descoberto dinamicamente via relay (CLIENTE WHERE CLI_CGC = cnpj),
+    // não precisa cadastrar 5 origens × 11 destinos manualmente.
+    await runMigration(client, '20260510_pedidos_distrib_destinos',
+      `CREATE TABLE IF NOT EXISTS pedidos_distrib_destinos (
+         id SERIAL PRIMARY KEY,
+         tipo VARCHAR(10) NOT NULL,            -- 'LOJA' ou 'CD'
+         codigo VARCHAR(40) UNIQUE NOT NULL,   -- LOJA1, CD-srv1-itautuba, etc
+         nome VARCHAR(120) NOT NULL,
+         cnpj VARCHAR(20) NOT NULL,
+         loja_id INTEGER,                       -- só pra LOJA: vincula com tabela lojas
+         cd_codigo VARCHAR(40),                 -- só pra CD: vincula com cds.codigo
+         ativo BOOLEAN DEFAULT TRUE
+       )`);
+    await runMigration(client, '20260510_seed_pedidos_distrib_destinos',
+      `INSERT INTO pedidos_distrib_destinos (tipo, codigo, nome, cnpj, loja_id, cd_codigo) VALUES
+         ('LOJA','LOJA1','SUPERASA ECONOMICO',    '17764296000110', 1, NULL),
+         ('LOJA','LOJA2','SUPERASA BR',           '17764296000381', 2, NULL),
+         ('LOJA','LOJA3','SUPERASA JOAO PESSOA',  '17764296000462', 3, NULL),
+         ('LOJA','LOJA4','SUPERASA FLORESTA',     '07961363000302', 4, NULL),
+         ('LOJA','LOJA5','SUPERASA SAO JOSE',     '07961363000647', 5, NULL),
+         ('LOJA','LOJA6','SUPERASA SANTAREM',     '07961363000728', 6, NULL),
+         ('CD','CD-srv1-itautuba',    'ASA BRANCA ITAITUBA',    '17764296000209', NULL, 'srv1-itautuba'),
+         ('CD','CD-srv1-nprogresso',  'ASA BRANCA N_PROGRESSO', '17764296000543', NULL, 'srv1-nprogresso'),
+         ('CD','CD-srv2-asafrio',     'ASA FRIOS ITAITUBA',     '07961363000485', NULL, 'srv2-asafrio'),
+         ('CD','CD-srv2-asasantarem', 'ASA FRIOS SANTAREM',     '07961363000809', NULL, 'srv2-asasantarem'),
+         ('CD','CD-casa-branca',      'CASA BRANCA',            '07961363000132', NULL, NULL)
+       ON CONFLICT (codigo) DO NOTHING`);
+
+    // Histórico: registra cd_origem + destino real (loja ou CD)
+    await runMigration(client, '20260510_pedidos_distrib_hist_origem',
+      `ALTER TABLE pedidos_distrib_historico
+         ADD COLUMN IF NOT EXISTS cd_origem_codigo VARCHAR(40),
+         ADD COLUMN IF NOT EXISTS destino_id INTEGER,
+         ADD COLUMN IF NOT EXISTS destino_nome VARCHAR(120),
+         ADD COLUMN IF NOT EXISTS destino_tipo VARCHAR(10)`);
+    await runMigration(client, '20260510_pedidos_distrib_geracoes_origem',
+      `ALTER TABLE pedidos_distrib_geracoes
+         ADD COLUMN IF NOT EXISTS cd_origem_codigo VARCHAR(40)`);
+    // loja_id_destino pode virar NULL pra pedidos entre CDs
+    await runMigration(client, '20260510_pedidos_distrib_hist_loja_nullable',
+      `ALTER TABLE pedidos_distrib_historico ALTER COLUMN loja_id_destino DROP NOT NULL`);
+
     console.log('[DB] Tabelas inicializadas');
   } finally {
     client.release();
