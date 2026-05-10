@@ -1909,6 +1909,39 @@ async function initDB() {
       `CREATE INDEX IF NOT EXISTS idx_pedidos_distrib_hist_data
          ON pedidos_distrib_historico (emitido_em DESC)`);
 
+    // Gerações de CSV (estratégia A — importador externo do UltraSyst)
+    await runMigration(client, '20260510_pedidos_distrib_geracoes',
+      `CREATE TABLE IF NOT EXISTS pedidos_distrib_geracoes (
+         id SERIAL PRIMARY KEY,
+         gerado_em TIMESTAMPTZ DEFAULT NOW(),
+         gerado_por VARCHAR(120) NOT NULL,
+         total_pedidos INTEGER NOT NULL,
+         total_itens INTEGER NOT NULL,
+         valor_total NUMERIC(14,2) NOT NULL,
+         observacao TEXT,
+         p_pedidos_csv TEXT NOT NULL,
+         p_pedidos_itens_csv TEXT NOT NULL,
+         baixado_em TIMESTAMPTZ
+       )`);
+
+    // Pré-popula os 6 cli_codi do CSV de exemplo (sem loja_id ainda — admin associa depois).
+    // Cria tabela auxiliar pra clientes "candidatos" (nem todo cli_codi do CD vira loja JR Lira).
+    await runMigration(client, '20260510_pedidos_distrib_clientes_cd',
+      `CREATE TABLE IF NOT EXISTS pedidos_distrib_clientes_cd (
+         cli_codi VARCHAR(20) PRIMARY KEY,
+         cli_nome VARCHAR(120),
+         cli_cpf VARCHAR(20)
+       )`);
+    await runMigration(client, '20260510_seed_pedidos_distrib_clientes_cd',
+      `INSERT INTO pedidos_distrib_clientes_cd (cli_codi, cli_nome, cli_cpf) VALUES
+         ('1661', 'SUPERASA ECONOMICO',     '17764296000110'),
+         ('2221', 'SUPERASA BR',             '17764296000381'),
+         ('2928', 'SUPERASA JOAO PESSOA',    '17764296000462'),
+         ('3563', 'SUPERASA SAO JOSE',       '07961363000647'),
+         ('3271', 'SUPERASA FLORESTA',       '07961363000302'),
+         ('3628', 'SUPERASA SANTAREM',       '07961363000728')
+       ON CONFLICT (cli_codi) DO NOTHING`);
+
     console.log('[DB] Tabelas inicializadas');
   } finally {
     client.release();

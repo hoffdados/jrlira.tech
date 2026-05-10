@@ -21,15 +21,14 @@ h1{font-size:20px;color:#fde047;margin-bottom:14px}
 .card{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:14px;margin-bottom:14px}
 .card h3{font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px}
 
-.cabecalho{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
 label{font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;display:block}
 input,select,textarea{width:100%;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;padding:7px 10px;font-size:13px;font-family:inherit}
 input:focus,select:focus,textarea:focus{outline:none;border-color:#fbbf24}
-textarea{resize:vertical;min-height:50px}
 button{cursor:pointer;border:none;border-radius:6px;font-size:12px;padding:7px 14px;font-weight:600}
 .btn-primary{background:#fbbf24;color:#1a1a1a}.btn-primary:hover{background:#f59e0b}
 .btn-ghost{background:#1e293b;color:#94a3b8;border:1px solid #334155}.btn-ghost:hover{background:#273549}
 .btn-danger{background:#dc2626;color:#fff}
+.btn-success{background:#16a34a;color:#fff}
 .btn-sm{padding:4px 10px;font-size:11px}
 
 .busca{display:flex;gap:8px;margin-bottom:10px}
@@ -46,11 +45,17 @@ tbody tr:hover{background:#1a2744}
 
 .qtd-input{width:60px;padding:3px 6px;font-size:11px;text-align:center}
 
-.carrinho{position:sticky;top:14px}
-.carrinho-itens{max-height:60vh;overflow-y:auto;margin-bottom:10px}
-.cart-row{display:grid;grid-template-columns:1fr 60px 60px 24px;gap:6px;padding:6px;border-bottom:1px solid #1a2744;align-items:center;font-size:11px}
+.lojas-cesta{display:grid;gap:8px;margin-bottom:10px}
+.loja-row{display:grid;grid-template-columns:auto 1fr 70px 70px 24px;gap:8px;align-items:center;padding:6px 8px;background:#0f172a;border-radius:6px;font-size:12px}
+.loja-row .nome{font-weight:600}
+.loja-row .nome small{color:#64748b;font-weight:normal;display:block;font-size:10px;margin-top:2px}
+.loja-row input.qtd{padding:4px 6px;font-size:11px;text-align:center}
+.loja-row .x{color:#f87171;cursor:pointer;text-align:center;font-weight:700}
+
+.cart-row{display:grid;grid-template-columns:1fr auto 60px 24px;gap:6px;padding:6px;border-bottom:1px solid #1a2744;align-items:center;font-size:11px}
 .cart-row .desc{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cart-row .x{color:#f87171;cursor:pointer;text-align:center;font-weight:700}
+
 .totais{padding:10px;background:#0f172a;border-radius:6px;font-size:12px}
 .totais .row{display:flex;justify-content:space-between;margin:3px 0}
 .totais .total{font-size:14px;font-weight:700;color:#fde047;border-top:1px solid #334155;padding-top:6px;margin-top:6px}
@@ -63,6 +68,15 @@ tbody tr:hover{background:#1a2744}
 .tag-ok{background:#14532d;color:#4ade80}
 .tag-warn{background:#451a03;color:#fde047}
 .tag-err{background:#7f1d1d;color:#f87171}
+
+.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;align-items:center;justify-content:center}
+.modal.show{display:flex}
+.modal-card{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:20px;max-width:700px;width:92%;max-height:80vh;overflow:auto}
+.modal-card h2{color:#fde047;margin-bottom:14px;font-size:16px}
+
+.download-bloco{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+.download-bloco a{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#14532d;border-radius:6px;color:#bbf7d0;text-decoration:none;font-size:13px;font-weight:600;justify-content:center}
+.download-bloco a:hover{background:#166534}
 </style>
 </head>
 <body>
@@ -75,29 +89,22 @@ tbody tr:hover{background:#1a2744}
 </nav>
 
 <div class="main">
-  <h1>Pedido pra Distribuidora — transferência interna</h1>
+  <h1>Pedido pra Distribuidora — gera CSV pro UltraSyst</h1>
   <div id="msg" class="msg"></div>
 
   <div class="layout">
 
     <div>
       <div class="card">
-        <h3>Cabeçalho do pedido</h3>
-        <div class="cabecalho">
-          <div>
-            <label>Loja destino</label>
-            <select id="loja">
-              <option value="">Carregando...</option>
-            </select>
-          </div>
-          <div>
-            <label>Observação (opcional)</label>
-            <input id="obs" placeholder="Transferência semanal, etc">
-          </div>
+        <h3>Lojas destino · pedido pode ir pra várias de uma vez</h3>
+        <div id="lojas" class="lojas-cesta"><p class="muted">Carregando...</p></div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:10px">
+          <button class="btn-ghost btn-sm" onclick="abrirConfig()">⚙ Configurar lojas</button>
+          <span class="muted" style="font-size:11px">Marca as lojas que vão receber. A quantidade pode ser ajustada por loja.</span>
         </div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <button class="btn-ghost btn-sm" onclick="testarApi()">Testar API APK</button>
-          <span id="apiStatus" class="muted" style="font-size:11px"></span>
+        <div style="margin-top:10px">
+          <label>Observação do pedido</label>
+          <input id="obs" placeholder="Transferência semanal, etc">
         </div>
       </div>
 
@@ -114,33 +121,57 @@ tbody tr:hover{background:#1a2744}
                 <th>Descrição</th>
                 <th class="right">Custo Adm</th>
                 <th class="right">Estoque</th>
-                <th class="center">Qtd</th>
                 <th></th>
               </tr>
             </thead>
-            <tbody id="produtos"><tr><td colspan="6" class="muted center">Digite pra buscar</td></tr></tbody>
+            <tbody id="produtos"><tr><td colspan="5" class="muted center">Digite pra buscar</td></tr></tbody>
           </table>
         </div>
       </div>
     </div>
 
-    <div class="carrinho">
-      <div class="card">
-        <h3>Carrinho</h3>
-        <div class="carrinho-itens" id="carrinho">
+    <div>
+      <div class="card" style="position:sticky;top:14px">
+        <h3>Cesta única (replicada pras lojas selecionadas)</h3>
+        <div id="cesta" style="max-height:50vh;overflow:auto;margin-bottom:10px">
           <p class="muted center" style="padding:20px 0">Vazio</p>
         </div>
         <div class="totais">
-          <div class="row"><span>Itens</span><span id="totalItens">0</span></div>
-          <div class="row"><span>Quantidade</span><span id="totalQtd">0</span></div>
-          <div class="row total"><span>Valor total</span><span id="totalValor">R$ 0,00</span></div>
+          <div class="row"><span>Itens distintos</span><span id="totalItens">0</span></div>
+          <div class="row"><span>Lojas selecionadas</span><span id="totalLojas">0</span></div>
+          <div class="row total"><span>Valor (1 loja)</span><span id="totalValor">R$ 0,00</span></div>
+          <div class="row"><span class="muted" style="font-size:11px">Total geral</span><span id="totalGeral" class="muted" style="font-size:11px">R$ 0,00</span></div>
         </div>
-        <button class="btn-primary" style="width:100%;padding:10px;margin-top:10px;font-size:14px" onclick="enviarPedido(this)">
-          Enviar Pedido
+        <button class="btn-primary" style="width:100%;padding:10px;margin-top:10px;font-size:14px" onclick="gerarCsv(this)">
+          Gerar CSVs
         </button>
+
+        <div id="downloadArea" style="display:none;margin-top:14px">
+          <h3 style="margin-top:14px">✅ CSVs gerados</h3>
+          <div class="download-bloco">
+            <a id="dlPedidos"   target="_blank">⬇ P_PEDIDOS.csv</a>
+            <a id="dlItens"     target="_blank">⬇ P_PEDIDOS_ITENS.csv</a>
+          </div>
+          <p class="muted" style="font-size:11px;margin-top:8px">Cole os 2 arquivos na pasta de importação do UltraSyst do CD.</p>
+        </div>
       </div>
     </div>
 
+  </div>
+</div>
+
+<!-- MODAL CONFIGURAÇÃO -->
+<div id="modalConfig" class="modal" onclick="if(event.target===this)fecharConfig()">
+  <div class="modal-card">
+    <h2>Configurar lojas (cli_codi do UltraSyst)</h2>
+    <p class="muted" style="font-size:12px;margin-bottom:14px">Pra cada loja JR Lira, escolha o cli_codi correspondente no UltraSyst do CD.</p>
+    <table>
+      <thead><tr><th>Loja JR Lira</th><th>cli_codi (CD)</th><th></th></tr></thead>
+      <tbody id="modalConfigBody"></tbody>
+    </table>
+    <div style="text-align:right;margin-top:14px">
+      <button class="btn-ghost" onclick="fecharConfig()">Fechar</button>
+    </div>
   </div>
 </div>
 
@@ -149,16 +180,16 @@ const token = () => localStorage.getItem('jrlira_token');
 (function(){ const p = localStorage.getItem('jrlira_perfil'); if (!token() || !['admin','ceo'].includes(p)) location.href = '/'; })();
 document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
 
-const carrinho = new Map(); // mat_codi → { mat_codi, mat_desc, qtd, valor, qtd_embalagem }
+const cesta = new Map();          // mat_codi → { mat_codi, mat_desc, valor, qtd_embalagem }
+const lojasMap = new Map();       // loja_id → { loja_id, loja_nome, cli_codi, cli_nome, qtd_unica }
 let buscaTimeout = null;
 
 function showMsg(txt, tipo = 'ok') {
   const el = document.getElementById('msg');
   el.className = 'msg ' + tipo;
   el.textContent = txt;
-  setTimeout(() => { if (tipo !== 'err') { el.className='msg'; el.textContent=''; } }, 5000);
+  setTimeout(() => { if (tipo !== 'err') { el.className='msg'; el.textContent=''; } }, 6000);
 }
-
 function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 async function api(path, method = 'GET', body) {
@@ -176,29 +207,45 @@ function fmtBRL(n) { return Number(n || 0).toLocaleString('pt-BR', { style: 'cur
 async function carregarLojas() {
   try {
     const lojas = await api('/api/pedidos-distribuidora/lojas');
-    const sel = document.getElementById('loja');
+    const div = document.getElementById('lojas');
     if (!lojas.length) {
-      sel.innerHTML = '<option value="">⚠ Nenhuma loja com cli_codi cadastrado</option>';
+      div.innerHTML = '<p class="muted">Nenhuma loja configurada. Clica em ⚙ Configurar lojas pra associar.</p>';
       return;
     }
-    sel.innerHTML = '<option value="">Selecione...</option>' +
-      lojas.map(l => `<option value="${l.loja_id}">${escapeHtml(l.loja_nome || ('Loja ' + l.loja_id))} (${escapeHtml(l.cli_codi)})</option>`).join('');
+    div.innerHTML = lojas.map(l => `
+      <div class="loja-row" data-loja="${l.loja_id}">
+        <input type="checkbox" id="lj-${l.loja_id}" onchange="toggleLoja(${l.loja_id}, this.checked)">
+        <div class="nome">
+          ${escapeHtml(l.loja_nome || ('Loja ' + l.loja_id))}
+          <small>${escapeHtml(l.cli_codi)} · ${escapeHtml(l.cli_nome || '')}</small>
+        </div>
+        <input type="number" class="qtd" id="qmul-${l.loja_id}" value="1" min="0.01" step="any" disabled
+               onchange="setMultiplicador(${l.loja_id}, this.value)">
+        <span class="muted" style="font-size:11px">×qtd</span>
+        <span></span>
+      </div>
+    `).join('');
   } catch (e) { showMsg(e.message, 'err'); }
 }
 
-async function testarApi() {
-  const el = document.getElementById('apiStatus');
-  el.textContent = 'testando...';
-  try {
-    const r = await api('/api/pedidos-distribuidora/health-api');
-    if (r.ok) {
-      el.innerHTML = `<span class="tag tag-ok">API OK</span> próximo cod: ${r.sample?.cod_pedido || r.sample?.proximo || '?'}`;
-    } else {
-      el.innerHTML = `<span class="tag tag-err">FALHA</span> ${escapeHtml(r.erro || '')}`;
-    }
-  } catch (e) {
-    el.innerHTML = `<span class="tag tag-err">ERRO</span> ${escapeHtml(e.message)}`;
+function toggleLoja(lojaId, checked) {
+  const div = document.querySelector(`[data-loja="${lojaId}"]`);
+  const nome = div.querySelector('.nome').firstChild.textContent.trim();
+  const cliCodi = div.querySelector('small').textContent.split('·')[0].trim();
+  const cliNome = (div.querySelector('small').textContent.split('·')[1] || '').trim();
+  const qtdInput = div.querySelector('.qtd');
+  qtdInput.disabled = !checked;
+  if (checked) {
+    lojasMap.set(lojaId, { loja_id: lojaId, loja_nome: nome, cli_codi: cliCodi, cli_nome: cliNome, qtd_unica: parseFloat(qtdInput.value) || 1 });
+  } else {
+    lojasMap.delete(lojaId);
   }
+  atualizarTotais();
+}
+
+function setMultiplicador(lojaId, valor) {
+  const l = lojasMap.get(lojaId);
+  if (l) { l.qtd_unica = parseFloat(valor) || 1; atualizarTotais(); }
 }
 
 function onBuscaChange() {
@@ -209,112 +256,175 @@ function onBuscaChange() {
 async function buscarProdutos() {
   const q = document.getElementById('busca').value.trim();
   const tbody = document.getElementById('produtos');
-  if (!q) { tbody.innerHTML = '<tr><td colspan="6" class="muted center">Digite pra buscar</td></tr>'; return; }
-  tbody.innerHTML = '<tr><td colspan="6" class="muted center">Buscando...</td></tr>';
+  if (!q) { tbody.innerHTML = '<tr><td colspan="5" class="muted center">Digite pra buscar</td></tr>'; return; }
+  tbody.innerHTML = '<tr><td colspan="5" class="muted center">Buscando...</td></tr>';
   try {
     const rows = await api('/api/pedidos-distribuidora/produtos?search=' + encodeURIComponent(q) + '&limit=80');
-    if (!rows.length) { tbody.innerHTML = '<tr><td colspan="6" class="muted center">Nada encontrado</td></tr>'; return; }
+    if (!rows.length) { tbody.innerHTML = '<tr><td colspan="5" class="muted center">Nada encontrado</td></tr>'; return; }
     tbody.innerHTML = rows.map(p => {
       const desc = p.desc_local || p.mat_desc || `Produto ${p.mat_codi}`;
       const preco = p.preco_admin ? fmtBRL(p.preco_admin) : '<span class="muted">sem custo</span>';
       const estoque = p.estoque_cd != null ? Number(p.estoque_cd).toFixed(0) : '?';
-      const noCarrinho = carrinho.has(p.mat_codi);
+      const naCesta = cesta.has(p.mat_codi);
       return `
-        <tr data-mat="${escapeHtml(p.mat_codi)}">
+        <tr>
           <td class="code">${escapeHtml(p.mat_codi)}</td>
           <td>${escapeHtml(desc)}<br><span class="muted" style="font-size:10px">${escapeHtml(p.ean_codi || '')} ${p.qtd_embalagem ? `· emb ${p.qtd_embalagem}` : ''}</span></td>
           <td class="right">${preco}</td>
           <td class="right">${estoque}</td>
-          <td class="center">
-            <input type="number" class="qtd-input" id="q-${escapeHtml(p.mat_codi)}" min="0.01" step="any" placeholder="0">
-          </td>
           <td>
-            <button class="btn-sm ${noCarrinho?'btn-ghost':'btn-primary'}" onclick="addCarrinho('${escapeHtml(p.mat_codi)}', ${p.preco_admin || 0}, ${p.qtd_embalagem || 1})">
-              ${noCarrinho ? 'Atualizar' : 'Add'}
+            <button class="btn-sm ${naCesta?'btn-ghost':'btn-primary'}" onclick='addCesta(${JSON.stringify({mat_codi:p.mat_codi, mat_desc:desc, preco:p.preco_admin, qtd_emb:p.qtd_embalagem||1})})'>
+              ${naCesta ? '✓' : '+'}
             </button>
           </td>
         </tr>
       `;
     }).join('');
-  } catch (e) { tbody.innerHTML = `<tr><td colspan="6"><span class="tag tag-err">ERRO</span> ${escapeHtml(e.message)}</td></tr>`; }
+  } catch (e) { tbody.innerHTML = `<tr><td colspan="5"><span class="tag tag-err">ERRO</span> ${escapeHtml(e.message)}</td></tr>`; }
 }
 
-function addCarrinho(matCodi, precoAdm, qtdEmb) {
-  const qtdEl = document.getElementById('q-' + matCodi);
-  const qtd = parseFloat(qtdEl.value);
-  if (!(qtd > 0)) { showMsg('Informe a quantidade', 'err'); return; }
-  if (!(precoAdm > 0)) { showMsg('Produto sem custo administrativo no CD', 'err'); return; }
-  const tr = qtdEl.closest('tr');
-  const desc = tr.querySelector('td:nth-child(2)').textContent.split('\n')[0].trim();
-  carrinho.set(matCodi, { mat_codi: matCodi, mat_desc: desc, qtd, valor: precoAdm, qtd_embalagem: qtdEmb });
-  qtdEl.value = '';
-  renderCarrinho();
-  buscarProdutos(); // re-render pra mostrar "Atualizar"
+function addCesta(info) {
+  if (!(info.preco > 0)) { showMsg('Produto sem custo administrativo no CD', 'err'); return; }
+  if (cesta.has(info.mat_codi)) { delCesta(info.mat_codi); return; }
+  cesta.set(info.mat_codi, {
+    mat_codi: info.mat_codi, mat_desc: info.mat_desc,
+    valor: info.preco, qtd_embalagem: info.qtd_emb || 1,
+  });
+  renderCesta();
+  buscarProdutos();
 }
 
-function delCarrinho(matCodi) {
-  carrinho.delete(matCodi);
-  renderCarrinho();
+function delCesta(matCodi) {
+  cesta.delete(matCodi);
+  renderCesta();
+  buscarProdutos();
 }
 
-function renderCarrinho() {
-  const div = document.getElementById('carrinho');
-  if (!carrinho.size) {
+function renderCesta() {
+  const div = document.getElementById('cesta');
+  if (!cesta.size) {
     div.innerHTML = '<p class="muted center" style="padding:20px 0">Vazio</p>';
   } else {
-    div.innerHTML = [...carrinho.values()].map(it => `
+    div.innerHTML = [...cesta.values()].map(it => `
       <div class="cart-row">
         <div class="desc" title="${escapeHtml(it.mat_desc)}">${escapeHtml(it.mat_desc)}</div>
-        <div class="right">${it.qtd}</div>
-        <div class="right">${fmtBRL(it.qtd * it.valor)}</div>
-        <div class="x" onclick="delCarrinho('${escapeHtml(it.mat_codi)}')">×</div>
+        <div class="muted" style="font-size:10px">${escapeHtml(it.mat_codi)}</div>
+        <div class="right">${fmtBRL(it.valor)}</div>
+        <div class="x" onclick="delCesta('${escapeHtml(it.mat_codi)}')">×</div>
       </div>
     `).join('');
   }
-  const totalQtd = [...carrinho.values()].reduce((s,x) => s + x.qtd, 0);
-  const totalVal = [...carrinho.values()].reduce((s,x) => s + x.qtd * x.valor, 0);
-  document.getElementById('totalItens').textContent = carrinho.size;
-  document.getElementById('totalQtd').textContent = totalQtd.toFixed(2).replace('.',',');
-  document.getElementById('totalValor').textContent = fmtBRL(totalVal);
+  atualizarTotais();
 }
 
-async function enviarPedido(btn) {
-  const lojaId = parseInt(document.getElementById('loja').value);
-  if (!lojaId) { showMsg('Selecione a loja destino', 'err'); return; }
-  if (!carrinho.size) { showMsg('Carrinho vazio', 'err'); return; }
-  if (!confirm(`Enviar pedido pra distribuidora?\n\nLoja: ${document.getElementById('loja').selectedOptions[0].text}\n${carrinho.size} item(ns) · ${document.getElementById('totalValor').textContent}`)) return;
+function atualizarTotais() {
+  const totalItens = cesta.size;
+  const totalLojas = lojasMap.size;
+  const valorPorLoja = [...cesta.values()].reduce((s, x) => s + x.valor, 0); // 1 unidade base por item
+  const valorGeral = [...lojasMap.values()].reduce((s, l) => s + valorPorLoja * l.qtd_unica, 0);
+  document.getElementById('totalItens').textContent = totalItens;
+  document.getElementById('totalLojas').textContent = totalLojas;
+  document.getElementById('totalValor').textContent = fmtBRL(valorPorLoja);
+  document.getElementById('totalGeral').textContent = fmtBRL(valorGeral);
+}
 
-  btn.disabled = true; btn.textContent = 'Enviando...';
+async function gerarCsv(btn) {
+  if (!lojasMap.size) { showMsg('Selecione ao menos uma loja destino', 'err'); return; }
+  if (!cesta.size)    { showMsg('Adicione ao menos um produto na cesta', 'err'); return; }
+  if (!confirm(`Gerar CSVs?\n\n${lojasMap.size} pedido(s), ${cesta.size} item(ns) cada\nTotal: ${document.getElementById('totalGeral').textContent}`)) return;
+
+  btn.disabled = true; btn.textContent = 'Gerando...';
+  document.getElementById('downloadArea').style.display = 'none';
   try {
     const body = {
-      loja_id_destino: lojaId,
       observacao: document.getElementById('obs').value.trim() || undefined,
-      itens: [...carrinho.values()].map(it => ({
-        mat_codi: it.mat_codi,
-        quantidade: it.qtd,
-        valor: it.valor,
-        qtd_embalagem: it.qtd_embalagem,
+      lojas: [...lojasMap.values()].map(l => ({
+        loja_id: l.loja_id,
+        itens: [...cesta.values()].map(it => ({
+          mat_codi: it.mat_codi,
+          quantidade: l.qtd_unica,  // mesma qtd pra todos itens dessa loja
+          valor: it.valor,
+          qtd_embalagem: it.qtd_embalagem,
+        })),
       })),
     };
     const r = await api('/api/pedidos-distribuidora', 'POST', body);
-    if (r.ok) {
-      showMsg(`✅ Pedido #${r.cod_pedido} enviado · ${r.enviados}/${r.total_itens} itens · ${fmtBRL(r.valor_total)}`, 'ok');
-      carrinho.clear();
-      renderCarrinho();
-      document.getElementById('obs').value = '';
-    } else {
-      const falhasResumo = r.falhas?.slice(0, 3).map(f => `${f.pro_codi}: ${f.erro}`).join(' | ') || '';
-      showMsg(`⚠ Pedido #${r.cod_pedido} parcial · ${r.enviados}/${r.total_itens} itens. ${falhasResumo}`, 'err');
-    }
+    showMsg(`✅ ${r.total_pedidos} pedido(s) gerados · ${fmtBRL(r.valor_total)}`, 'ok');
+    // Botões de download (token na query pra <a download>)
+    const t = encodeURIComponent(token());
+    document.getElementById('dlPedidos').href = `/api/pedidos-distribuidora/csv/${r.geracao_id}/P_PEDIDOS.csv?token=${t}`;
+    document.getElementById('dlItens'  ).href = `/api/pedidos-distribuidora/csv/${r.geracao_id}/P_PEDIDOS_ITENS.csv?token=${t}`;
+    document.getElementById('downloadArea').style.display = 'block';
   } catch (e) {
     showMsg('❌ ' + e.message, 'err');
   } finally {
-    btn.disabled = false; btn.textContent = 'Enviar Pedido';
+    btn.disabled = false; btn.textContent = 'Gerar CSVs';
   }
 }
 
+// ── Modal de configuração de lojas ↔ cli_codi ──
+
+async function abrirConfig() {
+  document.getElementById('modalConfig').classList.add('show');
+  await renderConfig();
+}
+function fecharConfig() {
+  document.getElementById('modalConfig').classList.remove('show');
+  carregarLojas();
+}
+
+async function renderConfig() {
+  try {
+    const [lojas, clientes, atuais] = await Promise.all([
+      api('/api/pedidos-distribuidora/lojas-disponiveis'),
+      api('/api/pedidos-distribuidora/clientes-cd'),
+      api('/api/pedidos-distribuidora/lojas'),
+    ]);
+    const atuaisMap = new Map(atuais.map(a => [a.loja_id, a]));
+    const tbody = document.getElementById('modalConfigBody');
+    tbody.innerHTML = lojas.map(l => {
+      const cur = atuaisMap.get(l.id);
+      const opcoes = '<option value="">— sem mapeamento —</option>' + clientes.map(c =>
+        `<option value="${escapeHtml(c.cli_codi)}" ${cur?.cli_codi === c.cli_codi ? 'selected' : ''}>${escapeHtml(c.cli_codi)} — ${escapeHtml(c.cli_nome)}</option>`
+      ).join('');
+      return `
+        <tr data-loja="${l.id}">
+          <td><strong>L${l.id}</strong> ${escapeHtml(l.nome)}</td>
+          <td><select id="cfg-${l.id}">${opcoes}</select></td>
+          <td><button class="btn-sm btn-success" onclick="salvarConfig(${l.id})">Salvar</button></td>
+        </tr>
+      `;
+    }).join('');
+  } catch (e) { showMsg(e.message, 'err'); }
+}
+
+async function salvarConfig(lojaId) {
+  const sel = document.getElementById(`cfg-${lojaId}`);
+  const cliCodi = sel.value;
+  if (!cliCodi) {
+    if (!confirm('Remover o mapeamento dessa loja?')) return;
+    try { await api(`/api/pedidos-distribuidora/lojas/${lojaId}`, 'DELETE'); showMsg('Removido', 'ok'); }
+    catch (e) { showMsg(e.message, 'err'); }
+    return;
+  }
+  const opt = sel.options[sel.selectedIndex];
+  const txt = opt.text;
+  const nome = txt.split('—').slice(1).join('—').trim();
+  // Pega CPF do clientes-cd (ja em memoria nao temos — vamos buscar)
+  const clientes = await api('/api/pedidos-distribuidora/clientes-cd');
+  const c = clientes.find(x => x.cli_codi === cliCodi);
+  try {
+    await api(`/api/pedidos-distribuidora/lojas/${lojaId}`, 'PUT', {
+      cli_codi: cliCodi,
+      cli_nome: c?.cli_nome || nome,
+      cli_cpf:  c?.cli_cpf  || null,
+    });
+    showMsg(`L${lojaId} mapeada pra ${cliCodi}`, 'ok');
+  } catch (e) { showMsg(e.message, 'err'); }
+}
+
 carregarLojas();
-renderCarrinho();
+renderCesta();
 </script>
 </body>
 </html>
