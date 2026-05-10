@@ -285,15 +285,15 @@ router.get('/grade', adminOuCeo, async (req, res) => {
       p.vendas = {};
     }
 
-    // Estoque + preço por loja — mapeia BOTH codbarra E principal apontando pra mesma loja×ean_principal
-    // Soma estoques quando há múltiplos codbarra pro mesmo principal (ex: produto + variação)
-    const estLojaMap = new Map(); // `${loja_id}|${ean}` → { est, preco }
-    const lojaEanCodbarras = new Map(); // `${loja_id}|${ean_principal}` → Set<codbarras alternativos>
+    // Estoque + preço por loja — chave SEMPRE pelo codbarra (que é o EAN real do produto na loja)
+    // produtos_externo.produtoprincipal é um ID interno (não EAN), serve só pra agrupar variantes
+    const estLojaMap = new Map(); // `${loja_id}|${codbarra}` → { est, preco }
+    // Pra agrupar codbarras alternativos vinculados ao mesmo principal (id interno):
+    // map principal_id → Set<codbarras> por loja
+    const principalCodbarras = new Map(); // `${loja_id}|${principal}` → Set<codbarras>
     for (const r of estLojas) {
-      // r tem codbarra e principal. O EAN "destino" é o principal se existir, senão o codbarra
-      const ean = r.principal || r.codbarra;
-      if (!ean) continue;
-      const key = `${r.loja_id}|${ean}`;
+      if (!r.codbarra) continue;
+      const key = `${r.loja_id}|${r.codbarra}`;
       const acc = estLojaMap.get(key);
       const est = parseFloat(r.estdisponivel) || 0;
       const preco = parseFloat(r.prsugerido) || null;
@@ -303,11 +303,11 @@ router.get('/grade', adminOuCeo, async (req, res) => {
       } else {
         estLojaMap.set(key, { estdisponivel: est, prsugerido: preco });
       }
-      // Coleta os codbarras (pra usar nas vendas)
-      const k2 = `${r.loja_id}|${ean}`;
-      if (!lojaEanCodbarras.has(k2)) lojaEanCodbarras.set(k2, new Set());
-      if (r.codbarra) lojaEanCodbarras.get(k2).add(r.codbarra);
-      if (r.principal) lojaEanCodbarras.get(k2).add(r.principal);
+      if (r.principal) {
+        const pk = `${r.loja_id}|${r.principal}`;
+        if (!principalCodbarras.has(pk)) principalCodbarras.set(pk, new Set());
+        principalCodbarras.get(pk).add(r.codbarra);
+      }
     }
 
     // Vendas por loja — agregadas por (loja_id, codbarra). Soma os codbarras vinculados ao ean principal.
@@ -359,32 +359,23 @@ router.get('/grade', adminOuCeo, async (req, res) => {
         const slot = { estoque_un: 0, estoque_cx: 0, transito_un: 0, transito_cx: 0, sugestao_cx: 0, sug_editada: 0 };
 
         if (d.tipo === 'LOJA' && d.loja_id) {
+          // Match direto por codbarra = ean principal do produto
           const e = estLojaMap.get(`${d.loja_id}|${eanN}`);
-          // Soma vendas/trânsito de todos os codbarras vinculados ao ean principal nessa loja
-          const cbs = lojaEanCodbarras.get(`${d.loja_id}|${eanN}`) || new Set([eanN]);
-          let qtd_28d = 0, qtd_90d = 0, ultima = null, transitoUn = 0;
-          for (const cb of cbs) {
-            const v = vendaPorCb.get(`${d.loja_id}|${cb}`);
-            if (v) {
-              qtd_28d += parseFloat(v.qtd_28d) || 0;
-              qtd_90d += parseFloat(v.qtd_90d) || 0;
-              if (v.ultima_venda && (!ultima || v.ultima_venda > ultima)) ultima = v.ultima_venda;
-            }
-            const t = transitoPorCb.get(`${d.loja_id}|${cb}`);
-            if (t) transitoUn += t;
-          }
+          const v = vendaPorCb.get(`${d.loja_id}|${eanN}`);
+          const t = transitoPorCb.get(`${d.loja_id}|${eanN}`) || 0;
           slot.estoque_un = e ? parseFloat(e.estdisponivel) : 0;
-          slot.transito_un = transitoUn;
+          slot.transito_un = t;
           slot.estoque_cx = qtdEmb > 0 ? Math.floor(slot.estoque_un / qtdEmb) : 0;
           slot.transito_cx = qtdEmb > 0 ? Math.floor(slot.transito_un / qtdEmb) : 0;
+          const qtd_28d = v ? parseFloat(v.qtd_28d) || 0 : 0;
           const media_dia = qtd_28d / 28;
           const sug_un = Math.max(0, 35 * media_dia - slot.estoque_un - slot.transito_un);
           slot.sugestao_cx = qtdEmb > 0 ? Math.ceil(sug_un / qtdEmb) : 0;
-          if (e || qtd_28d > 0) {
+          if (e || v) {
             p.vendas[d.loja_id] = {
               media_28d: media_dia,
               preco_atual: e?.prsugerido ? parseFloat(e.prsugerido) : null,
-              ultima_venda: ultima,
+              ultima_venda: v?.ultima_venda || null,
             };
           }
         } else if (d.tipo === 'CD' && d.cd_codigo) {
