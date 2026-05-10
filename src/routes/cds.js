@@ -22,15 +22,15 @@ router.get('/', apenasAdmin, async (req, res) => {
 // POST /api/admin/cds — cria
 router.post('/', apenasAdmin, async (req, res) => {
   try {
-    const { codigo, nome, url, token, emp_codi, loc_codi } = req.body || {};
+    const { codigo, nome, url, token, banco, emp_codi, loc_codi } = req.body || {};
     if (!codigo || !nome || !url || !token) {
       return res.status(400).json({ erro: 'codigo, nome, url, token sao obrigatorios' });
     }
     const [novo] = await dbQuery(
-      `INSERT INTO cds (codigo, nome, url, token, emp_codi, loc_codi)
-       VALUES ($1, $2, $3, $4, COALESCE($5, '001'), COALESCE($6, '001'))
-       RETURNING id, codigo, nome, url, emp_codi, loc_codi, ativo, criado_em`,
-      [codigo.trim().toLowerCase(), nome.trim(), url.trim(), token.trim(), emp_codi, loc_codi]
+      `INSERT INTO cds (codigo, nome, url, token, banco, emp_codi, loc_codi)
+       VALUES ($1, $2, $3, $4, $5, COALESCE($6, '001'), COALESCE($7, '001'))
+       RETURNING id, codigo, nome, url, banco, emp_codi, loc_codi, ativo, criado_em`,
+      [codigo.trim().toLowerCase(), nome.trim(), url.trim(), token.trim(), banco?.trim() || null, emp_codi, loc_codi]
     );
     invalidarCache();
     res.json(novo);
@@ -44,13 +44,14 @@ router.post('/', apenasAdmin, async (req, res) => {
 router.patch('/:id', apenasAdmin, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { nome, url, token, emp_codi, loc_codi, ativo } = req.body || {};
+    const { nome, url, token, banco, emp_codi, loc_codi, ativo } = req.body || {};
     const sets = [];
     const vals = [];
     let i = 1;
     if (nome !== undefined)     { sets.push(`nome=$${i++}`);     vals.push(nome.trim()); }
     if (url !== undefined)      { sets.push(`url=$${i++}`);      vals.push(url.trim()); }
     if (token)                  { sets.push(`token=$${i++}`);    vals.push(token.trim()); }
+    if (banco !== undefined)    { sets.push(`banco=$${i++}`);    vals.push(banco?.trim() || null); }
     if (emp_codi !== undefined) { sets.push(`emp_codi=$${i++}`); vals.push(emp_codi); }
     if (loc_codi !== undefined) { sets.push(`loc_codi=$${i++}`); vals.push(loc_codi); }
     if (ativo !== undefined)    { sets.push(`ativo=$${i++}`);    vals.push(!!ativo); }

@@ -55,13 +55,18 @@ RELAY_SECRET_VALUE=<gerar abaixo, 32 chars>
 ALLOWLIST_IPS=<deixar vazio por enquanto>
 SQL_HOST=127.0.0.1
 SQL_PORT=1433
-SQL_DB=ITAUTUBA
+SQL_DB=ITAUTUBA              # banco default (cliente sem ?db= cai aqui)
+SQL_DBS=ITAUTUBA,N_PROGRESSO # bancos extras permitidos via ?db=NOME (CSV; SQL_DB já é incluído auto)
 SQL_USER=jrlira_relay
 SQL_PASS=<senha do user SQL criado no passo 7>
 MAX_ROWS=5000
 RATE_PER_MIN=120
 LOG_DIR=C:\ultrasyst-relay\logs
 ```
+
+**Multi-banco no mesmo servidor:** liste os bancos extras em `SQL_DBS` (separados por vírgula).
+O cliente JR Lira escolhe o banco passando `?db=NOME` em qualquer endpoint, ou via header `X-DB`.
+Quando o cliente não especifica, cai no `SQL_DB` (compat com clientes antigos).
 
 Gerar 2 segredos:
 ```powershell

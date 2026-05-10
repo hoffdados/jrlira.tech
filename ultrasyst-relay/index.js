@@ -16,7 +16,13 @@ const SECRET_HEADER = process.env.RELAY_SECRET_HEADER || ''; // opcional: defesa
 const SECRET_VALUE  = process.env.RELAY_SECRET_VALUE  || '';
 const SQL_HOST      = process.env.SQL_HOST || '127.0.0.1';
 const SQL_PORT      = parseInt(process.env.SQL_PORT || '1433');
-const SQL_DB        = process.env.SQL_DB || 'ITAUTUBA';
+const SQL_DB        = process.env.SQL_DB || 'ITAUTUBA'; // banco default (compat com clientes antigos)
+// Lista de bancos permitidos (allowlist). Cliente pode escolher via ?db=NOME em qualquer endpoint.
+// Formato: "ITAUTUBA,N_PROGRESSO"  (sempre inclui SQL_DB)
+const SQL_DBS       = Array.from(new Set([
+  SQL_DB,
+  ...(process.env.SQL_DBS || '').split(',').map(s => s.trim()).filter(Boolean),
+]));
 const SQL_USER      = process.env.SQL_USER || 'ASAB';
 const SQL_PASS      = process.env.SQL_PASS || '';
 const MAX_ROWS      = parseInt(process.env.MAX_ROWS || '5000');
@@ -34,27 +40,42 @@ if (!SQL_PASS) {
 }
 try { fs.mkdirSync(LOG_DIR, { recursive: true }); } catch {}
 
-const sqlConfig = {
-  server: SQL_HOST,
-  port: SQL_PORT,
-  database: SQL_DB,
-  user: SQL_USER,
-  password: SQL_PASS,
-  options: { encrypt: false, trustServerCertificate: true, enableArithAbort: true },
-  pool: { max: 5, min: 0, idleTimeoutMillis: 30000 },
-  connectionTimeout: 15000,
-  requestTimeout: 60000,
-};
+function makeConfig(db) {
+  return {
+    server: SQL_HOST,
+    port: SQL_PORT,
+    database: db,
+    user: SQL_USER,
+    password: SQL_PASS,
+    options: { encrypt: false, trustServerCertificate: true, enableArithAbort: true },
+    pool: { max: 5, min: 0, idleTimeoutMillis: 30000 },
+    connectionTimeout: 15000,
+    requestTimeout: 60000,
+  };
+}
 
-let poolPromise = null;
-async function getPool() {
-  if (!poolPromise) {
-    poolPromise = new sql.ConnectionPool(sqlConfig).connect().catch(err => {
-      poolPromise = null;
+// Pool por banco — Map<dbName, Promise<ConnectionPool>>
+const pools = new Map();
+function getPool(db) {
+  const dbName = db || SQL_DB;
+  if (!SQL_DBS.includes(dbName)) {
+    const e = new Error(`banco "${dbName}" nao permitido. Disponiveis: ${SQL_DBS.join(', ')}`);
+    e.status = 400;
+    throw e;
+  }
+  if (!pools.has(dbName)) {
+    const p = new sql.ConnectionPool(makeConfig(dbName)).connect().catch(err => {
+      pools.delete(dbName);
       throw err;
     });
+    pools.set(dbName, p);
   }
-  return poolPromise;
+  return pools.get(dbName);
+}
+
+// Resolve o banco da request — query string ?db=NOME ou header X-DB
+function dbFromReq(req) {
+  return (req.query?.db || req.headers['x-db'] || SQL_DB).toString().trim();
 }
 
 // ── Auditoria
@@ -141,14 +162,15 @@ app.use((req, res, next) => {
   next();
 });
 
-// ── Health (sem auth, mas com rate limit)
-app.get('/health', async (_req, res) => {
+// ── Health (sem auth, mas com rate limit). Aceita ?db= pra testar banco específico.
+app.get('/health', async (req, res) => {
   try {
-    const pool = await getPool();
+    const db = dbFromReq(req);
+    const pool = await getPool(db);
     const r = await pool.request().query('SELECT 1 AS ok');
-    res.json({ ok: true, sql: r.recordset[0]?.ok === 1, ts: new Date().toISOString() });
+    res.json({ ok: true, sql: r.recordset[0]?.ok === 1, db, dbs_disponiveis: SQL_DBS, ts: new Date().toISOString() });
   } catch (e) {
-    res.status(503).json({ ok: false, erro: e.message });
+    res.status(e.status || 503).json({ ok: false, erro: e.message, dbs_disponiveis: SQL_DBS });
   }
 });
 
@@ -156,7 +178,8 @@ app.get('/health', async (_req, res) => {
 app.get('/tables', async (req, res) => {
   try {
     const filtro = (req.query.q || '').toString().toLowerCase();
-    const pool = await getPool();
+    const db = dbFromReq(req);
+    const pool = await getPool(db);
     const r = await pool.request().query(`
       SELECT TABLE_SCHEMA, TABLE_NAME
         FROM INFORMATION_SCHEMA.TABLES
@@ -165,9 +188,9 @@ app.get('/tables', async (req, res) => {
     `);
     let rows = r.recordset;
     if (filtro) rows = rows.filter(x => x.TABLE_NAME.toLowerCase().includes(filtro));
-    log({ ip: clientIp(req), path: '/tables', filtro, total: rows.length });
-    res.json({ total: rows.length, tabelas: rows });
-  } catch (e) { res.status(500).json({ erro: e.message }); }
+    log({ ip: clientIp(req), path: '/tables', db, filtro, total: rows.length });
+    res.json({ db, total: rows.length, tabelas: rows });
+  } catch (e) { res.status(e.status || 500).json({ erro: e.message }); }
 });
 
 // ── Colunas
@@ -175,7 +198,8 @@ app.get('/columns/:tabela', async (req, res) => {
   try {
     if (!/^[A-Z0-9_]{1,128}$/i.test(req.params.tabela))
       return res.status(400).json({ erro: 'Nome de tabela inválido' });
-    const pool = await getPool();
+    const db = dbFromReq(req);
+    const pool = await getPool(db);
     const r = await pool.request()
       .input('t', sql.VarChar, req.params.tabela)
       .query(`
@@ -184,9 +208,9 @@ app.get('/columns/:tabela', async (req, res) => {
          WHERE TABLE_NAME = @t
          ORDER BY ORDINAL_POSITION
       `);
-    log({ ip: clientIp(req), path: '/columns', tabela: req.params.tabela });
-    res.json({ tabela: req.params.tabela, colunas: r.recordset });
-  } catch (e) { res.status(500).json({ erro: e.message }); }
+    log({ ip: clientIp(req), path: '/columns', db, tabela: req.params.tabela });
+    res.json({ db, tabela: req.params.tabela, colunas: r.recordset });
+  } catch (e) { res.status(e.status || 500).json({ erro: e.message }); }
 });
 
 // ── Query genérica — SOMENTE SELECT
@@ -214,7 +238,8 @@ app.post('/query', async (req, res) => {
       return res.status(403).json({ erro: 'Múltiplas instruções não permitidas' });
     }
 
-    const pool = await getPool();
+    const db = dbFromReq(req);
+    const pool = await getPool(db);
     const reqSql = pool.request();
     if (params && typeof params === 'object') {
       for (const [k, v] of Object.entries(params)) {
@@ -229,11 +254,11 @@ app.post('/query', async (req, res) => {
     let rows = result.recordset || [];
     const truncado = rows.length > MAX_ROWS;
     if (truncado) rows = rows.slice(0, MAX_ROWS);
-    log({ ip, path: '/query', sql: trimmed.slice(0, 500), rows: rows.length, ms });
-    res.json({ total: rows.length, truncado, rows });
+    log({ ip, path: '/query', db, sql: trimmed.slice(0, 500), rows: rows.length, ms });
+    res.json({ db, total: rows.length, truncado, rows });
   } catch (e) {
     log({ ip, path: '/query', erro: e.message }, 'error');
-    res.status(500).json({ erro: e.message });
+    res.status(e.status || 500).json({ erro: e.message });
   }
 });
 
@@ -242,7 +267,8 @@ app.use((req, res) => res.status(404).json({ erro: 'Não encontrado' }));
 
 app.listen(PORT, '127.0.0.1', () => {
   console.log(`[UltraSyst Relay] ouvindo em 127.0.0.1:${PORT}`);
-  console.log(`[UltraSyst Relay] SQL: ${SQL_HOST}:${SQL_PORT}/${SQL_DB} (user ${SQL_USER})`);
+  console.log(`[UltraSyst Relay] SQL: ${SQL_HOST}:${SQL_PORT} (user ${SQL_USER})`);
+  console.log(`[UltraSyst Relay] Bancos permitidos: ${SQL_DBS.join(', ')} (default: ${SQL_DB})`);
   console.log(`[UltraSyst Relay] Rate limit: ${RATE_PER_MIN}/min  Allowlist: ${ALLOWLIST_IPS.length || 'desativada'}`);
   console.log(`[UltraSyst Relay] Logs: ${LOG_DIR}`);
 });

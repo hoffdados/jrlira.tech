@@ -74,6 +74,10 @@ tbody tr:hover{background:#1a2744}
         <input id="nNome" placeholder="VCA Lira / Atacadão Asa Branca">
       </div>
       <div>
+        <label>Banco SQL (?db=)</label>
+        <input id="nBanco" placeholder="ITAUTUBA, N_PROGRESSO, asa_frio...">
+      </div>
+      <div>
         <label>EMP_CODI</label>
         <input id="nEmp" placeholder="001" value="001">
       </div>
@@ -103,13 +107,14 @@ tbody tr:hover{background:#1a2744}
           <th>Código</th>
           <th>Nome</th>
           <th>URL</th>
+          <th>Banco</th>
           <th>EMP/LOC</th>
           <th>Token</th>
           <th>Status</th>
           <th>Ações</th>
         </tr>
       </thead>
-      <tbody id="tbody"><tr><td colspan="7" class="muted">Carregando...</td></tr></tbody>
+      <tbody id="tbody"><tr><td colspan="8" class="muted">Carregando...</td></tr></tbody>
     </table>
     <div id="testResult"></div>
   </div>
@@ -142,7 +147,7 @@ async function carregar() {
     const cds = await api('/api/admin/cds');
     const tb = document.getElementById('tbody');
     if (!cds.length) {
-      tb.innerHTML = '<tr><td colspan="7" class="muted">Nenhum CD cadastrado ainda.</td></tr>';
+      tb.innerHTML = '<tr><td colspan="8" class="muted">Nenhum CD cadastrado ainda.</td></tr>';
       return;
     }
     tb.innerHTML = cds.map(c => `
@@ -150,6 +155,7 @@ async function carregar() {
         <td class="code">${escapeHtml(c.codigo)}</td>
         <td>${escapeHtml(c.nome)}</td>
         <td class="muted" style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(c.url)}">${escapeHtml(c.url)}</td>
+        <td class="code">${escapeHtml(c.banco || '(default)')}</td>
         <td class="code">${c.emp_codi}/${c.loc_codi}</td>
         <td class="muted code">${c.tem_token ? c.token : '<span class="err">vazio</span>'}</td>
         <td><span class="tag ${c.ativo ? 'tag-on' : 'tag-off'}">${c.ativo ? 'Ativo' : 'Inativo'}</span></td>
@@ -177,6 +183,7 @@ async function criarCd(btn) {
       nome:   document.getElementById('nNome').value.trim(),
       url:    document.getElementById('nUrl').value.trim(),
       token:  document.getElementById('nToken').value.trim(),
+      banco:  document.getElementById('nBanco').value.trim() || null,
       emp_codi: document.getElementById('nEmp').value.trim() || '001',
       loc_codi: document.getElementById('nLoc').value.trim() || '001',
     };
@@ -185,7 +192,7 @@ async function criarCd(btn) {
     }
     await api('/api/admin/cds', 'POST', body);
     showMsg(`CD "${body.codigo}" cadastrado`, 'ok');
-    ['nCodigo','nNome','nUrl','nToken'].forEach(id => document.getElementById(id).value = '');
+    ['nCodigo','nNome','nUrl','nToken','nBanco'].forEach(id => document.getElementById(id).value = '');
     carregar();
   } catch (e) { showMsg(e.message, 'err'); }
   finally { btn.disabled = false; }

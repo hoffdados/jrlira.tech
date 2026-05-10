@@ -1863,7 +1863,7 @@ async function initDB() {
     await runMigration(client, '20260510_cds',
       `CREATE TABLE IF NOT EXISTS cds (
          id SERIAL PRIMARY KEY,
-         codigo VARCHAR(20) UNIQUE NOT NULL,
+         codigo VARCHAR(40) UNIQUE NOT NULL,
          nome VARCHAR(120) NOT NULL,
          url TEXT NOT NULL,
          token TEXT NOT NULL,
@@ -1873,6 +1873,9 @@ async function initDB() {
          criado_em TIMESTAMPTZ DEFAULT NOW(),
          atualizado_em TIMESTAMPTZ DEFAULT NOW()
        )`);
+    // Multi-banco no mesmo relay: 1 entrada por (servidor × banco). Repete URL+token, varia banco.
+    await runMigration(client, '20260510_cds_banco',
+      `ALTER TABLE cds ADD COLUMN IF NOT EXISTS banco VARCHAR(40)`);
 
     console.log('[DB] Tabelas inicializadas');
   } finally {
