@@ -311,6 +311,7 @@ router.post('/limpar-pre-cutoff', apenasAdmin, async (req, res) => {
 router.get('/diagnosticar/:numero_nota', autenticarComQS, async (req, res) => {
   try {
     const num = String(req.params.numero_nota).trim();
+    const numNorm = String(num).replace(/^0+/, '') || num;
     const noNotas = await dbQuery(
       `SELECT id, numero_nota, serie, fornecedor_cnpj, fornecedor_nome,
               loja_id, status, origem, data_emissao, valor_total,
@@ -320,21 +321,24 @@ router.get('/diagnosticar/:numero_nota', autenticarComQS, async (req, res) => {
               auditoria_eco_status, auditoria_eco_em,
               justificativa_diretor, justificada_por
          FROM notas_entrada
-        WHERE numero_nota = $1 OR cd_mov_codi = $1
-        ORDER BY id DESC`, [num]
+        WHERE REGEXP_REPLACE(COALESCE(numero_nota, ''), '^0+', '') = $1
+           OR REGEXP_REPLACE(COALESCE(cd_mov_codi, ''), '^0+', '') = $1
+        ORDER BY id DESC`, [numNorm]
     );
     const noCompras = await dbQuery(
       `SELECT loja_id, numeronfe, fornecedor_cnpj,
               MIN(data_emissao) AS data_emissao, MIN(data_entrada) AS data_entrada,
               COUNT(*)::int AS itens, SUM(qtd_comprada)::float AS qtd_total
-         FROM compras_historico WHERE numeronfe = $1
-         GROUP BY loja_id, numeronfe, fornecedor_cnpj ORDER BY loja_id`, [num]
+         FROM compras_historico
+        WHERE REGEXP_REPLACE(COALESCE(numeronfe,''),'^0+','') = $1
+        GROUP BY loja_id, numeronfe, fornecedor_cnpj ORDER BY loja_id`, [numNorm]
     );
     const noCdMov = await dbQuery(
       `SELECT cd_codigo, mcp_codi, mcp_tipomov, mcp_status, mcp_dten, mcp_nnotafis, for_codi, mcp_vtot
          FROM cd_movcompra
-        WHERE mcp_nnotafis = $1 OR mcp_codi = $1
-        ORDER BY mcp_dten DESC`, [num]
+        WHERE REGEXP_REPLACE(COALESCE(mcp_nnotafis,''),'^0+','') = $1
+           OR REGEXP_REPLACE(COALESCE(mcp_codi,''),'^0+','') = $1
+        ORDER BY mcp_dten DESC`, [numNorm]
     );
     res.json({
       numero_nota: num,
