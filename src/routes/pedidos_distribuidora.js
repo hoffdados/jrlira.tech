@@ -92,7 +92,115 @@ router.get('/cli-codi-lookup', adminOuCeo, async (req, res) => {
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
-// ── Catálogo de produtos (do CD legado já sincronizado) ──
+// ── Grade tipo planilha: 1 linha por produto, 1 col por destino ──
+//
+// GET /grade?cd_origem=X&busca=&so_pedir=true|false&limit=
+// Retorna: { destinos: [...], produtos: [{ mat_codi, descricao, ref, est_dist, qtds: { destino_id: qtd } }] }
+router.get('/grade', adminOuCeo, async (req, res) => {
+  try {
+    const cdOrigem = String(req.query.cd_origem || '').trim();
+    if (!cdOrigem) return res.status(400).json({ erro: 'cd_origem obrigatorio' });
+    const busca = (req.query.busca || '').toString().trim().toLowerCase();
+    const soPedir = req.query.so_pedir === 'true';
+    const limit = Math.min(parseInt(req.query.limit) || 500, 3000);
+
+    const destinos = await dbQuery(
+      `SELECT id, tipo, codigo, nome, cnpj, loja_id, cd_codigo
+         FROM pedidos_distrib_destinos
+        WHERE ativo = TRUE AND (cnpj <> (SELECT cnpj FROM pedidos_distrib_destinos WHERE cd_codigo=$1))
+        ORDER BY tipo DESC, nome`,
+      [cdOrigem]
+    );
+
+    const params = [cdOrigem];
+    let where = `(cd_m.mat_situ = 'A' OR cd_m.mat_situ IS NULL)`;
+    if (busca) {
+      params.push(`%${busca}%`);
+      params.push(busca.replace(/[^0-9]/g, ''));
+      where += ` AND (LOWER(cd_m.mat_desc) LIKE $${params.length-1} OR cd_m.mat_codi = $${params.length} OR cd_m.ean_codi = $${params.length})`;
+    }
+    if (soPedir) {
+      where += ` AND EXISTS (SELECT 1 FROM pedidos_distrib_quantidades q
+                              WHERE q.cd_origem_codigo = $1 AND q.mat_codi = cd_m.mat_codi AND q.qtd > 0)`;
+    }
+    params.push(limit);
+
+    const produtos = await dbQuery(`
+      SELECT cd_m.mat_codi,
+             COALESCE(pe.descricao_atual, cd_m.mat_desc) AS descricao,
+             cd_m.mat_refe AS referencia,
+             cd_e.est_quan AS est_dist,
+             cd_c.pro_prad AS preco_admin,
+             pe.qtd_embalagem
+        FROM cd_material cd_m
+        LEFT JOIN cd_estoque   cd_e ON cd_e.pro_codi = cd_m.mat_codi
+        LEFT JOIN cd_custoprod cd_c ON cd_c.pro_codi = cd_m.mat_codi
+        LEFT JOIN produtos_embalagem pe ON pe.mat_codi = cd_m.mat_codi
+       WHERE ${where}
+       ORDER BY descricao
+       LIMIT $${params.length}
+    `, params);
+
+    const matCodis = produtos.map(p => p.mat_codi);
+    const qtds = matCodis.length
+      ? await dbQuery(
+          `SELECT destino_id, mat_codi, qtd FROM pedidos_distrib_quantidades
+            WHERE cd_origem_codigo = $1 AND mat_codi = ANY($2::text[])`,
+          [cdOrigem, matCodis]
+        )
+      : [];
+    const qtdMap = new Map(); // mat_codi -> { destino_id: qtd }
+    for (const q of qtds) {
+      if (!qtdMap.has(q.mat_codi)) qtdMap.set(q.mat_codi, {});
+      qtdMap.get(q.mat_codi)[q.destino_id] = parseFloat(q.qtd);
+    }
+    for (const p of produtos) p.qtds = qtdMap.get(p.mat_codi) || {};
+
+    res.json({ cd_origem: cdOrigem, destinos, produtos });
+  } catch (e) {
+    console.error('[pedidos-distrib grade]', e.message);
+    res.status(500).json({ erro: e.message });
+  }
+});
+
+// PUT /qtd — salva qtd editada. Body: { cd_origem, destino_id, mat_codi, qtd }
+router.put('/qtd', adminOuCeo, async (req, res) => {
+  try {
+    const { cd_origem, destino_id, mat_codi, qtd } = req.body || {};
+    if (!cd_origem || !destino_id || !mat_codi) return res.status(400).json({ erro: 'cd_origem, destino_id, mat_codi obrigatorios' });
+    const por = req.usuario.email || req.usuario.usuario || req.usuario.nome || `id:${req.usuario.id}`;
+    const qtdNum = parseFloat(qtd) || 0;
+    if (qtdNum <= 0) {
+      await dbQuery(
+        `DELETE FROM pedidos_distrib_quantidades
+          WHERE cd_origem_codigo=$1 AND destino_id=$2 AND mat_codi=$3`,
+        [cd_origem, parseInt(destino_id), String(mat_codi).trim()]
+      );
+      return res.json({ ok: true, acao: 'removido' });
+    }
+    await dbQuery(
+      `INSERT INTO pedidos_distrib_quantidades
+         (cd_origem_codigo, destino_id, mat_codi, qtd, atualizado_em, atualizado_por)
+       VALUES ($1,$2,$3,$4,NOW(),$5)
+       ON CONFLICT (cd_origem_codigo, destino_id, mat_codi) DO UPDATE SET
+         qtd = EXCLUDED.qtd, atualizado_em = NOW(), atualizado_por = EXCLUDED.atualizado_por`,
+      [cd_origem, parseInt(destino_id), String(mat_codi).trim(), qtdNum, por]
+    );
+    res.json({ ok: true, acao: 'salvo', qtd: qtdNum });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
+// DELETE /qtd-tudo?cd_origem=X — limpa todas as qtds salvas (rascunho)
+router.delete('/qtd-tudo', adminOuCeo, async (req, res) => {
+  try {
+    const cdOrigem = String(req.query.cd_origem || '').trim();
+    if (!cdOrigem) return res.status(400).json({ erro: 'cd_origem obrigatorio' });
+    const r = await dbQuery(`DELETE FROM pedidos_distrib_quantidades WHERE cd_origem_codigo = $1`, [cdOrigem]);
+    res.json({ ok: true, removidos: r.length });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
+// ── Catálogo de produtos (do CD legado já sincronizado) — usado pela busca antiga ──
 
 router.get('/produtos', adminOuCeo, async (req, res) => {
   try {
@@ -144,22 +252,33 @@ function fmtNum(n, casas = 2) { return Number(n || 0).toFixed(casas); }
 const HEADER_PEDIDOS = 'COD_PEDIDO;EMPRESA;LOCALIZACAO;COD_VENDEDOR;COD_CLIENTE;COD_CLIENTE_CADASTRO;COD_CONDICAO;COD_PAGAMENTO;COD_TIPOVENDA;COD_TABELA;DATA_EMISSAO;VALOR_PEDIDO;OBSERVACAO;RETORNO;SIT_RETORNO;NUMPEDIDO;HORA_EMISSAO;COD_MOTIVO;ID;LATITUDE;LONGITUDE;CPF_CNPJ;NOME_CLIENTE';
 const HEADER_ITENS   = 'COD_PEDIDO;COD_VENDEDOR;COD_PRODUTO;UNIDADE;QUANTIDADE;VALOR;DESCONTO_UNI;DESCONTO_PER;VALOR_TABELA;TIPO_CALCULO;NOME_EMBALAGEM;QTD_EMBALAGEM;ID';
 
-// ── Geração de CSV ──
+// ── Geração de CSV (lê qtds salvas em pedidos_distrib_quantidades) ──
 //
-// Body: {
-//   cd_origem_codigo: "srv1-itautuba",
-//   observacao?: string,
-//   destinos: [{ destino_id, qtd_unica }],
-//   itens:    [{ mat_codi, valor?, qtd_embalagem? }]
-// }
-// Cesta única replicada pra cada destino (qtd_unica multiplica todas as quantidades).
+// Body: { cd_origem_codigo: "srv1-itautuba", observacao?: string }
+// Os destinos e itens vêm das qtds salvas via PUT /qtd (cesta tipo planilha).
+// Pedido é gerado pra cada destino que tem ao menos 1 item com qtd > 0.
 router.post('/', adminOuCeo, async (req, res) => {
   try {
-    const { cd_origem_codigo, observacao, destinos, itens } = req.body || {};
+    const { cd_origem_codigo, observacao } = req.body || {};
     if (!cd_origem_codigo) return res.status(400).json({ erro: 'cd_origem_codigo obrigatorio' });
-    if (!Array.isArray(destinos) || !destinos.length) return res.status(400).json({ erro: 'destinos vazio' });
-    if (!Array.isArray(itens) || !itens.length) return res.status(400).json({ erro: 'itens vazio' });
     const por = req.usuario.email || req.usuario.usuario || req.usuario.nome || `id:${req.usuario.id}`;
+
+    // Carrega todas as qtds salvas pra esse CD origem
+    const qtds = await dbQuery(
+      `SELECT destino_id, mat_codi, qtd FROM pedidos_distrib_quantidades
+        WHERE cd_origem_codigo = $1 AND qtd > 0`,
+      [cd_origem_codigo]
+    );
+    if (!qtds.length) return res.status(400).json({ erro: 'nenhuma quantidade > 0 salva pra esse CD origem. Edite a grade primeiro.' });
+
+    // Agrupa por destino
+    const porDestino = new Map(); // destino_id -> [{ mat_codi, qtd }]
+    for (const q of qtds) {
+      if (!porDestino.has(q.destino_id)) porDestino.set(q.destino_id, []);
+      porDestino.get(q.destino_id).push({ mat_codi: q.mat_codi, qtd: parseFloat(q.qtd) });
+    }
+    const destinos = [...porDestino.keys()].map(destino_id => ({ destino_id }));
+    const todosMatCodi = [...new Set(qtds.map(q => q.mat_codi))];
 
     // 1) Resolve dados do CD origem (pra excluir do destino e usar relay)
     const [cdOrigem] = await dbQuery(
@@ -168,19 +287,16 @@ router.post('/', adminOuCeo, async (req, res) => {
     );
     if (!cdOrigem) return res.status(400).json({ erro: `CD origem "${cd_origem_codigo}" nao cadastrado em destinos` });
 
-    // 2) Carrega dados dos destinos
-    const destIds = destinos.map(d => parseInt(d.destino_id)).filter(Boolean);
-    if (!destIds.length) return res.status(400).json({ erro: 'destinos sem destino_id' });
+    // 2) Carrega dados dos destinos (ids vem do agrupamento das qtds salvas)
+    const destIds = [...porDestino.keys()];
     const destRows = await dbQuery(
       `SELECT id, tipo, codigo, nome, cnpj, loja_id FROM pedidos_distrib_destinos
         WHERE id = ANY($1::int[]) AND ativo = TRUE`,
       [destIds]
     );
     const destMap = new Map(destRows.map(d => [d.id, d]));
-    for (const d of destinos) {
-      const id = parseInt(d.destino_id);
+    for (const id of destIds) {
       if (!destMap.has(id)) return res.status(400).json({ erro: `destino_id ${id} nao encontrado/ativo` });
-      // Não permite enviar pro próprio CD origem
       const dest = destMap.get(id);
       if (dest.tipo === 'CD' && dest.cnpj === cdOrigem.cnpj) {
         return res.status(400).json({ erro: `nao pode enviar pra si mesmo: ${dest.nome}` });
@@ -209,29 +325,21 @@ router.post('/', adminOuCeo, async (req, res) => {
       }
     }
 
-    // 4) Hidrata itens com preço admin do CD legado (catálogo cd_material/cd_custoprod)
-    const matCodis = [...new Set(itens.map(i => String(i.mat_codi).trim()))].filter(Boolean);
+    // 4) Hidrata todos mat_codi com preço admin do CD legado
     const dadosCd = await dbQuery(
       `SELECT cd_m.mat_codi, cd_m.mat_desc, cd_c.pro_prad, pe.qtd_embalagem
          FROM cd_material cd_m
          LEFT JOIN cd_custoprod cd_c ON cd_c.pro_codi = cd_m.mat_codi
          LEFT JOIN produtos_embalagem pe ON pe.mat_codi = cd_m.mat_codi
         WHERE cd_m.mat_codi = ANY($1::text[])`,
-      [matCodis]
+      [todosMatCodi]
     );
     const cdMap = new Map(dadosCd.map(x => [x.mat_codi, x]));
-
-    const itensBase = itens.map(it => {
-      const cd = cdMap.get(String(it.mat_codi).trim());
-      if (!cd) throw Object.assign(new Error(`mat_codi ${it.mat_codi} nao encontrado no catalogo`), { status: 400 });
-      const valor = parseFloat(it.valor) > 0 ? parseFloat(it.valor) : parseFloat(cd.pro_prad);
-      if (!(valor > 0)) throw Object.assign(new Error(`mat_codi ${it.mat_codi} sem preco admin`), { status: 400 });
-      return {
-        mat_codi: cd.mat_codi,
-        valor,
-        qtd_embalagem: parseInt(it.qtd_embalagem) || parseInt(cd.qtd_embalagem) || 1,
-      };
-    });
+    for (const m of todosMatCodi) {
+      const cd = cdMap.get(m);
+      if (!cd) return res.status(400).json({ erro: `mat_codi ${m} nao encontrado no catalogo` });
+      if (!(parseFloat(cd.pro_prad) > 0)) return res.status(400).json({ erro: `mat_codi ${m} sem preco admin` });
+    }
 
     // 5) Próximo COD_PEDIDO pra esse CD origem
     const [{ proximo }] = await dbQuery(`
@@ -252,14 +360,28 @@ router.post('/', adminOuCeo, async (req, res) => {
     let totalItensGeral = 0;
     const pedidosResumo = [];
 
-    for (const dInput of destinos) {
-      const id = parseInt(dInput.destino_id);
+    for (const id of destIds) {
       const dest = destMap.get(id);
-      const qtdMul = parseFloat(dInput.qtd_unica) || 1;
-      if (!(qtdMul > 0)) throw Object.assign(new Error(`destino "${dest.nome}" sem qtd_unica valida`), { status: 400 });
       const cliCodi = cliMap.get(id);
+      const itensDoDestino = porDestino.get(id);
+      if (!itensDoDestino?.length) continue;
 
-      const valorPedido = itensBase.reduce((s, x) => s + x.valor * qtdMul, 0);
+      // Calcula valor total do pedido somando qtd × preço de cada item
+      let valorPedido = 0;
+      const linhasItensDest = [];
+      for (const it of itensDoDestino) {
+        const cd = cdMap.get(it.mat_codi);
+        const valor = parseFloat(cd.pro_prad);
+        const qtd = it.qtd;
+        valorPedido += qtd * valor;
+        linhasItensDest.push([
+          codPedido,               VEN_CODI_PADRAO,        it.mat_codi,
+          UNIDADE_PADRAO,          fmtNum(qtd, 0),         fmtNum(valor, 2),
+          '0',                     '0',                    fmtNum(valor, 2),
+          TIPO_CALCULO_PADRAO,     NOME_EMBALAGEM_PADRAO,  parseInt(cd.qtd_embalagem) || 1,
+          '',
+        ].join(';'));
+      }
 
       linhasPedidos.push([
         codPedido,                EMPRESA_PADRAO,         LOCALIZACAO_PADRAO,
@@ -271,16 +393,7 @@ router.post('/', adminOuCeo, async (req, res) => {
         '0',                      '00.00000',             '00.00000',
         dest.cnpj,                padNomeCliente(dest.nome),
       ].join(';'));
-
-      for (const it of itensBase) {
-        linhasItens.push([
-          codPedido,               VEN_CODI_PADRAO,        it.mat_codi,
-          UNIDADE_PADRAO,          fmtNum(qtdMul, 0),      fmtNum(it.valor, 2),
-          '0',                     '0',                    fmtNum(it.valor, 2),
-          TIPO_CALCULO_PADRAO,     NOME_EMBALAGEM_PADRAO,  it.qtd_embalagem,
-          '',
-        ].join(';'));
-      }
+      linhasItens.push(...linhasItensDest);
 
       pedidosResumo.push({
         cod_pedido: codPedido,
@@ -289,10 +402,10 @@ router.post('/', adminOuCeo, async (req, res) => {
         destino_nome: dest.nome,
         cli_codi: cliCodi,
         valor: valorPedido,
-        itens: itensBase.length,
+        itens: itensDoDestino.length,
       });
       valorTotalGeral += valorPedido;
-      totalItensGeral += itensBase.length;
+      totalItensGeral += itensDoDestino.length;
       codPedido += 1;
     }
 

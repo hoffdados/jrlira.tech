@@ -9,67 +9,65 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
-nav{background:#1e293b;padding:12px 20px;display:flex;align-items:center;gap:14px;border-bottom:1px solid #334155}
-.brand{font-family:'Segoe UI Black','Segoe UI',sans-serif;font-weight:900;font-size:18px;color:#fde047}
-.btn-nav{background:#0ea5e9;color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:12px;cursor:pointer;text-decoration:none}
-.main{padding:18px;max-width:1400px;margin:0 auto}
-h1{font-size:20px;color:#fde047;margin-bottom:14px}
+nav{background:#1e293b;padding:10px 16px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #334155}
+.brand{font-family:'Segoe UI Black','Segoe UI',sans-serif;font-weight:900;font-size:16px;color:#fde047}
+.btn-nav{background:#0ea5e9;color:#fff;border:none;padding:5px 10px;border-radius:5px;font-size:11px;cursor:pointer;text-decoration:none}
+.main{padding:10px 14px}
 
-.layout{display:grid;grid-template-columns:1fr 380px;gap:14px;align-items:start}
-@media(max-width:1100px){.layout{grid-template-columns:1fr}}
-
-.card{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:14px;margin-bottom:14px}
-.card h3{font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px}
-
-label{font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;display:block}
-input,select,textarea{width:100%;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;padding:7px 10px;font-size:13px;font-family:inherit}
-input:focus,select:focus,textarea:focus{outline:none;border-color:#fbbf24}
-textarea{resize:vertical;min-height:50px}
-button{cursor:pointer;border:none;border-radius:6px;font-size:12px;padding:7px 14px;font-weight:600}
+label{font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;display:block}
+input,select{background:#0f172a;border:1px solid #334155;border-radius:5px;color:#e2e8f0;padding:5px 8px;font-size:12px}
+input:focus,select:focus{outline:none;border-color:#fbbf24}
+button{cursor:pointer;border:none;border-radius:5px;font-size:12px;padding:6px 12px;font-weight:600}
 .btn-primary{background:#fbbf24;color:#1a1a1a}.btn-primary:hover{background:#f59e0b}
 .btn-ghost{background:#1e293b;color:#94a3b8;border:1px solid #334155}.btn-ghost:hover{background:#273549}
 .btn-danger{background:#dc2626;color:#fff}
-.btn-success{background:#16a34a;color:#fff}
-.btn-sm{padding:4px 10px;font-size:11px}
+.btn-sm{padding:3px 8px;font-size:11px}
 
-.busca{display:flex;gap:8px;margin-bottom:10px}
-.busca input{flex:1}
+.toolbar{display:flex;gap:10px;align-items:end;padding:10px 12px;background:#1e293b;border:1px solid #334155;border-radius:6px;margin-bottom:10px;flex-wrap:wrap}
+.toolbar .grupo{display:flex;flex-direction:column}
+.toolbar .grupo input,.toolbar .grupo select{min-width:200px}
+.toolbar .check{display:flex;align-items:center;gap:6px;font-size:12px;color:#94a3b8;padding-bottom:5px}
 
-table{width:100%;border-collapse:collapse;font-size:12px}
-thead th{text-align:left;padding:7px 8px;color:#64748b;text-transform:uppercase;letter-spacing:.04em;font-size:10px;border-bottom:1px solid #334155;background:#0f172a;position:sticky;top:0;z-index:5}
-tbody td{padding:6px 8px;border-bottom:1px solid #1a2744;vertical-align:middle;font-variant-numeric:tabular-nums}
+.grade-wrap{background:#1e293b;border:1px solid #334155;border-radius:6px;overflow:auto;max-height:calc(100vh - 230px)}
+table{width:100%;border-collapse:separate;border-spacing:0;font-size:11px}
+thead th{position:sticky;top:0;background:#0f172a;padding:6px 6px;text-align:center;color:#94a3b8;font-weight:700;font-size:10px;border-bottom:1px solid #334155;letter-spacing:.04em;text-transform:uppercase;z-index:10;white-space:nowrap}
+thead th.left{text-align:left}
+thead th.cd-col{background:#451a03;color:#fde047}
+thead th.loja-col{background:#0c1a2e;color:#7dd3fc}
+tbody td{padding:4px 6px;border-bottom:1px solid #1a2744;font-variant-numeric:tabular-nums;white-space:nowrap}
+tbody td.left{text-align:left}
+tbody td.right{text-align:right}
+tbody td.center{text-align:center}
 tbody tr:hover{background:#1a2744}
+
+.qtd{width:55px;padding:3px 5px;font-size:11px;text-align:center;background:#0f172a;border:1px solid #1a2744;border-radius:4px;color:#e2e8f0}
+.qtd:focus{border-color:#fbbf24}
+.qtd.dirty{border-color:#fbbf24;box-shadow:0 0 0 1px #fbbf24}
+.qtd.saving{border-color:#38bdf8}
+.qtd.saved{border-color:#4ade80}
+.qtd.zero{color:#475569}
+
+.cell-est{color:#64748b;font-size:10px;text-align:right}
+.desc{max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#cbd5e1}
+.code{font-family:'Cascadia Code',Consolas,monospace;color:#7dd3fc;font-size:10px}
 .muted{color:#64748b}
-.code{font-family:'Cascadia Code',Consolas,monospace;color:#7dd3fc;font-size:11px}
-.right{text-align:right}
-.center{text-align:center}
 
-.dest-grupo{margin-bottom:12px}
-.dest-grupo-titulo{font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
-.dest-row{display:grid;grid-template-columns:auto 1fr 80px 50px;gap:8px;align-items:center;padding:6px 10px;background:#0f172a;border-radius:6px;font-size:12px;margin-bottom:4px}
-.dest-row.disabled{opacity:0.4}
-.dest-row .nome{font-weight:600}
-.dest-row .nome small{color:#64748b;font-weight:normal;display:block;font-size:10px;margin-top:2px}
-.dest-row input.qtd{padding:4px 6px;font-size:11px;text-align:center}
-
-.cart-row{display:grid;grid-template-columns:1fr auto 60px 24px;gap:6px;padding:6px;border-bottom:1px solid #1a2744;align-items:center;font-size:11px}
-.cart-row .desc{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.cart-row .x{color:#f87171;cursor:pointer;text-align:center;font-weight:700}
-
-.totais{padding:10px;background:#0f172a;border-radius:6px;font-size:12px}
-.totais .row{display:flex;justify-content:space-between;margin:3px 0}
-.totais .total{font-size:14px;font-weight:700;color:#fde047;border-top:1px solid #334155;padding-top:6px;margin-top:6px}
-
-.msg{padding:10px 14px;border-radius:6px;margin-bottom:14px;font-size:13px;display:none}
+.msg{padding:8px 12px;border-radius:5px;margin-bottom:8px;font-size:12px;display:none}
 .msg.ok{background:#14532d44;color:#4ade80;border:1px solid #14532d;display:block}
 .msg.err{background:#7f1d1d44;color:#f87171;border:1px solid #7f1d1d;display:block}
 
-.tag{display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;text-transform:uppercase}
+.tag{display:inline-block;padding:1px 5px;border-radius:3px;font-size:9px;font-weight:700;text-transform:uppercase}
 .tag-loja{background:#1e3a5f;color:#60a5fa}
 .tag-cd{background:#451a03;color:#fde047}
 
-.download-bloco{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
-.download-bloco a{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#14532d;border-radius:6px;color:#bbf7d0;text-decoration:none;font-size:13px;font-weight:600;justify-content:center}
+.summary-bar{display:flex;gap:14px;align-items:center;padding:8px 12px;background:#1e293b;border:1px solid #334155;border-radius:6px;margin-top:10px;font-size:12px}
+.summary-bar .stat{display:flex;flex-direction:column}
+.summary-bar .stat label{font-size:10px;color:#64748b}
+.summary-bar .stat span{font-weight:700;color:#fde047}
+.summary-bar .actions{margin-left:auto;display:flex;gap:8px}
+
+.download-bloco{display:flex;gap:10px;margin-top:10px}
+.download-bloco a{flex:1;display:flex;align-items:center;gap:6px;padding:10px 14px;background:#14532d;border-radius:5px;color:#bbf7d0;text-decoration:none;font-size:12px;font-weight:600;justify-content:center}
 .download-bloco a:hover{background:#166534}
 </style>
 </head>
@@ -77,86 +75,65 @@ tbody tr:hover{background:#1a2744}
 
 <nav>
   <a href="/" class="brand">JR Lira Tech</a>
-  <span style="color:#64748b;font-size:12px">› Pedidos pra Distribuidora</span>
-  <span style="margin-left:auto;color:#475569;font-size:12px" id="nomeUsuario"></span>
+  <span style="color:#64748b;font-size:11px">› Pedidos pra Distribuidora</span>
+  <span style="margin-left:auto;color:#475569;font-size:11px" id="nomeUsuario"></span>
   <a href="/" class="btn-nav">Voltar</a>
 </nav>
 
 <div class="main">
-  <h1>Pedido pra Distribuidora — gera CSV pro UltraSyst</h1>
   <div id="msg" class="msg"></div>
 
-  <div class="layout">
-
-    <div>
-      <div class="card">
-        <h3>Origem · qual CD emite o pedido</h3>
-        <select id="cdOrigem" onchange="onOrigemChange()">
-          <option value="">Carregando...</option>
-        </select>
-        <p class="muted" style="font-size:11px;margin-top:6px">
-          O CSV será importado no UltraSyst desse CD. CLI_CODI dos destinos é descoberto automaticamente via relay (CNPJ → CLIENTE).
-        </p>
-      </div>
-
-      <div class="card">
-        <h3>Destinos · marque pra quem vai (lojas e/ou outros CDs)</h3>
-        <div id="destinos"><p class="muted">Aguardando origem...</p></div>
-        <div style="margin-top:10px">
-          <label>Observação do pedido</label>
-          <input id="obs" placeholder="Transferência semanal, etc">
-        </div>
-      </div>
-
-      <div class="card">
-        <h3>Catálogo do CD (busca)</h3>
-        <div class="busca">
-          <input id="busca" placeholder="Nome, código ou EAN..." oninput="onBuscaChange()">
-        </div>
-        <div style="max-height:50vh;overflow:auto">
-          <table>
-            <thead>
-              <tr>
-                <th>Cod</th>
-                <th>Descrição</th>
-                <th class="right">Custo Adm</th>
-                <th class="right">Estoque</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody id="produtos"><tr><td colspan="5" class="muted center">Digite pra buscar</td></tr></tbody>
-          </table>
-        </div>
-      </div>
+  <div class="toolbar">
+    <div class="grupo">
+      <label>CD origem</label>
+      <select id="cdOrigem" onchange="onOrigemChange()">
+        <option value="">Carregando...</option>
+      </select>
     </div>
-
-    <div>
-      <div class="card" style="position:sticky;top:14px">
-        <h3>Cesta única (replicada pros destinos)</h3>
-        <div id="cesta" style="max-height:45vh;overflow:auto;margin-bottom:10px">
-          <p class="muted center" style="padding:20px 0">Vazio</p>
-        </div>
-        <div class="totais">
-          <div class="row"><span>Itens distintos</span><span id="totalItens">0</span></div>
-          <div class="row"><span>Destinos</span><span id="totalDestinos">0</span></div>
-          <div class="row total"><span>Valor (1 destino)</span><span id="totalValor">R$ 0,00</span></div>
-          <div class="row"><span class="muted" style="font-size:11px">Total geral</span><span id="totalGeral" class="muted" style="font-size:11px">R$ 0,00</span></div>
-        </div>
-        <button class="btn-primary" style="width:100%;padding:10px;margin-top:10px;font-size:14px" onclick="gerarCsv(this)">
-          Gerar CSVs
-        </button>
-
-        <div id="downloadArea" style="display:none;margin-top:14px">
-          <h3 style="margin-top:14px">✅ CSVs gerados</h3>
-          <div class="download-bloco">
-            <a id="dlPedidos"   target="_blank">⬇ P_PEDIDOS.csv</a>
-            <a id="dlItens"     target="_blank">⬇ P_PEDIDOS_ITENS.csv</a>
-          </div>
-          <p class="muted" style="font-size:11px;margin-top:8px">Cole os 2 arquivos na pasta de importação do UltraSyst do CD origem.</p>
-        </div>
-      </div>
+    <div class="grupo">
+      <label>Buscar produto (nome / cod / EAN)</label>
+      <input id="busca" placeholder="..." oninput="onBuscaChange()">
     </div>
+    <div class="check">
+      <input type="checkbox" id="soPedir" onchange="recarregarGrade()"> só com qtd > 0
+    </div>
+    <div class="grupo">
+      <label>Limit</label>
+      <select id="limit" onchange="recarregarGrade()">
+        <option value="200">200</option>
+        <option value="500" selected>500</option>
+        <option value="1000">1000</option>
+        <option value="3000">3000</option>
+      </select>
+    </div>
+    <button class="btn-ghost btn-sm" onclick="limparTudo()">🗑 Limpar rascunho</button>
+  </div>
 
+  <div class="grade-wrap">
+    <table id="grade">
+      <thead id="gradeHead"><tr><th class="left">Aguardando origem...</th></tr></thead>
+      <tbody id="gradeBody"></tbody>
+    </table>
+  </div>
+
+  <div class="summary-bar">
+    <div class="stat"><label>Produtos editados</label><span id="totalProdutos">0</span></div>
+    <div class="stat"><label>Pedidos</label><span id="totalPedidos">0</span></div>
+    <div class="stat"><label>Total geral</label><span id="totalValor">R$ 0,00</span></div>
+    <div class="actions">
+      <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#94a3b8">
+        Observação:
+        <input id="obs" placeholder="Transferência semanal" style="width:240px">
+      </label>
+      <button class="btn-primary" onclick="gerarCsv(this)">Gerar CSVs</button>
+    </div>
+  </div>
+
+  <div id="downloadArea" style="display:none">
+    <div class="download-bloco">
+      <a id="dlPedidos"   target="_blank">⬇ P_PEDIDOS.csv</a>
+      <a id="dlItens"     target="_blank">⬇ P_PEDIDOS_ITENS.csv</a>
+    </div>
   </div>
 </div>
 
@@ -165,16 +142,17 @@ const token = () => localStorage.getItem('jrlira_token');
 (function(){ const p = localStorage.getItem('jrlira_perfil'); if (!token() || !['admin','ceo'].includes(p)) location.href = '/'; })();
 document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
 
-const cesta = new Map();             // mat_codi → { mat_codi, mat_desc, valor, qtd_embalagem }
-const destinosMap = new Map();       // destino_id → { destino_id, tipo, nome, cnpj, qtd_unica }
-let cdOrigemAtual = null;            // { codigo, nome, cnpj }
+let cdOrigemAtual = null;
+let destinosAtuais = [];          // [{id, tipo, codigo, nome, ...}]
+let produtosAtuais = [];
 let buscaTimeout = null;
+let salvarTimeouts = new Map();   // chave: mat_codi-destino_id
 
 function showMsg(txt, tipo = 'ok') {
   const el = document.getElementById('msg');
   el.className = 'msg ' + tipo;
   el.textContent = txt;
-  setTimeout(() => { if (tipo !== 'err') { el.className='msg'; el.textContent=''; } }, 6000);
+  setTimeout(() => { if (tipo !== 'err') { el.className='msg'; el.textContent=''; } }, 4500);
 }
 function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
@@ -195,178 +173,156 @@ async function carregarOrigens() {
     const cds = await api('/api/pedidos-distribuidora/cds-origem');
     const sel = document.getElementById('cdOrigem');
     if (!cds.length) {
-      sel.innerHTML = '<option value="">Nenhum CD ativo cadastrado em /admin-cds</option>';
+      sel.innerHTML = '<option value="">Nenhum CD ativo</option>';
       return;
     }
     sel.innerHTML = '<option value="">Selecione...</option>' +
-      cds.map(c => `<option value="${escapeHtml(c.codigo)}" data-cnpj="${escapeHtml(c.cnpj)}" data-nome="${escapeHtml(c.nome)}">${escapeHtml(c.nome)} (${escapeHtml(c.codigo)})</option>`).join('');
+      cds.map(c => `<option value="${escapeHtml(c.codigo)}">${escapeHtml(c.nome)} (${escapeHtml(c.codigo)})</option>`).join('');
   } catch (e) { showMsg(e.message, 'err'); }
 }
 
-async function onOrigemChange() {
-  const sel = document.getElementById('cdOrigem');
-  const codigo = sel.value;
-  if (!codigo) { cdOrigemAtual = null; document.getElementById('destinos').innerHTML = '<p class="muted">Selecione a origem</p>'; return; }
-  const opt = sel.selectedOptions[0];
-  cdOrigemAtual = { codigo, nome: opt.dataset.nome, cnpj: opt.dataset.cnpj };
-  destinosMap.clear();
-  await carregarDestinos();
-}
-
-async function carregarDestinos() {
-  try {
-    const dests = await api('/api/pedidos-distribuidora/destinos');
-    const div = document.getElementById('destinos');
-    const lojas = dests.filter(d => d.tipo === 'LOJA');
-    const cds   = dests.filter(d => d.tipo === 'CD' && d.cnpj !== cdOrigemAtual?.cnpj);
-
-    const renderRow = (d) => `
-      <div class="dest-row" data-id="${d.id}">
-        <input type="checkbox" id="dst-${d.id}" onchange="toggleDestino(${d.id}, this.checked)">
-        <div class="nome">
-          <span class="tag tag-${d.tipo === 'LOJA' ? 'loja' : 'cd'}">${d.tipo}</span>
-          ${escapeHtml(d.nome)}
-          <small>${escapeHtml(d.cnpj)}</small>
-        </div>
-        <input type="number" class="qtd" id="qmul-${d.id}" value="1" min="0.01" step="any" disabled
-               onchange="setQtd(${d.id}, this.value)">
-        <span class="muted" style="font-size:11px">×qtd</span>
-      </div>
-    `;
-
-    div.innerHTML = `
-      <div class="dest-grupo">
-        <div class="dest-grupo-titulo">Lojas SUPERASA (${lojas.length})</div>
-        ${lojas.map(renderRow).join('')}
-      </div>
-      <div class="dest-grupo">
-        <div class="dest-grupo-titulo">Outros CDs (${cds.length})</div>
-        ${cds.length ? cds.map(renderRow).join('') : '<p class="muted" style="font-size:11px">Nenhum CD destino disponivel</p>'}
-      </div>
-    `;
-    atualizarTotais();
-  } catch (e) { showMsg(e.message, 'err'); }
-}
-
-function toggleDestino(destId, checked) {
-  const row = document.querySelector(`.dest-row[data-id="${destId}"]`);
-  const qtdInput = row.querySelector('.qtd');
-  qtdInput.disabled = !checked;
-  if (checked) {
-    const nome = row.querySelector('.nome').textContent.trim().replace(/^(LOJA|CD)\s*/, '');
-    destinosMap.set(destId, { destino_id: destId, nome, qtd_unica: parseFloat(qtdInput.value) || 1 });
-  } else {
-    destinosMap.delete(destId);
-  }
-  atualizarTotais();
-}
-
-function setQtd(destId, valor) {
-  const d = destinosMap.get(destId);
-  if (d) { d.qtd_unica = parseFloat(valor) || 1; atualizarTotais(); }
+function onOrigemChange() {
+  const codigo = document.getElementById('cdOrigem').value;
+  cdOrigemAtual = codigo || null;
+  document.getElementById('downloadArea').style.display = 'none';
+  if (cdOrigemAtual) recarregarGrade();
+  else { document.getElementById('gradeHead').innerHTML = '<tr><th class="left">Selecione um CD origem</th></tr>'; document.getElementById('gradeBody').innerHTML = ''; }
 }
 
 function onBuscaChange() {
   clearTimeout(buscaTimeout);
-  buscaTimeout = setTimeout(buscarProdutos, 350);
+  buscaTimeout = setTimeout(recarregarGrade, 350);
 }
 
-async function buscarProdutos() {
-  const q = document.getElementById('busca').value.trim();
-  const tbody = document.getElementById('produtos');
-  if (!q) { tbody.innerHTML = '<tr><td colspan="5" class="muted center">Digite pra buscar</td></tr>'; return; }
-  tbody.innerHTML = '<tr><td colspan="5" class="muted center">Buscando...</td></tr>';
+async function recarregarGrade() {
+  if (!cdOrigemAtual) return;
+  const busca = document.getElementById('busca').value.trim();
+  const soPedir = document.getElementById('soPedir').checked;
+  const limit = document.getElementById('limit').value;
+  const url = `/api/pedidos-distribuidora/grade?cd_origem=${encodeURIComponent(cdOrigemAtual)}&busca=${encodeURIComponent(busca)}&so_pedir=${soPedir}&limit=${limit}`;
+  document.getElementById('gradeBody').innerHTML = '<tr><td>Carregando...</td></tr>';
   try {
-    const rows = await api('/api/pedidos-distribuidora/produtos?search=' + encodeURIComponent(q) + '&limit=80');
-    if (!rows.length) { tbody.innerHTML = '<tr><td colspan="5" class="muted center">Nada encontrado</td></tr>'; return; }
-    tbody.innerHTML = rows.map(p => {
-      const desc = p.desc_local || p.mat_desc || `Produto ${p.mat_codi}`;
-      const preco = p.preco_admin ? fmtBRL(p.preco_admin) : '<span class="muted">sem custo</span>';
-      const estoque = p.estoque_cd != null ? Number(p.estoque_cd).toFixed(0) : '?';
-      const naCesta = cesta.has(p.mat_codi);
-      return `
-        <tr>
-          <td class="code">${escapeHtml(p.mat_codi)}</td>
-          <td>${escapeHtml(desc)}<br><span class="muted" style="font-size:10px">${escapeHtml(p.ean_codi || '')} ${p.qtd_embalagem ? `· emb ${p.qtd_embalagem}` : ''}</span></td>
-          <td class="right">${preco}</td>
-          <td class="right">${estoque}</td>
-          <td>
-            <button class="btn-sm ${naCesta?'btn-ghost':'btn-primary'}" onclick='addCesta(${JSON.stringify({mat_codi:p.mat_codi, mat_desc:desc, preco:p.preco_admin, qtd_emb:p.qtd_embalagem||1})})'>
-              ${naCesta ? '✓' : '+'}
-            </button>
-          </td>
-        </tr>
-      `;
-    }).join('');
-  } catch (e) { tbody.innerHTML = `<tr><td colspan="5"><span class="tag tag-err">ERRO</span> ${escapeHtml(e.message)}</td></tr>`; }
+    const r = await api(url);
+    destinosAtuais = r.destinos;
+    produtosAtuais = r.produtos;
+    renderGrade();
+    atualizarSummary();
+  } catch (e) { showMsg(e.message, 'err'); }
 }
 
-function addCesta(info) {
-  if (!(info.preco > 0)) { showMsg('Produto sem custo administrativo no CD', 'err'); return; }
-  if (cesta.has(info.mat_codi)) { delCesta(info.mat_codi); return; }
-  cesta.set(info.mat_codi, {
-    mat_codi: info.mat_codi, mat_desc: info.mat_desc,
-    valor: info.preco, qtd_embalagem: info.qtd_emb || 1,
-  });
-  renderCesta();
-  buscarProdutos();
-}
+function renderGrade() {
+  // Head: COD, DESC, REF, EST_DIST, [destinos]
+  const head = document.getElementById('gradeHead');
+  const colsDest = destinosAtuais.map(d => {
+    const cls = d.tipo === 'CD' ? 'cd-col' : 'loja-col';
+    return `<th class="${cls}" title="${escapeHtml(d.nome)}">${escapeHtml(siglaDestino(d))}</th>`;
+  }).join('');
+  head.innerHTML = `
+    <tr>
+      <th class="left">COD</th>
+      <th class="left">DESCRIÇÃO</th>
+      <th class="left">REF</th>
+      <th>EST DIST</th>
+      <th>R$ ADM</th>
+      ${colsDest}
+    </tr>
+  `;
 
-function delCesta(matCodi) {
-  cesta.delete(matCodi);
-  renderCesta();
-  buscarProdutos();
-}
-
-function renderCesta() {
-  const div = document.getElementById('cesta');
-  if (!cesta.size) {
-    div.innerHTML = '<p class="muted center" style="padding:20px 0">Vazio</p>';
-  } else {
-    div.innerHTML = [...cesta.values()].map(it => `
-      <div class="cart-row">
-        <div class="desc" title="${escapeHtml(it.mat_desc)}">${escapeHtml(it.mat_desc)}</div>
-        <div class="muted" style="font-size:10px">${escapeHtml(it.mat_codi)}</div>
-        <div class="right">${fmtBRL(it.valor)}</div>
-        <div class="x" onclick="delCesta('${escapeHtml(it.mat_codi)}')">×</div>
-      </div>
-    `).join('');
+  // Body
+  const body = document.getElementById('gradeBody');
+  if (!produtosAtuais.length) {
+    body.innerHTML = '<tr><td colspan="' + (5 + destinosAtuais.length) + '" class="muted center">Nada encontrado</td></tr>';
+    return;
   }
-  atualizarTotais();
+  body.innerHTML = produtosAtuais.map(p => {
+    const ref = (p.referencia || '').trim();
+    const cels = destinosAtuais.map(d => {
+      const v = p.qtds[d.id] || '';
+      return `<td class="center"><input class="qtd ${v?'':'zero'}" data-mat="${escapeHtml(p.mat_codi)}" data-dest="${d.id}" value="${v}" type="number" min="0" step="any" oninput="onQtdInput(this)"></td>`;
+    }).join('');
+    return `
+      <tr>
+        <td class="left code">${escapeHtml(p.mat_codi)}</td>
+        <td class="left desc" title="${escapeHtml(p.descricao)}">${escapeHtml(p.descricao)}</td>
+        <td class="left muted" style="font-size:10px">${escapeHtml(ref)}</td>
+        <td class="cell-est">${p.est_dist != null ? Number(p.est_dist).toFixed(0) : '-'}</td>
+        <td class="cell-est">${p.preco_admin ? fmtBRL(p.preco_admin) : '-'}</td>
+        ${cels}
+      </tr>
+    `;
+  }).join('');
 }
 
-function atualizarTotais() {
-  const totalItens = cesta.size;
-  const totalDest  = destinosMap.size;
-  const valorPorDest = [...cesta.values()].reduce((s, x) => s + x.valor, 0);
-  const valorGeral = [...destinosMap.values()].reduce((s, d) => s + valorPorDest * d.qtd_unica, 0);
-  document.getElementById('totalItens').textContent    = totalItens;
-  document.getElementById('totalDestinos').textContent = totalDest;
-  document.getElementById('totalValor').textContent    = fmtBRL(valorPorDest);
-  document.getElementById('totalGeral').textContent    = fmtBRL(valorGeral);
+function siglaDestino(d) {
+  // Usa codigo (LOJA1-LOJA6, CD-srv1-itautuba, etc) ou abrevia o nome
+  if (d.codigo.startsWith('LOJA')) return d.codigo.replace('LOJA', 'L');
+  // Pega primeiras letras significativas do nome
+  return d.nome.split(/\s+/).slice(-2).map(s => s[0]).join('') || d.codigo.slice(0, 6);
+}
+
+function onQtdInput(input) {
+  input.classList.add('dirty');
+  input.classList.remove('saved', 'zero');
+  const matCodi = input.dataset.mat;
+  const destId  = parseInt(input.dataset.dest);
+  const qtd     = parseFloat(input.value) || 0;
+  // Atualiza local
+  const p = produtosAtuais.find(x => x.mat_codi === matCodi);
+  if (p) { if (qtd > 0) p.qtds[destId] = qtd; else delete p.qtds[destId]; }
+  // Debounce save
+  const k = `${matCodi}-${destId}`;
+  if (salvarTimeouts.has(k)) clearTimeout(salvarTimeouts.get(k));
+  salvarTimeouts.set(k, setTimeout(() => salvarQtd(input, matCodi, destId, qtd), 600));
+  atualizarSummary();
+}
+
+async function salvarQtd(input, matCodi, destId, qtd) {
+  input.classList.remove('dirty');
+  input.classList.add('saving');
+  try {
+    await api('/api/pedidos-distribuidora/qtd', 'PUT', {
+      cd_origem: cdOrigemAtual, destino_id: destId, mat_codi: matCodi, qtd,
+    });
+    input.classList.remove('saving');
+    input.classList.add('saved');
+    setTimeout(() => input.classList.remove('saved'), 1500);
+    if (qtd <= 0) input.classList.add('zero');
+  } catch (e) {
+    input.classList.remove('saving');
+    showMsg('Erro salvando: ' + e.message, 'err');
+  }
+}
+
+function atualizarSummary() {
+  const produtosEditados = produtosAtuais.filter(p => Object.keys(p.qtds || {}).length > 0).length;
+  const destinosUsados = new Set();
+  let valorTotal = 0;
+  for (const p of produtosAtuais) {
+    if (!p.preco_admin) continue;
+    for (const [destId, qtd] of Object.entries(p.qtds || {})) {
+      if (qtd > 0) {
+        destinosUsados.add(destId);
+        valorTotal += qtd * parseFloat(p.preco_admin);
+      }
+    }
+  }
+  document.getElementById('totalProdutos').textContent = produtosEditados;
+  document.getElementById('totalPedidos').textContent  = destinosUsados.size;
+  document.getElementById('totalValor').textContent    = fmtBRL(valorTotal);
 }
 
 async function gerarCsv(btn) {
-  if (!cdOrigemAtual)  { showMsg('Selecione o CD origem', 'err'); return; }
-  if (!destinosMap.size){ showMsg('Selecione ao menos um destino', 'err'); return; }
-  if (!cesta.size)     { showMsg('Adicione ao menos um produto na cesta', 'err'); return; }
-  if (!confirm(`Gerar CSVs?\n\nOrigem: ${cdOrigemAtual.nome}\nDestinos: ${destinosMap.size}\nItens: ${cesta.size}\nTotal: ${document.getElementById('totalGeral').textContent}`)) return;
-
+  if (!cdOrigemAtual) { showMsg('Selecione o CD origem', 'err'); return; }
+  if (!confirm('Gerar CSVs com base nas quantidades salvas?')) return;
   btn.disabled = true; btn.textContent = 'Gerando...';
   document.getElementById('downloadArea').style.display = 'none';
   try {
     const body = {
-      cd_origem_codigo: cdOrigemAtual.codigo,
+      cd_origem_codigo: cdOrigemAtual,
       observacao: document.getElementById('obs').value.trim() || undefined,
-      destinos: [...destinosMap.values()].map(d => ({ destino_id: d.destino_id, qtd_unica: d.qtd_unica })),
-      itens: [...cesta.values()].map(it => ({
-        mat_codi: it.mat_codi,
-        valor: it.valor,
-        qtd_embalagem: it.qtd_embalagem,
-      })),
     };
     const r = await api('/api/pedidos-distribuidora', 'POST', body);
-    showMsg(`✅ ${r.total_pedidos} pedido(s) gerados a partir de ${r.cd_origem.nome} · ${fmtBRL(r.valor_total)}`, 'ok');
+    showMsg(`✅ ${r.total_pedidos} pedido(s) · ${fmtBRL(r.valor_total)} · origem: ${r.cd_origem.nome}`, 'ok');
     const t = encodeURIComponent(token());
     document.getElementById('dlPedidos').href = `/api/pedidos-distribuidora/csv/${r.geracao_id}/P_PEDIDOS.csv?token=${t}`;
     document.getElementById('dlItens'  ).href = `/api/pedidos-distribuidora/csv/${r.geracao_id}/P_PEDIDOS_ITENS.csv?token=${t}`;
@@ -378,8 +334,17 @@ async function gerarCsv(btn) {
   }
 }
 
+async function limparTudo() {
+  if (!cdOrigemAtual) return;
+  if (!confirm('Apagar TODAS as quantidades salvas pra ' + cdOrigemAtual + '?')) return;
+  try {
+    await api(`/api/pedidos-distribuidora/qtd-tudo?cd_origem=${encodeURIComponent(cdOrigemAtual)}`, 'DELETE');
+    showMsg('Rascunho limpo', 'ok');
+    recarregarGrade();
+  } catch (e) { showMsg(e.message, 'err'); }
+}
+
 carregarOrigens();
-renderCesta();
 </script>
 </body>
 </html>

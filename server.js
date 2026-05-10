@@ -1971,6 +1971,22 @@ async function initDB() {
          ('CD','CD-casa-branca',      'CASA BRANCA',            '07961363000132', NULL, NULL)
        ON CONFLICT (codigo) DO NOTHING`);
 
+    // Quantidades editadas na grade (tipo planilha) — autosave por (cd_origem, destino, produto)
+    await runMigration(client, '20260510_pedidos_distrib_quantidades',
+      `CREATE TABLE IF NOT EXISTS pedidos_distrib_quantidades (
+         cd_origem_codigo VARCHAR(40) NOT NULL,
+         destino_id INTEGER NOT NULL,
+         mat_codi VARCHAR(20) NOT NULL,
+         qtd NUMERIC(14,3) NOT NULL DEFAULT 0,
+         atualizado_em TIMESTAMPTZ DEFAULT NOW(),
+         atualizado_por VARCHAR(120),
+         PRIMARY KEY (cd_origem_codigo, destino_id, mat_codi)
+       )`);
+    await runMigration(client, '20260510_idx_pedidos_distrib_qtd',
+      `CREATE INDEX IF NOT EXISTS idx_pedidos_distrib_qtd_origem
+         ON pedidos_distrib_quantidades (cd_origem_codigo)
+         WHERE qtd > 0`);
+
     // Histórico: registra cd_origem + destino real (loja ou CD)
     await runMigration(client, '20260510_pedidos_distrib_hist_origem',
       `ALTER TABLE pedidos_distrib_historico
