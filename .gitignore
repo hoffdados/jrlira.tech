@@ -6,3 +6,10 @@ ultrasyst-relay/.env
 ultrasyst-relay/node_modules/
 ultrasyst-relay/logs/
 .claude/
+
+# Pentaho — não versionar logs, backups e arquivos de runtime
+pentaho/att/*/watchdog*.log
+pentaho/att/*/*.bak
+pentaho/att/*/*.bak2
+pentaho/att/*/dc_*.txt
+pentaho/att/*/*joao-paulo*
