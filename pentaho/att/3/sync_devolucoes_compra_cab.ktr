@@ -1,0 +1,207 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<transformation>
+  <info>
+    <name>sync_devolucoes_compra_cab</name>
+    <description>Sincroniza CABEÇALHO de devoluções de compra emitidas (TESTDEVOLUCAO) — recebe LOJA_ID</description>
+    <extended_description/>
+    <trans_version/>
+    <trans_type>Normal</trans_type>
+    <directory>/</directory>
+    <parameters>
+      <parameter>
+        <name>LOJA_ID</name>
+        <default_value/>
+        <description>ID da loja no sistema (obrigatorio — sem default pra evitar gravar como loja 1 por engano)</description>
+      </parameter>
+    </parameters>
+    <size_rowset>10000</size_rowset>
+    <sleep_time_empty>50</sleep_time_empty>
+    <sleep_time_full>50</sleep_time_full>
+    <unique_connections>N</unique_connections>
+    <feedback_shown>Y</feedback_shown>
+    <feedback_size>50000</feedback_size>
+    <using_thread_priorities>Y</using_thread_priorities>
+    <capture_step_performance>N</capture_step_performance>
+    <step_performance_capturing_delay>1000</step_performance_capturing_delay>
+    <step_performance_capturing_size_limit>100</step_performance_capturing_size_limit>
+    <dependencies/>
+    <partitionschemas/>
+    <slaveservers/>
+    <clusterschemas/>
+  </info>
+
+  <connection>
+    <name>EcoCentauro_Local</name>
+    <server>127.0.0.1</server>
+    <type>FIREBIRD</type>
+    <access>Native</access>
+    <database>C:\ECOSIS\DADOS\ECODADOS.ECO</database>
+    <port>3050</port>
+    <username>SYSDBA</username>
+    <password>Encrypted 2be98afc86aa7f289aa0aba75cc99aac3</password>
+    <servername/>
+    <data_tablespace/>
+    <index_tablespace/>
+    <attributes>
+      <attribute><code>PORT_NUMBER</code><attribute>3050</attribute></attribute>
+    </attributes>
+  </connection>
+
+  <connection>
+    <name>Supabase</name>
+    <server>aws-1-sa-east-1.pooler.supabase.com</server>
+    <type>POSTGRESQL</type>
+    <access>Native</access>
+    <database>postgres</database>
+    <port>6543</port>
+    <username>postgres.tdbagkexrtphgprjiwcc</username>
+    <password>Acougue2026</password>
+    <servername/>
+    <data_tablespace/>
+    <index_tablespace/>
+    <attributes>
+      <attribute><code>PORT_NUMBER</code><attribute>6543</attribute></attribute>
+      <attribute><code>SUPPORTS_BOOLEAN_DATA_TYPE</code><attribute>Y</attribute></attribute>
+      <attribute><code>SUPPORTS_TIMESTAMP_DATA_TYPE</code><attribute>Y</attribute></attribute>
+      <attribute><code>QUOTE_ALL_FIELDS</code><attribute>N</attribute></attribute>
+      <attribute><code>FORCE_IDENTIFIERS_TO_LOWERCASE</code><attribute>N</attribute></attribute>
+      <attribute><code>FORCE_IDENTIFIERS_TO_UPPERCASE</code><attribute>N</attribute></attribute>
+      <attribute><code>EXTRA_OPTION_POSTGRESQL.prepareThreshold</code><attribute>0</attribute></attribute>
+    </attributes>
+  </connection>
+
+  <order>
+    <hop><from>Leitura Devolucoes Cab</from><to>Set loja_id</to><enabled>Y</enabled></hop>
+    <hop><from>Set loja_id</from><to>Gravar Devolucoes Cab</to><enabled>Y</enabled></hop>
+  </order>
+
+  <step>
+    <name>Leitura Devolucoes Cab</name>
+    <type>TableInput</type>
+    <description/>
+    <distribute>Y</distribute>
+    <custom_distribution/>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <connection>EcoCentauro_Local</connection>
+    <sql>SELECT
+  D.CODIGO              AS devolucao_codigo,
+  D.IDFORNECEDOR        AS fornecedor_codigo,
+  F.CPFCNPJ             AS fornecedor_cnpj,
+  F.NOME                AS fornecedor_nome,
+  D.IDNATUREZA          AS natureza_codigo,
+  D.DATAHORA            AS data_devolucao,
+  D.NFDATA              AS data_nfe,
+  D.NUMERODANFE         AS chave_nfe,
+  D.NOTANFE             AS numero_nfe,
+  D.SERIENFE            AS serie_nfe,
+  D.VALOR               AS valor_total,
+  D.CHAVENFEFORNECEDOR  AS chave_nfe_compra_original
+FROM TESTDEVOLUCAO D
+JOIN TPAGFORNECEDOR F ON F.CODIGO = D.IDFORNECEDOR
+WHERE D.EMPRESA = 01
+  AND D.STATUS = 'NOR'
+  AND D.DATAHORA &gt;= CAST('2025-01-01' AS DATE)</sql>
+    <limit>0</limit>
+    <lookup/>
+    <execute_each_row>N</execute_each_row>
+    <variables_active>Y</variables_active>
+    <lazy_conversion_active>N</lazy_conversion_active>
+    <cached_row_meta_active>N</cached_row_meta_active>
+    <row-meta/>
+    <attributes/>
+    <cluster_schema/>
+    <remotesteps><input/><output/></remotesteps>
+    <GUI><xloc>112</xloc><yloc>128</yloc><draw>Y</draw></GUI>
+  </step>
+
+  <step>
+    <name>Set loja_id</name>
+    <type>ScriptValueMod</type>
+    <description/>
+    <distribute>Y</distribute>
+    <custom_distribution/>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <compatible>Y</compatible>
+    <optimizationLevel>9</optimizationLevel>
+    <jsScripts>
+      <jsScript>
+        <jsScript_type>0</jsScript_type>
+        <jsScript_name>Script 1</jsScript_name>
+        <jsScript_script>var loja_id_str = getVariable("LOJA_ID", "");
+if (loja_id_str === "" || loja_id_str === null) {
+  throw new Error("LOJA_ID nao foi propagado do .kjb para o .ktr. Verifique no Spoon o step de chamada do .ktr no job: marcar 'Pass all parameter values down to the sub-transformation' OU adicionar parametro LOJA_ID com valor ${LOJA_ID}.");
+}
+var loja_id = parseInt(loja_id_str, 10);
+if (isNaN(loja_id) || loja_id &lt; 1 || loja_id &gt; 100) {
+  throw new Error("LOJA_ID invalido: '" + loja_id_str + "'");
+}</jsScript_script>
+      </jsScript>
+    </jsScripts>
+    <fields>
+      <field>
+        <name>loja_id</name>
+        <rename>loja_id</rename>
+        <type>Integer</type>
+        <length>-1</length>
+        <precision>-1</precision>
+        <replace>N</replace>
+      </field>
+    </fields>
+    <attributes/>
+    <cluster_schema/>
+    <remotesteps><input/><output/></remotesteps>
+    <GUI><xloc>320</xloc><yloc>128</yloc><draw>Y</draw></GUI>
+  </step>
+
+  <step>
+    <name>Gravar Devolucoes Cab</name>
+    <type>TableOutput</type>
+    <description/>
+    <distribute>Y</distribute>
+    <custom_distribution/>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <connection>Supabase</connection>
+    <schema>public</schema>
+    <table>devolucoes_compra_historico</table>
+    <commit>500</commit>
+    <truncate>N</truncate>
+    <ignore_errors>N</ignore_errors>
+    <use_batch>Y</use_batch>
+    <specify_fields>Y</specify_fields>
+    <partitioning_enabled>N</partitioning_enabled>
+    <partitioning_field/>
+    <partitioning_daily>N</partitioning_daily>
+    <partitioning_monthly>N</partitioning_monthly>
+    <tablename_in_field>N</tablename_in_field>
+    <tablename_field/>
+    <tablename_in_table>N</tablename_in_table>
+    <return_keys>N</return_keys>
+    <return_field/>
+    <fields>
+      <field><column_name>devolucao_codigo</column_name><stream_name>devolucao_codigo</stream_name></field>
+      <field><column_name>fornecedor_codigo</column_name><stream_name>fornecedor_codigo</stream_name></field>
+      <field><column_name>fornecedor_cnpj</column_name><stream_name>fornecedor_cnpj</stream_name></field>
+      <field><column_name>fornecedor_nome</column_name><stream_name>fornecedor_nome</stream_name></field>
+      <field><column_name>natureza_codigo</column_name><stream_name>natureza_codigo</stream_name></field>
+      <field><column_name>data_devolucao</column_name><stream_name>data_devolucao</stream_name></field>
+      <field><column_name>data_nfe</column_name><stream_name>data_nfe</stream_name></field>
+      <field><column_name>chave_nfe</column_name><stream_name>chave_nfe</stream_name></field>
+      <field><column_name>numero_nfe</column_name><stream_name>numero_nfe</stream_name></field>
+      <field><column_name>serie_nfe</column_name><stream_name>serie_nfe</stream_name></field>
+      <field><column_name>valor_total</column_name><stream_name>valor_total</stream_name></field>
+      <field><column_name>chave_nfe_compra_original</column_name><stream_name>chave_nfe_compra_original</stream_name></field>
+      <field><column_name>loja_id</column_name><stream_name>loja_id</stream_name></field>
+    </fields>
+    <attributes/>
+    <cluster_schema/>
+    <remotesteps><input/><output/></remotesteps>
+    <GUI><xloc>528</xloc><yloc>128</yloc><draw>Y</draw></GUI>
+  </step>
+
+  <step_error_handling/>
+  <slave-step-copy-partition-distribution/>
+  <slave_transformation>N</slave_transformation>
+</transformation>
