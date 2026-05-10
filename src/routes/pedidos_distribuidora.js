@@ -104,16 +104,22 @@ router.get('/grade', adminOuCeo, async (req, res) => {
     const soPedir = req.query.so_pedir === 'true';
     const limit = Math.min(parseInt(req.query.limit) || 500, 3000);
 
+    // Pega CNPJ do CD origem (separado pra evitar subquery com tipos ambiguos)
+    const [origemRow] = await dbQuery(
+      `SELECT cnpj FROM pedidos_distrib_destinos WHERE cd_codigo = $1`,
+      [cdOrigem]
+    );
+    const cnpjOrigem = origemRow?.cnpj || '';
+
     const destinos = await dbQuery(
       `SELECT id, tipo, codigo, nome, cnpj, loja_id, cd_codigo
          FROM pedidos_distrib_destinos
-        WHERE ativo = TRUE
-          AND cnpj <> COALESCE((SELECT cnpj FROM pedidos_distrib_destinos WHERE cd_codigo = $1::text), '')
+        WHERE ativo = TRUE AND cnpj <> $1
         ORDER BY tipo DESC, nome`,
-      [cdOrigem]
+      [cnpjOrigem]
     );
 
-    const params = [cdOrigem];
+    const params = [];
     let where = `(cd_m.mat_situ = 'A' OR cd_m.mat_situ IS NULL)`;
     if (busca) {
       params.push(`%${busca}%`);
@@ -121,8 +127,9 @@ router.get('/grade', adminOuCeo, async (req, res) => {
       where += ` AND (LOWER(cd_m.mat_desc) LIKE $${params.length-1} OR cd_m.mat_codi = $${params.length} OR cd_m.ean_codi = $${params.length})`;
     }
     if (soPedir) {
+      params.push(cdOrigem);
       where += ` AND EXISTS (SELECT 1 FROM pedidos_distrib_quantidades q
-                              WHERE q.cd_origem_codigo = $1 AND q.mat_codi = cd_m.mat_codi AND q.qtd > 0)`;
+                              WHERE q.cd_origem_codigo = $${params.length}::text AND q.mat_codi = cd_m.mat_codi AND q.qtd > 0)`;
     }
     params.push(limit);
 
