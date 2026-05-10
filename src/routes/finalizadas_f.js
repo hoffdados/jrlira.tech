@@ -305,11 +305,14 @@ router.get('/diagnosticar/:numero_nota', autenticarComQS, async (req, res) => {
     const noNotas = await dbQuery(
       `SELECT id, numero_nota, serie, fornecedor_cnpj, fornecedor_nome,
               loja_id, status, origem, data_emissao, valor_total,
+              cd_mov_codi, cd_mov_tipomov,
               importado_em, finalizada_f_em, finalizada_f_motivo,
               mcp_status_cd, chegou_no_erp_em,
               auditoria_eco_status, auditoria_eco_em,
               justificativa_diretor, justificada_por
-         FROM notas_entrada WHERE numero_nota = $1 ORDER BY id DESC`, [num]
+         FROM notas_entrada
+        WHERE numero_nota = $1 OR cd_mov_codi = $1
+        ORDER BY id DESC`, [num]
     );
     const noCompras = await dbQuery(
       `SELECT loja_id, numeronfe, fornecedor_cnpj,
@@ -319,8 +322,10 @@ router.get('/diagnosticar/:numero_nota', autenticarComQS, async (req, res) => {
          GROUP BY loja_id, numeronfe, fornecedor_cnpj ORDER BY loja_id`, [num]
     );
     const noCdMov = await dbQuery(
-      `SELECT cd_codigo, mcp_codi, mcp_tipomov, mcp_status, mcp_dten, mcp_nnotafis, for_codi
-         FROM cd_movcompra WHERE mcp_nnotafis = $1`, [num]
+      `SELECT cd_codigo, mcp_codi, mcp_tipomov, mcp_status, mcp_dten, mcp_nnotafis, for_codi, mcp_vtot
+         FROM cd_movcompra
+        WHERE mcp_nnotafis = $1 OR mcp_codi = $1
+        ORDER BY mcp_dten DESC`, [num]
     );
     res.json({
       numero_nota: num,
