@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Auditoria Finalizada_F</title>
+<link rel="stylesheet" href="/shared.css">
+<script src="/shared.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+nav{background:#1e293b;padding:10px 16px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #334155}
+.brand{font-family:'Segoe UI Black','Segoe UI',sans-serif;font-weight:900;font-size:16px;color:#f87171}
+.btn-nav{background:#0ea5e9;color:#fff;border:none;padding:5px 10px;border-radius:5px;font-size:11px;cursor:pointer;text-decoration:none}
+.main{padding:16px;max-width:1400px;margin:0 auto}
+h1{font-size:20px;color:#f87171;margin-bottom:14px}
+
+.card{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:14px;margin-bottom:14px}
+.card h3{font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px}
+
+.toolbar{display:flex;gap:10px;align-items:end;margin-bottom:12px;flex-wrap:wrap}
+label{font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;display:block}
+input,select,textarea{background:#0f172a;border:1px solid #334155;border-radius:5px;color:#e2e8f0;padding:6px 9px;font-size:12px;font-family:inherit}
+input:focus,select:focus,textarea:focus{outline:none;border-color:#f87171}
+button{cursor:pointer;border:none;border-radius:5px;font-size:12px;padding:6px 12px;font-weight:600}
+.btn-primary{background:#f87171;color:#1a1a1a}.btn-primary:hover{background:#ef4444}
+.btn-success{background:#16a34a;color:#fff}
+.btn-ghost{background:#1e293b;color:#94a3b8;border:1px solid #334155}.btn-ghost:hover{background:#273549}
+.btn-sm{padding:4px 9px;font-size:11px}
+
+.resumo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
+.stat{background:#0f172a;border:1px solid #334155;border-radius:6px;padding:10px}
+.stat label{font-size:9px;color:#64748b;text-transform:uppercase;display:block;margin-bottom:3px}
+.stat .v{font-size:18px;font-weight:700;color:#f87171}
+.stat .v.ok{color:#4ade80}
+
+table{width:100%;border-collapse:collapse;font-size:11px}
+thead th{text-align:left;padding:8px 9px;color:#94a3b8;font-weight:700;font-size:10px;background:#0f172a;border-bottom:1px solid #334155;text-transform:uppercase;letter-spacing:.04em}
+tbody td{padding:7px 9px;border-bottom:1px solid #1a2744;vertical-align:top}
+tbody tr:hover{background:#1a2744}
+.muted{color:#64748b;font-size:10px}
+.code{font-family:'Cascadia Code',Consolas,monospace;color:#7dd3fc;font-size:11px}
+.right{text-align:right}
+
+.tag{display:inline-block;padding:2px 6px;border-radius:4px;font-size:9px;font-weight:700;text-transform:uppercase}
+.tag-pendente{background:#7f1d1d;color:#fca5a5}
+.tag-justificada{background:#14532d;color:#86efac}
+
+.msg{padding:10px 14px;border-radius:6px;margin-bottom:14px;font-size:13px;display:none}
+.msg.ok{background:#14532d44;color:#4ade80;border:1px solid #14532d;display:block}
+.msg.err{background:#7f1d1d44;color:#f87171;border:1px solid #7f1d1d;display:block}
+
+.justif-box{display:flex;gap:6px;align-items:start;margin-top:6px}
+.justif-box textarea{width:100%;min-height:50px;font-size:11px;padding:5px}
+.justif-text{padding:6px;background:#0c2912;border-left:3px solid #14532d;border-radius:3px;font-size:11px;color:#bbf7d0;margin-top:4px}
+.justif-text small{display:block;color:#64748b;margin-top:3px;font-size:9px}
+</style>
+</head>
+<body>
+
+<nav>
+  <a href="/" class="brand">JR Lira Tech</a>
+  <span style="color:#64748b;font-size:12px">› Auditoria Finalizada_F</span>
+  <span style="margin-left:auto;color:#475569;font-size:12px" id="nomeUsuario"></span>
+  <a href="/" class="btn-nav">Voltar</a>
+</nav>
+
+<div class="main">
+  <h1>Notas Finalizada_F — Auditoria</h1>
+  <p class="muted" style="margin-bottom:12px">
+    Notas que saíram do CD e chegaram na loja (sync Pentaho confirmou) mas pularam o fluxo de cadastro/conferência/auditoria. Diretor deve justificar caso a caso.
+  </p>
+  <div id="msg" class="msg"></div>
+
+  <div class="card">
+    <h3>Resumo por loja</h3>
+    <div class="resumo-grid" id="resumo"><p class="muted">Carregando...</p></div>
+    <div style="margin-top:10px">
+      <button class="btn-ghost btn-sm" onclick="rodarDeteccao(this)">⚡ Detectar agora</button>
+      <span class="muted" style="font-size:11px">(roda automaticamente a cada 1h)</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Notas finalizadas_f</h3>
+    <div class="toolbar">
+      <div>
+        <label>Filtro</label>
+        <select id="filtro" onchange="carregar()">
+          <option value="pendentes" selected>Pendentes (sem justificativa)</option>
+          <option value="justificadas">Justificadas</option>
+          <option value="todas">Todas</option>
+        </select>
+      </div>
+      <div>
+        <label>Loja</label>
+        <select id="loja" onchange="carregar()">
+          <option value="">Todas</option>
+        </select>
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Loja</th><th>Nº Nota</th><th>Fornecedor</th><th>Origem</th>
+          <th class="right">Valor</th>
+          <th>Detectada em</th><th>Entrou na loja</th>
+          <th style="min-width:300px">Justificativa</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"><tr><td colspan="8" class="muted">Carregando...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const token = () => localStorage.getItem('jrlira_token');
+(function(){ const p = localStorage.getItem('jrlira_perfil'); if (!token() || p !== 'admin') location.href = '/'; })();
+document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
+
+function showMsg(t, tipo='ok') {
+  const el = document.getElementById('msg');
+  el.className = 'msg ' + tipo; el.textContent = t;
+  setTimeout(() => { if (tipo!=='err') { el.className='msg'; el.textContent=''; } }, 4500);
+}
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function fmtBRL(n) { return Number(n || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
+function fmtData(d) { if (!d) return ''; return new Date(d).toLocaleDateString('pt-BR'); }
+function fmtDataHora(d) { if (!d) return ''; const x = new Date(d); return x.toLocaleDateString('pt-BR') + ' ' + x.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' }); }
+
+async function api(path, method='GET', body) {
+  const r = await fetch(path, {
+    method, headers: { 'Content-Type':'application/json', Authorization: `Bearer ${token()}` },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.erro || `HTTP ${r.status}`);
+  return d;
+}
+
+async function carregarLojas() {
+  // Reusa lojas do shared.js se houver, senão extrai do resumo
+  const sel = document.getElementById('loja');
+  if (typeof LOJAS !== 'undefined') {
+    sel.innerHTML = '<option value="">Todas</option>' + LOJAS.map(l => `<option value="${l.id}">${escapeHtml(l.nome)}</option>`).join('');
+  }
+}
+
+async function carregarResumo() {
+  try {
+    const r = await api('/api/finalizadas-f/resumo');
+    const div = document.getElementById('resumo');
+    if (!r.length) { div.innerHTML = '<p class="muted">Nenhuma nota finalizada_f detectada</p>'; return; }
+    const total = r.reduce((s,x) => s + x.total, 0);
+    const pendTotal = r.reduce((s,x) => s + x.pendentes, 0);
+    div.innerHTML = `
+      <div class="stat"><label>Total geral</label><div class="v">${total}</div></div>
+      <div class="stat"><label>Pendentes total</label><div class="v">${pendTotal}</div></div>
+    ` + r.map(x => `
+      <div class="stat">
+        <label>${escapeHtml(x.loja_nome || ('Loja ' + x.loja_id))}</label>
+        <div class="v ${x.pendentes ? '' : 'ok'}">${x.pendentes}/${x.total}</div>
+      </div>
+    `).join('');
+  } catch (e) { showMsg(e.message, 'err'); }
+}
+
+async function carregar() {
+  try {
+    const filtro = document.getElementById('filtro').value;
+    const loja = document.getElementById('loja').value;
+    let url = `/api/finalizadas-f?filtro=${filtro}&limit=200`;
+    if (loja) url += `&loja_id=${loja}`;
+    const rows = await api(url);
+    const tb = document.getElementById('tbody');
+    if (!rows.length) { tb.innerHTML = '<tr><td colspan="8" class="muted">Nenhuma nota encontrada</td></tr>'; return; }
+    tb.innerHTML = rows.map(n => `
+      <tr data-id="${n.id}">
+        <td>${escapeHtml(n.loja_nome || ('L' + n.loja_id))}</td>
+        <td class="code">${escapeHtml(n.numero_nota)}${n.serie ? '/' + escapeHtml(n.serie) : ''}</td>
+        <td>${escapeHtml(n.fornecedor_nome || '')}<br><span class="muted">${escapeHtml(n.fornecedor_cnpj || '')}</span></td>
+        <td><span class="tag" style="background:#451a03;color:#fde047">${escapeHtml(n.origem)}</span></td>
+        <td class="right">${n.valor_total ? fmtBRL(n.valor_total) : '-'}</td>
+        <td><span class="muted">${fmtDataHora(n.finalizada_f_em)}</span><br><span class="muted" style="font-size:9px">${escapeHtml(n.finalizada_f_motivo || '')}</span></td>
+        <td>${fmtData(n.data_entrada_loja)}</td>
+        <td>
+          ${n.justificativa_diretor
+            ? `<div class="justif-text">${escapeHtml(n.justificativa_diretor)}<small>por ${escapeHtml(n.justificada_por || '')} em ${fmtDataHora(n.justificada_em)}</small></div>
+               <button class="btn-sm btn-ghost" style="margin-top:4px" onclick="reabrir(${n.id})">Editar</button>`
+            : `<div class="justif-box">
+                 <textarea id="just-${n.id}" placeholder="Por que essa nota pulou o fluxo?"></textarea>
+                 <button class="btn-success btn-sm" onclick="justificar(${n.id})">Salvar</button>
+               </div>`}
+        </td>
+      </tr>
+    `).join('');
+  } catch (e) { showMsg(e.message, 'err'); }
+}
+
+async function justificar(id) {
+  const t = document.getElementById(`just-${id}`).value.trim();
+  if (!t) { showMsg('Digite a justificativa', 'err'); return; }
+  try {
+    await api(`/api/finalizadas-f/${id}/justificar`, 'PUT', { justificativa: t });
+    showMsg('Justificada', 'ok');
+    carregar();
+    carregarResumo();
+  } catch (e) { showMsg(e.message, 'err'); }
+}
+
+async function reabrir(id) {
+  // Pra reescrever, força textarea editável
+  const tr = document.querySelector(`tr[data-id="${id}"]`);
+  const td = tr.querySelector('td:last-child');
+  td.innerHTML = `
+    <div class="justif-box">
+      <textarea id="just-${id}" placeholder="Editar justificativa..."></textarea>
+      <button class="btn-success btn-sm" onclick="justificar(${id})">Salvar</button>
+    </div>
+  `;
+}
+
+async function rodarDeteccao(btn) {
+  btn.disabled = true; btn.textContent = 'Detectando...';
+  try {
+    const r = await api('/api/finalizadas-f/detectar', 'POST');
+    showMsg(`✅ ${r.total} nota(s) marcadas como finalizada_f`, 'ok');
+    carregarResumo();
+    carregar();
+  } catch (e) { showMsg(e.message, 'err'); }
+  finally { btn.disabled = false; btn.textContent = '⚡ Detectar agora'; }
+}
+
+carregarLojas();
+carregarResumo();
+carregar();
+</script>
+</body>
+</html>

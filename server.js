@@ -47,6 +47,7 @@ app.use('/api/dashboard', require('./src/routes/dashboard'));
 app.use('/api/precos-otimizados', require('./src/routes/precos_otimizados'));
 app.use('/api/admin/cds', require('./src/routes/cds'));
 app.use('/api/pedidos-distribuidora', require('./src/routes/pedidos_distribuidora'));
+app.use('/api/finalizadas-f', require('./src/routes/finalizadas_f'));
 
 // ── PÁGINAS ───────────────────────────────────────────────────────
 app.get('/favicon.ico', (req, res) => res.redirect(301, '/favicon.svg'));
@@ -78,6 +79,7 @@ app.get('/precos-otimizados-pendentes', (req, res) => res.sendFile(path.join(__d
 app.get('/precos-otimizados-status', (req, res) => res.sendFile(path.join(__dirname, 'public/precos-otimizados-status.html')));
 app.get('/admin-cds', (req, res) => res.sendFile(path.join(__dirname, 'public/admin-cds.html')));
 app.get('/pedidos-distribuidora', (req, res) => res.sendFile(path.join(__dirname, 'public/pedidos-distribuidora.html')));
+app.get('/auditoria-finalizada-f', (req, res) => res.sendFile(path.join(__dirname, 'public/auditoria-finalizada-f.html')));
 app.get('/acordo-extrato', (req, res) => res.sendFile(path.join(__dirname, 'public/acordo-extrato.html')));
 app.get('/auditagem-divergencias', (req, res) => res.sendFile(path.join(__dirname, 'public/auditagem-divergencias.html')));
 app.get('/validades-em-risco', (req, res) => res.sendFile(path.join(__dirname, 'public/validades-em-risco.html')));
@@ -2025,6 +2027,20 @@ async function initDB() {
       ALTER TABLE cd_itemcompra ADD PRIMARY KEY (cd_codigo, mcp_codi, mcp_tipomov, mcp_seqitem);
     `);
 
+    // Status finalizada_f: nota saiu do CD e chegou na loja (sync Pentaho confirmou), mas
+    // pulou nosso fluxo de cadastro/conferencia/auditoria. Vira finalizada_f, sai do transito.
+    // Diretor justifica caso a caso.
+    await runMigration(client, '20260510_notas_finalizada_f', `
+      ALTER TABLE notas_entrada
+        ADD COLUMN IF NOT EXISTS finalizada_f_em TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS finalizada_f_motivo TEXT,
+        ADD COLUMN IF NOT EXISTS justificativa_diretor TEXT,
+        ADD COLUMN IF NOT EXISTS justificada_em TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS justificada_por VARCHAR(150);
+      CREATE INDEX IF NOT EXISTS idx_notas_finalizada_f
+        ON notas_entrada (status, loja_id) WHERE status = 'finalizada_f';
+    `);
+
     // cd_ean: codigos de barra por produto (UltraSyst tabela EAN), 1 produto pode ter N EANs.
     // Usado pra match cross-CD e pra preencher cd_material.ean_codi quando MATERIAL nao tem.
     await runMigration(client, '20260510_cd_ean', `
@@ -2563,6 +2579,17 @@ initDB().then(() => {
   // Roda 1x por dia (a cada 24h) — primeiro tick 30min após boot
   setTimeout(limparProdutosExternoOrfaos, 30 * 60 * 1000);
   setInterval(limparProdutosExternoOrfaos, 24 * 60 * 60 * 1000);
+
+  // Detecta notas finalizada_f a cada 1h (notas que chegaram na loja sem passar pelo app)
+  const finalizadasF = require('./src/routes/finalizadas_f');
+  const detectarFf = async () => {
+    try {
+      const r = await finalizadasF.detectarFinalizadasF();
+      if (r.length) console.log(`[finalizadas_f] ${r.length} nota(s) marcadas como finalizada_f`);
+    } catch (e) { console.error('[finalizadas_f] falha:', e.message); }
+  };
+  setTimeout(detectarFf, 5 * 60 * 1000);
+  setInterval(detectarFf, 60 * 60 * 1000);
 }).catch(err => {
   console.error('[DB] Erro init:', err.message);
   process.exit(1);

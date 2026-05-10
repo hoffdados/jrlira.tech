@@ -251,7 +251,7 @@ router.get('/grade', adminOuCeo, async (req, res) => {
          JOIN notas_entrada n ON n.id = i.nota_id
         WHERE n.loja_id = ANY($1::int[])
           AND n.origem IN ('cd','transferencia_loja')
-          AND n.status NOT IN ('fechada','validada','arquivada','cancelada')
+          AND n.status NOT IN ('fechada','validada','arquivada','cancelada','finalizada_f')
           AND NULLIF(LTRIM(COALESCE(i.ean_validado, i.ean_nota),'0'),'') = ANY($2::text[])
         GROUP BY n.loja_id, codbarra`,
       [lojaIds, eansList]
