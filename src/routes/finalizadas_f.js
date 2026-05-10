@@ -314,7 +314,7 @@ router.get('/diagnosticar/:numero_nota', autenticarComQS, async (req, res) => {
     const noNotas = await dbQuery(
       `SELECT id, numero_nota, serie, fornecedor_cnpj, fornecedor_nome,
               loja_id, status, origem, data_emissao, valor_total,
-              cd_mov_codi, cd_mov_tipomov,
+              cd_mov_codi, cd_loja_cli_codi,
               importado_em, finalizada_f_em, finalizada_f_motivo,
               mcp_status_cd, chegou_no_erp_em,
               auditoria_eco_status, auditoria_eco_em,
