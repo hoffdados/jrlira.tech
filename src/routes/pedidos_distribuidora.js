@@ -107,7 +107,8 @@ router.get('/grade', adminOuCeo, async (req, res) => {
     const destinos = await dbQuery(
       `SELECT id, tipo, codigo, nome, cnpj, loja_id, cd_codigo
          FROM pedidos_distrib_destinos
-        WHERE ativo = TRUE AND (cnpj <> (SELECT cnpj FROM pedidos_distrib_destinos WHERE cd_codigo=$1))
+        WHERE ativo = TRUE
+          AND cnpj <> COALESCE((SELECT cnpj FROM pedidos_distrib_destinos WHERE cd_codigo = $1::text), '')
         ORDER BY tipo DESC, nome`,
       [cdOrigem]
     );
