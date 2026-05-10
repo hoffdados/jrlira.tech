@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <job>
-  <name>job_vendas_loja_6_santarem</name>
+  <name>job_vendas_loja_3_joao-paulo</name>
   <description/>
   <extended_description/>
   <job_version/>
@@ -69,7 +69,7 @@
       <run_configuration>Pentaho local</run_configuration><suppress_result_data>N</suppress_result_data>
       <parameters>
         <pass_all_parameters>Y</pass_all_parameters>
-        <parameter><name>LOJA_ID</name><stream_name/><value>6</value></parameter>
+        <parameter><name>LOJA_ID</name><stream_name/><value>3</value></parameter>
       </parameters>
       <parallel>N</parallel><draw>Y</draw><nr>0</nr><xloc>208</xloc><yloc>96</yloc>
       <attributes_kjc/>
@@ -92,7 +92,7 @@
       <run_configuration>Pentaho local</run_configuration><suppress_result_data>N</suppress_result_data>
       <parameters>
         <pass_all_parameters>Y</pass_all_parameters>
-        <parameter><name>LOJA_ID</name><stream_name/><value>6</value></parameter>
+        <parameter><name>LOJA_ID</name><stream_name/><value>3</value></parameter>
         <parameter><name>DATA_CORTE</name><stream_name/><value>${DATA_CORTE}</value></parameter>
       </parameters>
       <parallel>N</parallel><draw>Y</draw><nr>0</nr><xloc>384</xloc><yloc>96</yloc>
