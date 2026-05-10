@@ -53,11 +53,10 @@ table.grade thead tr.h2 th.fixed{background:#0c1628 !important;z-index:9}
 table.grade tbody tr:hover td.fixed{background:#15233f}
 
 th.fix-rk,td.fix-rk{left:0;width:38px;min-width:38px}
-th.fix-cod,td.fix-cod{left:38px;width:62px;min-width:62px}
-th.fix-desc,td.fix-desc{left:100px;width:260px;min-width:260px;text-align:left;border-right:1px solid #334155}
-th.fix-ref,td.fix-ref{left:360px;width:110px;min-width:110px;text-align:left;border-right:1px solid #334155}
-th.fix-ult,td.fix-ult{left:470px;width:55px;min-width:55px;border-right:1px solid #334155}
-th.fix-est,td.fix-est{left:525px;width:55px;min-width:55px;border-right:2px solid #fde04766}
+th.fix-cod,td.fix-cod{left:38px;width:62px;min-width:62px;text-align:left !important}
+th.fix-desc,td.fix-desc{left:100px;width:280px;min-width:280px;text-align:left !important;border-right:1px solid #334155}
+th.fix-ref,td.fix-ref{left:380px;width:130px;min-width:130px;text-align:left !important;border-right:2px solid #334155}
+th.fix-est,td.fix-est{left:510px;width:55px;min-width:55px;border-right:2px solid #fde04766}
 .btn-dbg{background:transparent;border:1px solid #475569;color:#64748b;padding:1px 4px;border-radius:3px;font-size:9px;cursor:pointer}
 .btn-dbg:hover{background:#1e293b;color:#94a3b8}
 #dbgModal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;align-items:center;justify-content:center}
@@ -66,10 +65,9 @@ th.fix-est,td.fix-est{left:525px;width:55px;min-width:55px;border-right:2px soli
 #dbgModal pre{background:#0f172a;padding:10px;border-radius:5px;color:#86efac;font-size:11px;white-space:pre-wrap;word-break:break-all}
 
 td.fix-desc,td.fix-ref{overflow:hidden;text-overflow:ellipsis}
-td.fix-cod,td.fix-rk{font-family:'Cascadia Code',Consolas,monospace;color:#7dd3fc;font-size:9px}
-td.fix-rk{color:#94a3b8;font-weight:700}
+td.fix-cod{font-family:'Cascadia Code',Consolas,monospace;color:#7dd3fc;font-size:10px}
+td.fix-rk{color:#94a3b8;font-weight:700;font-size:10px;text-align:center !important}
 td.fix-est{color:#fde047;font-weight:600;font-variant-numeric:tabular-nums}
-td.fix-ult{color:#86efac;font-size:9px}
 
 /* Cels de quantidade (input) */
 .qtd{width:48px;padding:2px 3px;font-size:10px;text-align:center;background:#0f172a;border:1px solid #1a2744;border-radius:3px;color:#fde047;font-weight:700}
@@ -295,7 +293,6 @@ function renderHead() {
     <th class="fixed fix-cod" rowspan="2">COD</th>
     <th class="fixed fix-desc" rowspan="2">DESCRIÇÃO</th>
     <th class="fixed fix-ref" rowspan="2">REF</th>
-    <th class="fixed fix-ult" rowspan="2" title="Última entrada no CD (data MCP_DTEN)">ÚLT.ENT</th>
     <th class="fixed fix-est" rowspan="2" title="Estoque do CD origem (em unidades)">EST DIST</th>
   `;
   for (const d of allDest) {
@@ -329,23 +326,23 @@ function renderBody() {
     const cells = [];
 
     // Fixos
+    const codSemZeros = String(p.mat_codi || '').replace(/^0+/, '') || '0';
     cells.push(`<td class="fixed fix-rk">${p.ranking || ''}</td>`);
-    cells.push(`<td class="fixed fix-cod"><button class="btn-dbg" onclick="debugProduto('${escapeHtml(p.mat_codi)}')" title="Debug match EAN">?</button> ${escapeHtml(p.mat_codi)}</td>`);
+    cells.push(`<td class="fixed fix-cod"><button class="btn-dbg" onclick="debugProduto('${escapeHtml(p.mat_codi)}')" title="Debug match EAN">?</button> ${escapeHtml(codSemZeros)}</td>`);
     cells.push(`<td class="fixed fix-desc" title="${escapeHtml(p.descricao)}">${escapeHtml(p.descricao)}</td>`);
-    cells.push(`<td class="fixed fix-ref left muted" style="font-size:9px">${escapeHtml(p.referencia || '')}</td>`);
-    cells.push(`<td class="fixed fix-ult">${fmtData(p.ultima_entrada)}</td>`);
+    cells.push(`<td class="fixed fix-ref muted" style="font-size:10px">${escapeHtml(p.referencia || '')}</td>`);
     cells.push(`<td class="fixed fix-est">${fmtNum(p.est_dist)}</td>`);
 
-    // Por destino: 4 sub-cols (E, T, S, QTD)
+    // Por destino: 4 sub-cols (E, T, S, QTD) — sempre mostra inteiros, 0 incluido
     for (const d of allDest) {
       const dt = p.destinos[d.id] || {};
-      const e  = dt.estoque_cx || 0;
-      const t  = dt.transito_cx || 0;
-      const s  = dt.sugestao_cx || 0;
+      const e  = Math.floor(parseFloat(dt.estoque_cx)  || 0);
+      const t  = Math.floor(parseFloat(dt.transito_cx) || 0);
+      const s  = Math.floor(parseFloat(dt.sugestao_cx) || 0);
       const q  = dt.sug_editada || '';
-      cells.push(`<td class="cell-num cell-est-d ${e?'':'zero'}">${e || ''}</td>`);
-      cells.push(`<td class="cell-num cell-trans ${t?'':'zero'}">${t || ''}</td>`);
-      cells.push(`<td class="cell-num cell-sug ${s?'':'zero'}">${s || ''}</td>`);
+      cells.push(`<td class="cell-num cell-est-d ${e?'':'zero'}">${e}</td>`);
+      cells.push(`<td class="cell-num cell-trans ${t?'':'zero'}">${t}</td>`);
+      cells.push(`<td class="cell-num cell-sug ${s?'':'zero'}">${s}</td>`);
       cells.push(`<td><input class="qtd ${q?'':'zero'}" data-mat="${escapeHtml(p.mat_codi)}" data-dest="${d.id}" value="${q}" type="number" min="0" step="any" oninput="onQtdInput(this)"></td>`);
     }
 

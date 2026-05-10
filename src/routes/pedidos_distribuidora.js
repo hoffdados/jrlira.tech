@@ -489,13 +489,32 @@ router.get('/grade-debug', adminOuCeo, async (req, res) => {
          FROM produtos_externo WHERE loja_id = 1 LIMIT 3`
     );
 
+    // Bonus: contagem de cd_material com EAN por CD (vê se vale sincronizar tabela EAN)
+    const eanStatsCd = await dbQuery(
+      `SELECT cd_codigo,
+              COUNT(*)::int AS total_produtos,
+              COUNT(NULLIF(ean_codi,''))::int AS com_ean,
+              COUNT(*) FILTER (WHERE ean_codi IS NULL OR ean_codi = '')::int AS sem_ean
+         FROM cd_material
+        GROUP BY cd_codigo ORDER BY cd_codigo`
+    );
+
+    // Cruzamento via produtos_embalagem (preferido pro CD ITAUTUBA)
+    const [emProdEmb] = await dbQuery(
+      `SELECT mat_codi, ean_principal_cd, ean_principal_jrlira, qtd_embalagem, descricao_atual
+         FROM produtos_embalagem WHERE mat_codi = $1`,
+      [matCodi]
+    );
+
     res.json({
       produto_no_cd: prod,
+      em_produtos_embalagem: emProdEmb || null,
       ean_raw: eanRaw, ean_normalizado: eanNorm,
       em_outros_cds: cross,
       em_lojas: externos,
       vendas_90d_por_loja: vendas,
       sample_produtos_externo_loja1: sample,
+      stats_cd_material_por_cd: eanStatsCd,
     });
   } catch (e) {
     console.error('[grade-debug]', e.message);
