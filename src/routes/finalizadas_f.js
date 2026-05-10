@@ -261,13 +261,24 @@ router.get('/resumo', apenasAdmin, async (req, res) => {
 // e desmarca auditoria_eco_status de notas pré-cutoff.
 router.post('/limpar-pre-cutoff', apenasAdmin, async (req, res) => {
   try {
+    // Deleta QUALQUER nota com status='finalizada_f' que chegou ao ERP antes do cutoff
+    // (todas vieram do detector legado — chegou_no_erp_em < cutoff é prova de lixo)
     const deletadas = await dbQuery(`
       DELETE FROM notas_entrada
        WHERE status = 'finalizada_f'
-         AND COALESCE(finalizada_f_motivo,'') LIKE 'NUNCA IMPORTADA%'
+         AND chegou_no_erp_em IS NOT NULL
          AND chegou_no_erp_em < $1::date
-       RETURNING id`, [DATA_CORTE_ECO]);
+       RETURNING id, numero_nota, loja_id`, [DATA_CORTE_ECO]);
 
+    // Notas finalizada_f sem chegou_no_erp_em (criação antiga, nem caiu no ERP) também são lixo
+    const deletadasNull = await dbQuery(`
+      DELETE FROM notas_entrada
+       WHERE status = 'finalizada_f'
+         AND chegou_no_erp_em IS NULL
+         AND COALESCE(finalizada_f_motivo,'') LIKE 'NUNCA IMPORTADA%'
+       RETURNING id`);
+
+    // UPDATE auditoria_eco_status NULL pra notas pré-cutoff que ainda estão em outros status
     const desmarcadas = await dbQuery(`
       UPDATE notas_entrada
          SET auditoria_eco_status = NULL,
@@ -276,7 +287,11 @@ router.post('/limpar-pre-cutoff', apenasAdmin, async (req, res) => {
          AND (chegou_no_erp_em IS NULL OR chegou_no_erp_em < $1::date)
        RETURNING id`, [DATA_CORTE_ECO]);
 
-    res.json({ ok: true, deletadas: deletadas.length, desmarcadas: desmarcadas.length });
+    res.json({
+      ok: true,
+      deletadas: deletadas.length + deletadasNull.length,
+      desmarcadas: desmarcadas.length,
+    });
   } catch (e) {
     console.error('[finalizadas_f limpar]', e.message);
     res.status(500).json({ erro: e.message });
@@ -290,8 +305,10 @@ router.get('/diagnosticar/:numero_nota', autenticarComQS, async (req, res) => {
     const noNotas = await dbQuery(
       `SELECT id, numero_nota, serie, fornecedor_cnpj, fornecedor_nome,
               loja_id, status, origem, data_emissao, valor_total,
-              importado_em, finalizada_f_em, mcp_status_cd, chegou_no_erp_em,
-              auditoria_eco_status
+              importado_em, finalizada_f_em, finalizada_f_motivo,
+              mcp_status_cd, chegou_no_erp_em,
+              auditoria_eco_status, auditoria_eco_em,
+              justificativa_diretor, justificada_por
          FROM notas_entrada WHERE numero_nota = $1 ORDER BY id DESC`, [num]
     );
     const noCompras = await dbQuery(
