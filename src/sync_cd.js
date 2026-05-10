@@ -80,6 +80,49 @@ async function syncMaterial(cd, cli) {
   return { tabela: 'material', linhas: rows.length, ms: Date.now() - t0 };
 }
 
+// ── 0b) cd_ean (codigos de barra por produto — tabela EAN do UltraSyst) ─
+
+async function syncEan(cd, cli) {
+  const t0 = Date.now();
+  const rows = await paginarQuery(cli,
+    `SELECT MAT_CODI, EAN_CODI, EAN_NOTA, ID
+       FROM EAN WITH (NOLOCK)
+      WHERE EAN_CODI IS NOT NULL AND LTRIM(RTRIM(EAN_CODI)) <> ''`,
+    'MAT_CODI, ID'
+  );
+  // Snapshot: deleta tudo desse CD e reinsere
+  await dbQuery(`DELETE FROM cd_ean WHERE cd_codigo = $1`, [cd.codigo]);
+  if (rows.length) {
+    // Dedup por (mat_codi, ean_codi) — pode ter duplicatas no SQL Server
+    const seen = new Set();
+    const uniq = [];
+    for (const r of rows) {
+      const m = String(r.MAT_CODI || '').trim();
+      const e = String(r.EAN_CODI || '').trim();
+      if (!m || !e) continue;
+      const k = `${m}|${e}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      uniq.push({ ...r, _m: m, _e: e });
+    }
+    if (uniq.length) {
+      await dbQuery(
+        `INSERT INTO cd_ean (cd_codigo, mat_codi, ean_codi, ean_nota, ordem)
+         SELECT $1, * FROM UNNEST($2::text[], $3::text[], $4::text[], $5::int[])`,
+        [
+          cd.codigo,
+          uniq.map(r => r._m),
+          uniq.map(r => r._e),
+          uniq.map(r => String(r.EAN_NOTA || 'N').trim().charAt(0) || 'N'),
+          uniq.map(r => parseInt(r.ID) || 0),
+        ]
+      );
+    }
+  }
+  await setEstado(`cd_${cd.codigo}_ean_ultima_sync`, new Date().toISOString());
+  return { tabela: 'ean', linhas: rows.length, ms: Date.now() - t0 };
+}
+
 // ── 1) cd_estoque (snapshot full por LOC_CODI do CD) ─────────────────
 
 async function syncEstoque(cd, cli) {
@@ -300,6 +343,7 @@ async function syncCd(cd) {
   const cli = clienteCd(cd);
   const tarefas = [
     { nome: 'material',  fn: syncMaterial },
+    { nome: 'ean',       fn: syncEan },
     { nome: 'estoque',   fn: syncEstoque },
     { nome: 'custoprod', fn: syncCustoProd },
     { nome: 'vendapro',  fn: syncVendaPro },
@@ -345,6 +389,7 @@ module.exports = {
   syncCdAll,
   // exports individuais (testes/debug)
   syncMaterial,
+  syncEan,
   syncEstoque,
   syncCustoProd,
   syncVendaPro,

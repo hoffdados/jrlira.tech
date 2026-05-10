@@ -2025,6 +2025,22 @@ async function initDB() {
       ALTER TABLE cd_itemcompra ADD PRIMARY KEY (cd_codigo, mcp_codi, mcp_tipomov, mcp_seqitem);
     `);
 
+    // cd_ean: codigos de barra por produto (UltraSyst tabela EAN), 1 produto pode ter N EANs.
+    // Usado pra match cross-CD e pra preencher cd_material.ean_codi quando MATERIAL nao tem.
+    await runMigration(client, '20260510_cd_ean', `
+      CREATE TABLE IF NOT EXISTS cd_ean (
+        cd_codigo VARCHAR(40) NOT NULL,
+        mat_codi VARCHAR(20) NOT NULL,
+        ean_codi VARCHAR(20) NOT NULL,
+        ean_nota CHAR(1) DEFAULT 'N',
+        ordem INTEGER DEFAULT 0,
+        sincronizado_em TIMESTAMPTZ DEFAULT NOW(),
+        PRIMARY KEY (cd_codigo, mat_codi, ean_codi)
+      );
+      CREATE INDEX IF NOT EXISTS idx_cd_ean_codigo ON cd_ean (cd_codigo, ean_codi);
+      CREATE INDEX IF NOT EXISTS idx_cd_ean_mat    ON cd_ean (cd_codigo, mat_codi);
+    `);
+
     // Quantidades editadas na grade (tipo planilha) — autosave por (cd_origem, destino, produto)
     await runMigration(client, '20260510_pedidos_distrib_quantidades',
       `CREATE TABLE IF NOT EXISTS pedidos_distrib_quantidades (

@@ -163,7 +163,13 @@ router.get('/grade', adminOuCeo, async (req, res) => {
          GROUP BY i.cd_codigo, i.pro_codi
       )
       SELECT cd_m.mat_codi,
-             COALESCE(NULLIF(pe.ean_principal_cd,''), NULLIF(cd_m.ean_codi,'')) AS ean_codi,
+             COALESCE(
+               NULLIF(pe.ean_principal_cd,''),
+               NULLIF(cd_m.ean_codi,''),
+               (SELECT NULLIF(LTRIM(ean_codi,'0'),'') FROM cd_ean
+                 WHERE cd_codigo = cd_m.cd_codigo AND mat_codi = cd_m.mat_codi
+                 ORDER BY CASE WHEN ean_nota='S' THEN 0 ELSE 1 END, ordem LIMIT 1)
+             ) AS ean_codi,
              cd_m.mat_desc AS descricao,
              cd_m.mat_refe AS referencia,
              cd_e.est_quan AS est_dist,
@@ -225,14 +231,15 @@ router.get('/grade', adminOuCeo, async (req, res) => {
       [lojaIds, eansList]
     ) : [];
 
-    // 5) Estoque dos CDs destino — match por mat_codi pelo EAN do produto origem
-    // cd_destino tem seu próprio mat_codi → join via cd_material[destino].ean_codi = ean_origem
-    const estCds = cdDestinos.length && eans.length ? await dbQuery(
-      `SELECT cd_m.cd_codigo, cd_m.ean_codi, cd_e.est_quan
-         FROM cd_material cd_m
-         LEFT JOIN cd_estoque cd_e ON cd_e.cd_codigo = cd_m.cd_codigo AND cd_e.pro_codi = cd_m.mat_codi
-        WHERE cd_m.cd_codigo = ANY($1::text[]) AND cd_m.ean_codi = ANY($2::text[])`,
-      [cdDestinos.map(d => d.cd_codigo), eans]
+    // 5) Estoque dos CDs destino — match via cd_ean (cd_codigo, mat_codi, ean_codi)
+    // O EAN principal do origem (eansNorm) procura nos cd_ean dos destinos pra achar o mat_codi local.
+    const estCds = cdDestinos.length && eansNorm.length ? await dbQuery(
+      `SELECT ce.cd_codigo, NULLIF(LTRIM(ce.ean_codi,'0'),'') AS ean_codi, cde.est_quan
+         FROM cd_ean ce
+         LEFT JOIN cd_estoque cde ON cde.cd_codigo = ce.cd_codigo AND cde.pro_codi = ce.mat_codi
+        WHERE ce.cd_codigo = ANY($1::text[])
+          AND NULLIF(LTRIM(ce.ean_codi,'0'),'') = ANY($2::text[])`,
+      [cdDestinos.map(d => d.cd_codigo), eansNorm]
     ) : [];
 
     // 6) Trânsito por (loja_id, ean) — itens em notas_entrada origem='cd'/'transferencia_loja' não fechadas
