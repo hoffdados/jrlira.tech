@@ -44,6 +44,7 @@ app.use('/api/perdas', require('./src/routes/perdas'));
 app.use('/api/sync-status', require('./src/routes/sync_status'));
 app.use('/api/notificacoes', require('./src/routes/notificacoes'));
 app.use('/api/dashboard', require('./src/routes/dashboard'));
+app.use('/api/precos-otimizados', require('./src/routes/precos_otimizados'));
 
 // ── PÁGINAS ───────────────────────────────────────────────────────
 app.get('/favicon.ico', (req, res) => res.redirect(301, '/favicon.svg'));
@@ -70,6 +71,9 @@ app.get('/sugestao-compras', (req, res) => res.sendFile(path.join(__dirname, 'pu
 app.get('/contas-receber', (req, res) => res.sendFile(path.join(__dirname, 'public/contas-receber.html')));
 app.get('/produtos-embalagem', (req, res) => res.sendFile(path.join(__dirname, 'public/produtos-embalagem.html')));
 app.get('/embalagens-fornecedor', (req, res) => res.sendFile(path.join(__dirname, 'public/embalagens-fornecedor.html')));
+app.get('/precos-otimizados', (req, res) => res.sendFile(path.join(__dirname, 'public/precos-otimizados.html')));
+app.get('/precos-otimizados-pendentes', (req, res) => res.sendFile(path.join(__dirname, 'public/precos-otimizados-pendentes.html')));
+app.get('/precos-otimizados-status', (req, res) => res.sendFile(path.join(__dirname, 'public/precos-otimizados-status.html')));
 app.get('/acordo-extrato', (req, res) => res.sendFile(path.join(__dirname, 'public/acordo-extrato.html')));
 app.get('/auditagem-divergencias', (req, res) => res.sendFile(path.join(__dirname, 'public/auditagem-divergencias.html')));
 app.get('/validades-em-risco', (req, res) => res.sendFile(path.join(__dirname, 'public/validades-em-risco.html')));
@@ -1729,6 +1733,130 @@ async function initDB() {
       `CREATE INDEX IF NOT EXISTS idx_notificacoes_dest
          ON notificacoes (destinatario_tipo, destinatario_id, lida_em NULLS FIRST, criado_em DESC)`);
 
+    // ── CD UltraSyst — tabelas espelho (sync 15min via src/sync_cd.js) ──
+    await runMigration(client, '20260509_cd_estoque',
+      `CREATE TABLE IF NOT EXISTS cd_estoque (
+         pro_codi VARCHAR(20) PRIMARY KEY,
+         est_quan NUMERIC(18,4),
+         tam_codi VARCHAR(10),
+         sincronizado_em TIMESTAMPTZ DEFAULT NOW()
+       )`);
+    await runMigration(client, '20260509_cd_custoprod',
+      `CREATE TABLE IF NOT EXISTS cd_custoprod (
+         pro_codi VARCHAR(20) PRIMARY KEY,
+         pro_prcr NUMERIC(14,4),
+         pro_prad NUMERIC(14,4),
+         pro_prcu NUMERIC(14,4),
+         pro_prmd NUMERIC(14,4),
+         mat_dtal TIMESTAMPTZ,
+         sincronizado_em TIMESTAMPTZ DEFAULT NOW()
+       )`);
+    await runMigration(client, '20260509_cd_vendapro',
+      `CREATE TABLE IF NOT EXISTS cd_vendapro (
+         pro_codi VARCHAR(20) PRIMARY KEY,
+         tab_prc1 NUMERIC(14,4),
+         tab_prc2 NUMERIC(14,4),
+         tab_prc3 NUMERIC(14,4),
+         tab_prc4 NUMERIC(14,4),
+         tab_dtal TIMESTAMPTZ,
+         sincronizado_em TIMESTAMPTZ DEFAULT NOW()
+       )`);
+    await runMigration(client, '20260509_cd_movcompra',
+      `CREATE TABLE IF NOT EXISTS cd_movcompra (
+         mcp_codi VARCHAR(20) NOT NULL,
+         mcp_tipomov VARCHAR(2) NOT NULL,
+         mcp_dten TIMESTAMPTZ,
+         mcp_dtem TIMESTAMPTZ,
+         for_codi VARCHAR(20),
+         nop_codi VARCHAR(10),
+         mcp_vtot NUMERIC(14,2),
+         mcp_nnotafis VARCHAR(20),
+         mcp_status VARCHAR(2),
+         sincronizado_em TIMESTAMPTZ DEFAULT NOW(),
+         PRIMARY KEY (mcp_codi, mcp_tipomov)
+       )`);
+    await runMigration(client, '20260509_idx_cd_movcompra_dten',
+      `CREATE INDEX IF NOT EXISTS idx_cd_movcompra_dten ON cd_movcompra (mcp_dten DESC)`);
+    await runMigration(client, '20260509_cd_itemcompra',
+      `CREATE TABLE IF NOT EXISTS cd_itemcompra (
+         mcp_codi VARCHAR(20) NOT NULL,
+         mcp_tipomov VARCHAR(2) NOT NULL,
+         mcp_seqitem INTEGER NOT NULL,
+         pro_codi VARCHAR(20),
+         ean_codi VARCHAR(20),
+         mcp_vuni NUMERIC(14,4),
+         ite_quaninv NUMERIC(14,4),
+         mcp_quan NUMERIC(14,4),
+         sincronizado_em TIMESTAMPTZ DEFAULT NOW(),
+         PRIMARY KEY (mcp_codi, mcp_tipomov, mcp_seqitem)
+       )`);
+    await runMigration(client, '20260509_idx_cd_itemcompra_pro',
+      `CREATE INDEX IF NOT EXISTS idx_cd_itemcompra_pro ON cd_itemcompra (pro_codi)`);
+    await runMigration(client, '20260509_cd_material',
+      `CREATE TABLE IF NOT EXISTS cd_material (
+         mat_codi VARCHAR(20) PRIMARY KEY,
+         mat_desc TEXT,
+         mat_refe TEXT,
+         mat_situ VARCHAR(2),
+         ean_codi VARCHAR(20),
+         sincronizado_em TIMESTAMPTZ DEFAULT NOW()
+       )`);
+
+    // Preços otimizados — escolha do CEO por loja (Fase 2 vai gravar aqui)
+    await runMigration(client, '20260509_precos_otimizados',
+      `CREATE TABLE IF NOT EXISTS precos_otimizados (
+         loja_id INTEGER NOT NULL,
+         mat_codi VARCHAR(20) NOT NULL,
+         preco_otimizado NUMERIC(14,4) NOT NULL,
+         atualizado_em TIMESTAMPTZ DEFAULT NOW(),
+         atualizado_por VARCHAR(120),
+         PRIMARY KEY (loja_id, mat_codi)
+       )`);
+
+    // Fase 3: lotes de envio pra cadastros + auto-validação por sync de preços
+    await runMigration(client, '20260509_precos_otim_lote',
+      `CREATE TABLE IF NOT EXISTS precos_otimizados_lote (
+         id SERIAL PRIMARY KEY,
+         grupo VARCHAR(10) NOT NULL,
+         gerado_em TIMESTAMPTZ DEFAULT NOW(),
+         gerado_por VARCHAR(120),
+         total_itens INTEGER DEFAULT 0
+       )`);
+    await runMigration(client, '20260509_precos_otim_lote_itens',
+      `CREATE TABLE IF NOT EXISTS precos_otimizados_lote_itens (
+         lote_id INTEGER REFERENCES precos_otimizados_lote(id) ON DELETE CASCADE,
+         mat_codi VARCHAR(20) NOT NULL,
+         preco_otimizado NUMERIC(14,4) NOT NULL,
+         preco_anterior NUMERIC(14,4),
+         PRIMARY KEY (lote_id, mat_codi)
+       )`);
+    await runMigration(client, '20260509_idx_lote_itens_mat',
+      `CREATE INDEX IF NOT EXISTS idx_lote_itens_mat ON precos_otimizados_lote_itens (mat_codi)`);
+    await runMigration(client, '20260509_precos_otim_aplicacao',
+      `CREATE TABLE IF NOT EXISTS precos_otimizados_aplicacao (
+         lote_id INTEGER REFERENCES precos_otimizados_lote(id) ON DELETE CASCADE,
+         loja_id INTEGER NOT NULL,
+         aplicado_em TIMESTAMPTZ,
+         aplicado_por VARCHAR(120),
+         PRIMARY KEY (lote_id, loja_id)
+       )`);
+    // Aplicação por item — granular pra mostrar status item-a-item por loja.
+    await runMigration(client, '20260509_precos_otim_aplicacao_item',
+      `CREATE TABLE IF NOT EXISTS precos_otimizados_aplicacao_item (
+         lote_id INTEGER NOT NULL,
+         loja_id INTEGER NOT NULL,
+         mat_codi VARCHAR(20) NOT NULL,
+         aplicado_em TIMESTAMPTZ,
+         aplicado_por VARCHAR(120),
+         PRIMARY KEY (lote_id, loja_id, mat_codi)
+       )`);
+    await runMigration(client, '20260509_idx_apl_pendente',
+      `CREATE INDEX IF NOT EXISTS idx_apl_pendente
+         ON precos_otimizados_aplicacao_item (loja_id, lote_id)
+         WHERE aplicado_em IS NULL`);
+    await runMigration(client, '20260509_rh_usuarios_telefone',
+      `ALTER TABLE rh_usuarios ADD COLUMN IF NOT EXISTS telefone VARCHAR(20)`);
+
     console.log('[DB] Tabelas inicializadas');
   } finally {
     client.release();
@@ -1991,6 +2119,32 @@ initDB().then(() => {
     };
     setTimeout(rodarSyncEMatch, 2 * 60 * 1000);
     setInterval(rodarSyncEMatch, 10 * 60 * 1000);
+
+    // Sync das tabelas espelho do CD (estoque/custos/preços/compras) — 15min.
+    // Pré-requisito do otimizador de preços e relatórios futuros.
+    const { syncCdAll } = require('./src/sync_cd');
+    const rodarSyncCd = async () => {
+      try {
+        const r = await syncCdAll();
+        const resumo = r.map(x => `${x.tabela}=${x.linhas ?? '?'}/${x.ms ?? '?'}ms`).join(' ');
+        console.log('[sync_cd]', resumo);
+      } catch (e) { console.error('[sync_cd] falha:', e.message); }
+    };
+    setTimeout(rodarSyncCd, 3 * 60 * 1000);
+    setInterval(rodarSyncCd, 15 * 60 * 1000);
+
+    // Auto-validação dos lotes de preços otimizados — 5min.
+    // Detecta quando produtos_externo.prsugerido (loja) === preco_otimizado (lote)
+    // e marca aplicado_em automaticamente.
+    const precosOtim = require('./src/routes/precos_otimizados');
+    const rodarAutoValidar = async () => {
+      try {
+        const n = await precosOtim.autoValidar();
+        if (n > 0) console.log(`[precos-otim auto-validar] ${n} item(ns) marcados como aplicados`);
+      } catch (e) { console.error('[precos-otim auto-validar] falha:', e.message); }
+    };
+    setTimeout(rodarAutoValidar, 4 * 60 * 1000);
+    setInterval(rodarAutoValidar, 5 * 60 * 1000);
   } else {
     console.log('[ultrasyst] sync desabilitado — sem ULTRASYST_RELAY_URL/TOKEN');
   }

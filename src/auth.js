@@ -37,5 +37,6 @@ function exigirPerfil(...perfis) {
 
 const apenasAdmin = [autenticar, exigirPerfil('admin')];
 const compradorOuAdmin = [autenticar, exigirPerfil('admin', 'comprador')];
+const adminOuCeo = [autenticar, exigirPerfil('admin', 'ceo')];
 
-module.exports = { autenticar, autenticarOuQuery, exigirPerfil, apenasAdmin, compradorOuAdmin, JWT_SECRET };
+module.exports = { autenticar, autenticarOuQuery, exigirPerfil, apenasAdmin, compradorOuAdmin, adminOuCeo, JWT_SECRET };

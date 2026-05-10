@@ -53,6 +53,7 @@ tbody tr:hover{background:#1a2744}
 td{padding:10px 12px;vertical-align:middle}
 .badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700}
 .b-admin{background:#1e3a5f;color:#60a5fa}
+.b-ceo{background:#451a03;color:#fde047}
 .b-rh{background:#14532d;color:#4ade80}
 .b-cadastro{background:#2e1065;color:#a78bfa}
 .b-estoque{background:#431407;color:#f97316}
@@ -99,6 +100,10 @@ select[multiple]{height:72px;font-size:11px}
     </div>
     <div class="form-row triple">
       <div>
+        <label>Telefone (WhatsApp)</label>
+        <input type="text" id="novoTelefone" placeholder="93991234567">
+      </div>
+      <div>
         <label>Senha inicial</label>
         <input type="password" id="novaSenha" placeholder="••••••••">
       </div>
@@ -109,6 +114,7 @@ select[multiple]{height:72px;font-size:11px}
         <select id="novoPerfil" onchange="toggleLojaSelector(this.value)">
           <option value="">Selecione...</option>
           <option value="admin">Admin — acesso total</option>
+          <option value="ceo">CEO — Otimizador de Preços</option>
           <option value="rh">RH — Lotação e Ponto</option>
           <option value="cadastro">Cadastro — Notas Cadastro</option>
           <option value="estoque">Estoque — Conferência</option>
@@ -162,7 +168,7 @@ const token = () => localStorage.getItem('jrlira_token');
 (function(){ const p = localStorage.getItem('jrlira_perfil'); if (!token() || p !== 'admin') location.href = '/'; })();
 document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
 
-const PERFIL_LABEL = { admin: 'Admin', rh: 'RH', cadastro: 'Cadastro', estoque: 'Estoque', auditor: 'Auditor', comprador: 'Comprador' };
+const PERFIL_LABEL = { admin: 'Admin', ceo: 'CEO', rh: 'RH', cadastro: 'Cadastro', estoque: 'Estoque', auditor: 'Auditor', comprador: 'Comprador' };
 // LOJAS / LOJAS_FULL vêm do shared.js
 const PERFIS_COM_LOJA = ['rh', 'cadastro', 'estoque', 'auditor'];
 const PERFIS_LOJA_OBRIGATORIO = ['cadastro', 'estoque', 'auditor'];
@@ -218,6 +224,7 @@ async function carregarUsuarios() {
           <div class="inline-edit">
             <select id="perfil-${u.id}" onchange="onPerfilChange(${u.id}, this.value)">
               <option value="admin" ${u.perfil==='admin'?'selected':''}>Admin</option>
+              <option value="ceo" ${u.perfil==='ceo'?'selected':''}>CEO</option>
               <option value="rh" ${u.perfil==='rh'?'selected':''}>RH</option>
               <option value="cadastro" ${u.perfil==='cadastro'?'selected':''}>Cadastro</option>
               <option value="estoque" ${u.perfil==='estoque'?'selected':''}>Estoque</option>
@@ -226,6 +233,7 @@ async function carregarUsuarios() {
             </select>
             <select id="lojas-${u.id}" multiple style="display:${precisaLoja?'block':'none'}">${lojaMultiSelect(u.id, lojasSel)}</select>
             <input type="email" id="email-${u.id}" value="${escapeHtml(u.email || '')}" placeholder="E-mail" style="width:160px">
+            <input type="text" id="telefone-${u.id}" value="${escapeHtml(u.telefone || '')}" placeholder="WhatsApp" style="width:130px">
             <input type="password" id="senha-${u.id}" placeholder="Nova senha" autocomplete="off">
             <button class="btn-sm btn-edit" onclick="salvarEdicao(${u.id}, this)">Salvar</button>
             <button class="btn-sm btn-toggle" onclick="toggleAtivo(${u.id}, ${u.ativo}, this)">${u.ativo ? 'Desativar' : 'Ativar'}</button>
@@ -246,6 +254,7 @@ async function criarUsuario(btn) {
   const usuario = document.getElementById('novoUsuario').value.trim();
   const nome = document.getElementById('novoNome').value.trim();
   const email = document.getElementById('novoEmail').value.trim();
+  const telefone = document.getElementById('novoTelefone').value.trim();
   const senha = document.getElementById('novaSenha').value;
   const perfil = document.getElementById('novoPerfil').value;
   if (!usuario || !nome || !senha || !perfil) { showMsg('Preencha todos os campos', 'err'); return; }
@@ -255,7 +264,7 @@ async function criarUsuario(btn) {
   if (PERFIS_LOJA_OBRIGATORIO.includes(perfil) && !lojas_ids.length) { showMsg('Selecione ao menos uma loja para este perfil', 'err'); return; }
   await withLoading(btn, async () => {
     try {
-      await fetchApi('/api/auth/usuarios', 'POST', { usuario, nome, email: email || null, senha, perfil, lojas_ids });
+      await fetchApi('/api/auth/usuarios', 'POST', { usuario, nome, email: email || null, telefone: telefone || null, senha, perfil, lojas_ids });
       showMsg(`Usuário ${nome} criado${email ? ' — credenciais enviadas por e-mail' : ''}`, 'ok');
       document.getElementById('novoUsuario').value = '';
       document.getElementById('novoNome').value = '';
@@ -273,9 +282,10 @@ async function salvarEdicao(id, btn) {
   const perfil = document.getElementById(`perfil-${id}`).value;
   const senha = document.getElementById(`senha-${id}`).value;
   const emailEl = document.getElementById(`email-${id}`);
+  const telEl = document.getElementById(`telefone-${id}`);
   const sel = document.getElementById(`lojas-${id}`);
   const lojas_ids = sel ? [...sel.selectedOptions].map(o => parseInt(o.value)) : [];
-  const body = { perfil, lojas_ids, email: emailEl?.value.trim() || null };
+  const body = { perfil, lojas_ids, email: emailEl?.value.trim() || null, telefone: telEl?.value.trim() || null };
   if (senha) body.senha = senha;
   await withLoading(btn, async () => {
     try {

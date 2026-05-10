@@ -40,6 +40,7 @@ body.login-mode { display: flex; align-items: center; justify-content: center; }
 .grupo.transferencias { border-color: #a855f7; } .grupo.transferencias .grupo-titulo { color: #c084fc; } .grupo.transferencias .card .ic svg { color: #c084fc; }
 .grupo.auditoria    { border-color: #ef4444; } .grupo.auditoria .grupo-titulo    { color: #f87171; } .grupo.auditoria .card .ic svg    { color: #f87171; }
 .grupo.admin        { border-color: #64748b; } .grupo.admin .grupo-titulo        { color: #94a3b8; } .grupo.admin .card .ic svg        { color: #94a3b8; }
+.grupo.diretoria    { border-color: #facc15; } .grupo.diretoria .grupo-titulo    { color: #fde047; } .grupo.diretoria .card .ic svg    { color: #fde047; }
 
 /* ── CARDS ── */
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
@@ -138,6 +139,11 @@ const GRUPOS = [
     { href: '/aguardando-devolucao', icon: 'undo-2', title: 'Aguardando Devolução', desc: 'Anexar XML', perfis: ['admin','cadastro'], badge: 'aguardando_devolucao' },
     { href: '/devolucoes-divergencias', icon: 'trending-down', title: 'Divergências Devolução', desc: 'NF devolução vs esperado', perfis: ['admin','auditor'] },
     { href: '/auditoria-acordos', icon: 'handshake', title: 'Auditoria Acordos', desc: 'Resumo aprovações', perfis: ['admin','auditor'], badge: 'auditoria_acordos' },
+  ]},
+  { id: 'diretoria', titulo: 'Diretoria · formação de preços', classe: 'diretoria', cards: [
+    { href: '/precos-otimizados', icon: 'badge-dollar-sign', title: 'Otimizador de Preços', desc: 'Formador L4/L6', perfis: ['admin','ceo'] },
+    { href: '/precos-otimizados-status', icon: 'list-checks', title: 'Otimizados — Status', desc: 'Aplicação por loja', perfis: ['admin','ceo'] },
+    { href: '/precos-otimizados-pendentes', icon: 'tag', title: 'Otimizados — Pendentes', desc: 'Aplicar no ERP', perfis: ['admin','cadastro','ceo'] },
   ]},
   { id: 'admin', titulo: 'Cadastros / Admin', classe: 'admin', cards: [
     { href: '/produtos-embalagem', icon: 'box', title: 'Cadastro CD', desc: 'Quantidade por embalagem', perfis: ['admin'] },

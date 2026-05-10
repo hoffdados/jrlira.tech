@@ -35,7 +35,7 @@ router.get('/usuarios', async (req, res) => {
   try {
     const u = jwt.verify(token, JWT_SECRET);
     if (u.perfil !== 'admin') return res.status(403).json({ erro: 'Acesso negado' });
-    const rows = await dbQuery('SELECT id, usuario, nome, email, perfil, loja_id, lojas_ids, ativo, criado_em FROM rh_usuarios ORDER BY nome');
+    const rows = await dbQuery('SELECT id, usuario, nome, email, telefone, perfil, loja_id, lojas_ids, ativo, criado_em FROM rh_usuarios ORDER BY nome');
     res.json(rows);
   } catch (err) { res.status(401).json({ erro: 'Token inválido' }); }
 });
@@ -48,8 +48,8 @@ router.post('/usuarios', async (req, res) => {
     const u = jwt.verify(token, JWT_SECRET);
     if (u.perfil !== 'admin') return res.status(403).json({ erro: 'Acesso negado' });
 
-    const { usuario, nome, email, senha, perfil, lojas_ids } = req.body;
-    const perfisValidos = ['admin', 'rh', 'cadastro', 'estoque', 'auditor', 'comprador'];
+    const { usuario, nome, email, telefone, senha, perfil, lojas_ids } = req.body;
+    const perfisValidos = ['admin', 'rh', 'cadastro', 'estoque', 'auditor', 'comprador', 'ceo'];
     if (!usuario || !nome || !senha || !perfisValidos.includes(perfil))
       return res.status(400).json({ erro: 'Dados inválidos' });
 
@@ -59,8 +59,8 @@ router.post('/usuarios', async (req, res) => {
 
     const hash = await bcrypt.hash(senha, 10);
     const rows = await dbQuery(
-      'INSERT INTO rh_usuarios (usuario, nome, email, senha_hash, perfil, loja_id, lojas_ids) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, usuario, nome, email, perfil, loja_id, lojas_ids',
-      [usuario.trim().toLowerCase(), nome.trim(), email?.trim() || null, hash, perfil, loja_id, lojas_arr]
+      'INSERT INTO rh_usuarios (usuario, nome, email, telefone, senha_hash, perfil, loja_id, lojas_ids) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, usuario, nome, email, telefone, perfil, loja_id, lojas_ids',
+      [usuario.trim().toLowerCase(), nome.trim(), email?.trim() || null, telefone?.trim() || null, hash, perfil, loja_id, lojas_arr]
     );
 
     if (email?.trim()) {
@@ -84,8 +84,8 @@ router.patch('/usuarios/:id', async (req, res) => {
     const u = jwt.verify(token, JWT_SECRET);
     if (u.perfil !== 'admin') return res.status(403).json({ erro: 'Acesso negado' });
 
-    const { perfil, ativo, senha, email, lojas_ids } = req.body;
-    const perfisValidos = ['admin', 'rh', 'cadastro', 'estoque', 'auditor', 'comprador'];
+    const { perfil, ativo, senha, email, telefone, lojas_ids } = req.body;
+    const perfisValidos = ['admin', 'rh', 'cadastro', 'estoque', 'auditor', 'comprador', 'ceo'];
 
     if (perfil !== undefined) {
       if (!perfisValidos.includes(perfil)) return res.status(400).json({ erro: 'Perfil inválido' });
@@ -96,6 +96,9 @@ router.patch('/usuarios/:id', async (req, res) => {
     }
     if (email !== undefined) {
       await dbQuery('UPDATE rh_usuarios SET email=$1 WHERE id=$2', [email?.trim() || null, req.params.id]);
+    }
+    if (telefone !== undefined) {
+      await dbQuery('UPDATE rh_usuarios SET telefone=$1 WHERE id=$2', [telefone?.trim() || null, req.params.id]);
     }
     if (senha) {
       const hash = await bcrypt.hash(senha, 10);

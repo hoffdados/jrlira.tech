@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Preços Otimizados — Pendentes</title>
+<link rel="stylesheet" href="/shared.css">
+<script src="/shared.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+nav{background:#1e293b;padding:12px 20px;display:flex;align-items:center;gap:14px;border-bottom:1px solid #334155}
+.brand{font-family:'Segoe UI Black','Segoe UI',sans-serif;font-weight:900;font-size:18px;color:#38bdf8}
+.nav-user{margin-left:auto;font-size:12px;color:#475569}
+.btn-nav{background:#0ea5e9;color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:12px;cursor:pointer}
+.main{padding:14px 18px;max-width:1400px;margin:0 auto}
+.aviso{background:#1e3a5f;border-left:3px solid #38bdf8;padding:10px 14px;border-radius:6px;font-size:12px;margin-bottom:14px;color:#bae6fd}
+.lote{background:#1e293b;border-radius:10px;padding:14px;margin-bottom:14px}
+.lote-header{display:flex;align-items:center;gap:14px;margin-bottom:12px;flex-wrap:wrap}
+.lote-id{font-size:18px;font-weight:900;color:#38bdf8}
+.lote-meta{font-size:12px;color:#94a3b8}
+.lote-meta b{color:#cbd5e1}
+.lote-status{margin-left:auto;font-weight:700;font-size:12px;padding:5px 11px;border-radius:6px}
+.st-pendente{background:#451a03;color:#fbbf24}
+.st-parcial{background:#312e81;color:#a5b4fc}
+.st-concluido{background:#1a4731;color:#34d399}
+.lote-actions{display:flex;gap:8px}
+button{cursor:pointer;border:none;border-radius:6px;font-size:12px;padding:6px 12px;font-weight:600}
+.btn-primary{background:#0ea5e9;color:#fff}.btn-primary:hover{background:#0284c7}
+.btn-ghost{background:#0f172a;color:#94a3b8;border:1px solid #334155}.btn-ghost:hover{background:#1a2744}
+table{width:100%;border-collapse:collapse;font-size:11px}
+thead th{background:#0f172a;padding:7px 9px;text-align:center;color:#94a3b8;font-weight:700;border-bottom:1px solid #334155;white-space:nowrap;font-size:10px;text-transform:uppercase;letter-spacing:.04em}
+thead th.left{text-align:left}
+tbody td{padding:6px 9px;border-bottom:1px solid #1a2744;text-align:center;font-variant-numeric:tabular-nums}
+tbody td.left{text-align:left}
+tbody tr.aplicado td{opacity:.55}
+tbody tr.aplicado td.status-cell{opacity:1}
+.pv-novo{color:#fbbf24;font-weight:700}
+.pv-loja-ok{color:#34d399}
+.pv-loja-dif{color:#f87171}
+.empty{text-align:center;color:#475569;padding:30px;font-size:13px}
+.dim{color:#64748b}
+.chip{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700}
+.chip-pendente{background:#451a03;color:#fbbf24}
+.chip-aplicado{background:#1a4731;color:#34d399}
+.chip-grupo{background:#1e3a5f;color:#bae6fd;font-size:10px;text-transform:uppercase;letter-spacing:.05em}
+.btn-small{font-size:10px;padding:3px 8px}
+</style>
+</head>
+<body>
+<nav>
+  <span class="brand">JR Lira Tech</span>
+  <span style="color:#475569">/</span>
+  <span style="font-size:13px;color:#94a3b8">Preços Otimizados — Pendentes</span>
+  <span class="nav-user" id="nomeUsuario"></span>
+  <button class="btn-nav" onclick="location.href='/'">← Início</button>
+</nav>
+
+<div class="main">
+  <div class="aviso">
+    ℹ Aplique os preços abaixo no Ecocentauro da sua loja. O sistema detecta a alteração
+    automaticamente em até 5min e marca como aplicado. Se preferir, use "Forçar aplicado" como atalho.
+  </div>
+  <div id="filtroAdmin" style="display:none;margin-bottom:14px">
+    <label style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.04em;margin-right:8px">Loja:</label>
+    <select id="selLoja" onchange="trocarLoja()" style="background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;padding:6px 10px;font-size:12px">
+      <option value="1">L1 — SuperAsa Economico (ITB)</option>
+      <option value="2">L2 — SuperAsa BR (ITB)</option>
+      <option value="3">L3 — SuperAsa João Pessoa (ITB)</option>
+      <option value="4">L4 — SuperAsa Floresta (ITB)</option>
+      <option value="5">L5 — SuperAsa São José (ITB)</option>
+      <option value="6">L6 — SuperAsa Santarém (STM)</option>
+    </select>
+  </div>
+  <div id="conteudo">
+    <div class="empty">Carregando…</div>
+  </div>
+</div>
+
+<script>
+const API = '';
+const token = () => localStorage.getItem('jrlira_token');
+(function(){ const p = localStorage.getItem('jrlira_perfil'); if (!token() || !['admin','cadastro','ceo'].includes(p)) location.href = '/'; })();
+document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
+const perfil = localStorage.getItem('jrlira_perfil');
+let lojaId = parseInt(localStorage.getItem('jrlira_loja_id') || '0');
+
+// Admin/CEO: mostra seletor de loja (não tem loja_id no JWT). Cadastro: usa a loja do JWT.
+if (perfil === 'admin' || perfil === 'ceo') {
+  document.getElementById('filtroAdmin').style.display = 'block';
+  if (!lojaId) lojaId = 6;  // default pra STM (mais provável de ter pendência)
+  document.getElementById('selLoja').value = String(lojaId);
+}
+
+function trocarLoja() {
+  lojaId = parseInt(document.getElementById('selLoja').value);
+  carregar();
+}
+
+async function fetchApi(url, method='GET', body=null) {
+  const opts = { method };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await apiFetch(API + url, opts);
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.erro || 'Erro');
+  return data;
+}
+
+function fmtR(v) { if (v == null || v === '') return '—'; return 'R$ ' + parseFloat(v).toFixed(2).replace('.', ','); }
+function fmtData(d) { if (!d) return '—'; const dt = new Date(d); return dt.toLocaleString('pt-BR'); }
+
+async function carregar() {
+  const wrap = document.getElementById('conteudo');
+  wrap.innerHTML = '<div class="empty">Carregando…</div>';
+  try {
+    // Admin sempre passa loja_id explícito (JWT não tem). Cadastro usa o do JWT.
+    const url = (perfil === 'admin' || perfil === 'ceo') && lojaId
+      ? `/api/precos-otimizados/pendentes?loja_id=${lojaId}`
+      : '/api/precos-otimizados/pendentes';
+    const data = await fetchApi(url);
+    const lotes = data.lotes || [];
+    const itens = data.itens || [];
+    if (!lotes.length) {
+      wrap.innerHTML = '<div class="empty">Nenhum lote disponível para sua loja.</div>';
+      return;
+    }
+    // Agrupa itens por lote
+    const itensPorLote = {};
+    for (const it of itens) (itensPorLote[it.lote_id] ||= []).push(it);
+
+    const html = lotes.map(l => renderLote(l, itensPorLote[l.id] || [])).join('');
+    wrap.innerHTML = html;
+  } catch (e) {
+    wrap.innerHTML = `<div class="empty">Erro: ${e.message}</div>`;
+  }
+}
+
+function renderLote(l, itens) {
+  const concluido = l.aplicados >= l.total_loja;
+  const stCls = concluido ? 'st-concluido' : (l.aplicados > 0 ? 'st-parcial' : 'st-pendente');
+  const stTxt = concluido ? '✓ Concluído' : (l.aplicados > 0 ? `Parcial (${l.aplicados}/${l.total_loja})` : `Pendente (${l.total_loja})`);
+  return `
+    <div class="lote">
+      <div class="lote-header">
+        <span class="lote-id">Lote #${l.id}</span>
+        <span class="chip chip-grupo">${l.grupo}</span>
+        <span class="lote-meta">gerado em <b>${fmtData(l.gerado_em)}</b> por <b>${l.gerado_por || '—'}</b></span>
+        <span class="lote-status ${stCls}">${stTxt}</span>
+        ${!concluido ? `<div class="lote-actions"><button class="btn-primary btn-small" onclick="aplicarLoteTodo(${l.id})">✓ Forçar todos aplicados</button></div>` : ''}
+      </div>
+      ${itens.length ? renderTabela(l.id, itens) : ''}
+    </div>`;
+}
+
+function renderTabela(loteId, itens) {
+  return `
+    <table>
+      <thead>
+        <tr>
+          <th class="left">Cód.</th>
+          <th class="left">Descrição</th>
+          <th class="left">Referência</th>
+          <th class="left">EAN</th>
+          <th>PV Anterior</th>
+          <th>PV Novo</th>
+          <th>PV Loja Atual</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${itens.map(it => {
+          const aplicado = it.aplicado_em != null;
+          const pvLoja = parseFloat(it.pv_loja_atual);
+          const pvNovo = parseFloat(it.preco_otimizado);
+          const matched = !isNaN(pvLoja) && !isNaN(pvNovo) && Math.abs(pvLoja - pvNovo) < 0.01;
+          const lojaCls = aplicado ? '' : (matched ? 'pv-loja-ok' : 'pv-loja-dif');
+          return `
+            <tr class="${aplicado ? 'aplicado' : ''}">
+              <td class="left">${it.mat_codi}</td>
+              <td class="left">${it.descricao || ''}</td>
+              <td class="left">${it.referencia || ''}</td>
+              <td class="left dim">${it.ean || ''}</td>
+              <td>${fmtR(it.preco_anterior)}</td>
+              <td class="pv-novo">${fmtR(it.preco_otimizado)}</td>
+              <td class="${lojaCls}">${fmtR(it.pv_loja_atual)}</td>
+              <td class="status-cell">
+                ${aplicado
+                  ? `<span class="chip chip-aplicado" title="${it.aplicado_por || ''} em ${fmtData(it.aplicado_em)}">✓ ${(it.aplicado_por||'').includes('manual') ? 'manual' : 'auto'}</span>`
+                  : `<button class="btn-ghost btn-small" onclick="aplicarItem(${loteId},'${it.mat_codi}')">Forçar aplicado</button>`}
+              </td>
+            </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+}
+
+async function aplicarItem(loteId, matCodi) {
+  if (!confirm('Forçar item como aplicado? (use só se o sistema não detectou a alteração no ERP)')) return;
+  try {
+    await fetchApi('/api/precos-otimizados/aplicar-manual', 'POST', { lote_id: loteId, mat_codi: matCodi, loja_id: lojaId });
+    await carregar();
+  } catch (e) { alert('Erro: ' + e.message); }
+}
+
+async function aplicarLoteTodo(loteId) {
+  if (!confirm('Marcar todos os itens pendentes deste lote como aplicados?')) return;
+  try {
+    await fetchApi('/api/precos-otimizados/aplicar-manual', 'POST', { lote_id: loteId, loja_id: lojaId });
+    await carregar();
+  } catch (e) { alert('Erro: ' + e.message); }
+}
+
+carregar();
+setInterval(carregar, 60_000);  // refresh 1min pra pegar auto-syncs
+</script>
+</body>
+</html>

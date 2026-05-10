@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Otimizador de Preços</title>
+<link rel="stylesheet" href="/shared.css">
+<script src="/shared.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+nav{background:#1e293b;padding:12px 20px;display:flex;align-items:center;gap:14px;border-bottom:1px solid #334155}
+.brand{font-family:'Segoe UI Black','Segoe UI',sans-serif;font-weight:900;font-size:18px;color:#38bdf8}
+.nav-user{margin-left:auto;font-size:12px;color:#475569}
+.btn-nav{background:#0ea5e9;color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:12px;cursor:pointer}
+.main{padding:14px 18px;max-width:100%;margin:0}
+input,select{background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;padding:6px 10px;font-size:12px}
+input:focus,select:focus{outline:none;border-color:#38bdf8}
+button{cursor:pointer;border:none;border-radius:6px;font-size:12px;padding:6px 12px;font-weight:600}
+.btn-primary{background:#0ea5e9;color:#fff}.btn-primary:hover{background:#0284c7}
+.btn-ghost{background:#1e293b;color:#94a3b8;border:1px solid #334155}.btn-ghost:hover{background:#273549}
+
+.topo{display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin-bottom:12px;padding:10px 14px;background:#1e293b;border-radius:8px;font-size:12px}
+.sync-info{color:#64748b}
+.sync-info b{color:#38bdf8}
+.filtros{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-left:auto}
+
+.tabela-wrap{background:#1e293b;border-radius:8px;overflow:auto;max-height:calc(100vh - 130px)}
+table{width:100%;border-collapse:collapse;font-size:11px}
+thead th{position:sticky;top:0;background:#0f172a;padding:6px 8px;text-align:center;color:#94a3b8;font-weight:700;border-bottom:1px solid #334155;white-space:nowrap;font-size:10px;text-transform:uppercase;letter-spacing:.03em;z-index:10}
+thead th.left{text-align:left}
+thead th.grupo{background:#0c1a2e;color:#38bdf8;border-left:2px solid #334155}
+thead th.grupo-itb{background:#1c1300;color:#fcd34d;border-left:2px solid #334155}
+thead th.grupo-stm{background:#0c1a2e;color:#a5b4fc;border-left:2px solid #334155}
+tbody td{padding:5px 8px;border-bottom:1px solid #1a2744;vertical-align:middle;font-variant-numeric:tabular-nums;text-align:center}
+tbody td.left{text-align:left}
+tbody td.right{text-align:right}
+tbody td.center{text-align:center}
+tbody td.divisor-itb{border-left:2px solid #334155}
+tbody td.divisor-stm{border-left:2px solid #334155}
+tbody tr:hover,tbody tr:focus-within{background:#1a2744}
+tbody tr:hover td,tbody tr:focus-within td{border-bottom-color:#fff}
+.pv-otim{background:#7c2d12;color:#fdba74;font-weight:700;padding:1px 4px;border-radius:3px}
+.pv-atual-otim{background:#7c2d12;color:#fdba74}
+.lb-pos-alta{background:#14532d;color:#bbf7d0;font-weight:700;padding:1px 4px;border-radius:3px}
+.lb-pos{color:#34d399}
+.lb-neg{background:#7f1d1d;color:#fff;font-weight:700;padding:1px 4px;border-radius:3px}
+.input-pv{background:#0f172a;border:1px solid #334155;border-radius:4px;color:#cbd5e1;padding:3px 5px;font-size:11px;font-weight:700;width:65px;text-align:center;font-variant-numeric:tabular-nums;-moz-appearance:textfield}
+.input-pv::-webkit-outer-spin-button,.input-pv::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.input-pv:focus{outline:none;border-color:#fbbf24;box-shadow:0 0 0 2px rgba(251,191,36,.2)}
+/* Verde vivo — editado, ainda não enviado pra cadastro */
+.input-pv.editando{background:#16a34a;color:#fff;border-color:#22c55e;box-shadow:0 0 0 1px #22c55e}
+/* Vermelho — enviado pra cadastro, aguardando loja aplicar */
+.input-pv.aguardando{background:#b91c1c;color:#fff;border-color:#ef4444;box-shadow:0 0 0 1px #ef4444}
+/* Aplicado — sem destaque (estado normal/saudável) */
+.input-pv.aplicado{background:#0f172a;color:#94a3b8;border-color:#334155}
+/* Legenda */
+.legenda{display:flex;gap:14px;align-items:center;font-size:11px;color:#94a3b8;flex-wrap:wrap}
+.legenda-item{display:flex;align-items:center;gap:6px}
+.legenda-box{display:inline-block;width:14px;height:14px;border-radius:3px;border:1px solid;vertical-align:middle}
+.lb-editando{background:#16a34a;border-color:#22c55e}
+.lb-aguardando{background:#b91c1c;border-color:#ef4444}
+.lb-aplicado{background:#0f172a;border-color:#334155}
+.input-pv.saving{opacity:.5;pointer-events:none}
+.input-pv.saved{animation:flash-save .8s}
+@keyframes flash-save{0%{background:#0ea5e9}100%{background:#14532d}}
+/* Sombra na linha quando há pendência (verde ou laranja) em qualquer loja */
+tbody tr.com-pendencia{box-shadow:inset 4px 0 0 #fbbf24}
+tbody tr.com-pendencia.todas-pendentes{box-shadow:inset 4px 0 0 #f87171}
+.empty{text-align:center;color:#475569;padding:40px;font-size:13px}
+.dim{color:#64748b}
+.total-label{margin-left:auto;font-size:12px;color:#64748b}
+</style>
+</head>
+<body>
+<nav>
+  <span class="brand">JR Lira Tech</span>
+  <span style="color:#475569">/</span>
+  <span style="font-size:13px;color:#94a3b8">Otimizador de Preços</span>
+  <span class="nav-user" id="nomeUsuario"></span>
+  <button class="btn-nav" onclick="location.href='/'">← Início</button>
+</nav>
+
+<div class="main">
+  <div class="topo">
+    <div class="sync-info">
+      <span>Última sync CD: <b id="syncTexto">—</b></span>
+      <button class="btn-ghost" id="btnSync" onclick="syncAgora()" style="margin-left:8px">🔄 Atualizar agora</button>
+      <button class="btn-primary" id="btnEnviar" onclick="abrirEnviarLote()" style="margin-left:8px;background:#7c3aed">📤 Enviar lote pra cadastros</button>
+    </div>
+    <div class="filtros">
+      <input id="fBusca" placeholder="🔎 descrição / código / EAN…" oninput="render()" style="min-width:220px">
+      <select id="fOtim" onchange="render()">
+        <option value="">Todos</option>
+        <option value="itb">Otimizados ITB</option>
+        <option value="stm">Otimizados STM</option>
+        <option value="ambos">Otimizados em ambos</option>
+        <option value="nenhum">Sem otimização</option>
+      </select>
+      <select id="fMargem" onchange="render()">
+        <option value="">Margem (todas)</option>
+        <option value="neg">🔴 Margem < 0% (prejuízo)</option>
+        <option value="lt5">⚠ Margem < 5%</option>
+        <option value="lt10">📉 Margem < 10%</option>
+        <option value="gt50">🟢 Margem ≥ 50%</option>
+      </select>
+    </div>
+    <span class="total-label" id="totalLabel"></span>
+  </div>
+
+  <div class="topo" style="padding:6px 14px;margin-bottom:8px">
+    <div class="legenda">
+      <span style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.04em;font-weight:700">Legenda PV Otim:</span>
+      <span class="legenda-item"><span class="legenda-box lb-editando"></span>Editado (não enviado)</span>
+      <span class="legenda-item"><span class="legenda-box lb-aguardando"></span>Aguardando loja aplicar</span>
+      <span class="legenda-item"><span class="legenda-box lb-aplicado"></span>Aplicado / em produção</span>
+    </div>
+  </div>
+
+  <div class="tabela-wrap" id="tabelaWrap">
+    <div class="empty">Carregando estudo…</div>
+  </div>
+</div>
+
+<script>
+const API = '';
+const token = () => localStorage.getItem('jrlira_token');
+(function(){ const p = localStorage.getItem('jrlira_perfil'); if (!token() || !['admin','ceo'].includes(p)) location.href = '/'; })();
+document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
+
+let _linhas = [];
+
+async function fetchApi(url, method='GET', body=null) {
+  const opts = { method };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await apiFetch(API + url, opts);
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.erro || 'Erro');
+  return data;
+}
+
+function fmtR(v) {
+  if (v == null || v === '') return '—';
+  return 'R$ ' + parseFloat(v).toFixed(2).replace('.', ',');
+}
+function fmtN(v, casas=0) {
+  if (v == null || v === '') return '—';
+  return parseFloat(v).toLocaleString('pt-BR', { minimumFractionDigits: casas, maximumFractionDigits: casas });
+}
+function fmtP(v) {
+  if (v == null || v === '' || isNaN(v)) return '—';
+  return (parseFloat(v)*100).toFixed(1) + '%';
+}
+function fmtAge(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  const ms = Date.now() - d.getTime();
+  const min = Math.round(ms / 60000);
+  if (min < 1) return 'agora';
+  if (min < 60) return `${min}min atrás`;
+  const h = Math.floor(min/60); const m = min%60;
+  if (h < 24) return `${h}h${m?` ${m}min`:''} atrás`;
+  return d.toLocaleString('pt-BR');
+}
+
+// LB% = margem bruta usando preço final (ed se preenchido senão atual) e custo da loja
+function calcLb(precoFinal, custoFab) {
+  const p = parseFloat(precoFinal); const c = parseFloat(custoFab);
+  if (!p || !c || p <= 0) return null;
+  return (p - c) / p;
+}
+// Calcula estado do PV otimizado:
+// '' (sem otim) | 'editando' (verde, alterado pós-último-lote) | 'aguardando' (laranja, enviado mas loja não aplicou) | 'aplicado' (verde escuro, loja aplicou)
+function statusOtim(pvOtim, ultEnviado, pvLoja) {
+  if (pvOtim == null || pvOtim === '') return '';
+  const otim = parseFloat(pvOtim);
+  const env = ultEnviado != null ? parseFloat(ultEnviado) : null;
+  const loja = pvLoja != null ? parseFloat(pvLoja) : null;
+  // Se nunca enviado em lote OU valor mudou desde último envio → editando
+  if (env == null || Math.abs(otim - env) >= 0.01) return 'editando';
+  // Foi enviado e bate com a loja → aplicado
+  if (loja != null && Math.abs(otim - loja) < 0.01) return 'aplicado';
+  // Foi enviado mas loja ainda tem outro preço → aguardando
+  return 'aguardando';
+}
+
+function lbHtml(lb) {
+  if (lb == null) return '<span class="dim">—</span>';
+  const cls = lb < 0 ? 'lb-neg' : (lb >= 0.5 ? 'lb-pos-alta' : (lb > 0 ? 'lb-pos' : 'dim'));
+  return `<span class="${cls}">${fmtP(lb)}</span>`;
+}
+
+async function carregar() {
+  const wrap = document.getElementById('tabelaWrap');
+  wrap.innerHTML = '<div class="empty">Carregando estudo…</div>';
+  try {
+    const data = await fetchApi('/api/precos-otimizados/estudo');
+    _linhas = data.linhas || [];
+    const sync = data.sync || {};
+    const ts = sync['cd_full_ultima_sync'];
+    document.getElementById('syncTexto').textContent = fmtAge(ts);
+    render();
+  } catch (e) {
+    wrap.innerHTML = `<div class="empty">Erro: ${e.message}</div>`;
+  }
+}
+
+function render() {
+  const termo = (document.getElementById('fBusca').value || '').toLowerCase().trim();
+  const otim = document.getElementById('fOtim').value;
+  let rows = _linhas;
+  if (termo) {
+    rows = rows.filter(r =>
+      (r.descricao || '').toLowerCase().includes(termo) ||
+      (r.mat_codi || '').includes(termo) ||
+      (r.ean || '').includes(termo)
+    );
+  }
+  if (otim === 'itb')    rows = rows.filter(r => r.l4_pv_otim != null);
+  if (otim === 'stm')    rows = rows.filter(r => r.l6_pv_otim != null);
+  if (otim === 'ambos')  rows = rows.filter(r => r.l4_pv_otim != null && r.l6_pv_otim != null);
+  if (otim === 'nenhum') rows = rows.filter(r => r.l4_pv_otim == null && r.l6_pv_otim == null);
+
+  const margemFiltro = document.getElementById('fMargem')?.value;
+  if (margemFiltro) {
+    rows = rows.filter(r => {
+      const lb4 = calcLb(r.l4_pv_otim || r.l4_pv_atual, r.l4_custo_fab);
+      const lb6 = calcLb(r.l6_pv_otim || r.l6_pv_atual, r.l6_custo_fab);
+      const lbs = [lb4, lb6].filter(x => x != null);
+      if (!lbs.length) return false;
+      const minLb = Math.min(...lbs);
+      const maxLb = Math.max(...lbs);
+      if (margemFiltro === 'neg')  return minLb < 0;
+      if (margemFiltro === 'lt5')  return minLb < 0.05;
+      if (margemFiltro === 'lt10') return minLb < 0.10;
+      if (margemFiltro === 'gt50') return maxLb >= 0.50;
+      return true;
+    });
+  }
+
+  document.getElementById('totalLabel').textContent = `${rows.length.toLocaleString('pt-BR')} produto(s)`;
+
+  if (!rows.length) {
+    document.getElementById('tabelaWrap').innerHTML = '<div class="empty">Nenhum produto encontrado</div>';
+    return;
+  }
+
+  const html = [`
+    <table>
+      <thead>
+        <tr>
+          <th rowspan="2" class="left">Cód.</th>
+          <th rowspan="2" class="left">Descrição</th>
+          <th rowspan="2" class="left">Referência</th>
+          <th rowspan="2">Emb</th>
+          <th colspan="4" class="grupo">CD (DISTRIBUIDORA)</th>
+          <th colspan="5" class="grupo-itb">L4 — ITB (grupo Itaituba)</th>
+          <th colspan="5" class="grupo-stm">L6 — STM (Santarém)</th>
+        </tr>
+        <tr>
+          <th class="grupo">Est</th>
+          <th class="grupo">P.Compra</th>
+          <th class="grupo">P.Admin</th>
+          <th class="grupo">Tab.4</th>
+          <th class="grupo-itb">Est (cx)</th>
+          <th class="grupo-itb">C.Fab</th>
+          <th class="grupo-itb">PV Otim</th>
+          <th class="grupo-itb">PV Atual</th>
+          <th class="grupo-itb">LB%</th>
+          <th class="grupo-stm">Est (cx)</th>
+          <th class="grupo-stm">C.Fab</th>
+          <th class="grupo-stm">PV Otim</th>
+          <th class="grupo-stm">PV Atual</th>
+          <th class="grupo-stm">LB%</th>
+        </tr>
+      </thead>
+      <tbody>`];
+
+  for (const r of rows) {
+    const l4Final = r.l4_pv_otim || r.l4_pv_atual;
+    const l6Final = r.l6_pv_otim || r.l6_pv_atual;
+    const l4AtualCls = r.l4_pv_otim != null ? 'pv-atual-otim' : '';
+    const l6AtualCls = r.l6_pv_otim != null ? 'pv-atual-otim' : '';
+    const st4 = statusOtim(r.l4_pv_otim, r.l4_ult_enviado, r.l4_pv_atual);
+    const st6 = statusOtim(r.l6_pv_otim, r.l6_ult_enviado, r.l6_pv_atual);
+    const inpItb = `<input type="number" step="0.01" min="0" class="input-pv ${st4}"
+                       value="${r.l4_pv_otim ? parseFloat(r.l4_pv_otim).toFixed(2) : ''}"
+                       data-mat="${r.mat_codi}" data-loja="4" data-cf="${r.l4_custo_fab || ''}"
+                       oninput="atualizarLb(this)" onblur="salvarPv(this)" onkeydown="if(event.key==='Enter')this.blur()">`;
+    const inpStm = `<input type="number" step="0.01" min="0" class="input-pv ${st6}"
+                       value="${r.l6_pv_otim ? parseFloat(r.l6_pv_otim).toFixed(2) : ''}"
+                       data-mat="${r.mat_codi}" data-loja="6" data-cf="${r.l6_custo_fab || ''}"
+                       oninput="atualizarLb(this)" onblur="salvarPv(this)" onkeydown="if(event.key==='Enter')this.blur()">`;
+    // Sombra na linha: vermelha se ambas pendentes, amarela se uma só. Sem se nenhuma.
+    const pend4 = st4 === 'editando' || st4 === 'aguardando';
+    const pend6 = st6 === 'editando' || st6 === 'aguardando';
+    const linhaCls = (pend4 && pend6) ? 'com-pendencia todas-pendentes' : (pend4 || pend6 ? 'com-pendencia' : '');
+    html.push(`
+      <tr data-mat="${r.mat_codi}" class="${linhaCls}">
+        <td class="left">${r.mat_codi || ''}</td>
+        <td class="left">${r.descricao || ''}</td>
+        <td class="left">${r.referencia || ''}</td>
+        <td class="dim">${r.qtd_embalagem ? 'CX×'+r.qtd_embalagem : ''}</td>
+        <td class="divisor-itb">${fmtN(r.cd_est, 0)}</td>
+        <td title="Caixa: ${fmtR(r.cd_p_compra_cx)} ÷ ${r.qtd_embalagem || 1}">${fmtR(r.cd_p_compra)}</td>
+        <td title="Caixa: ${fmtR(r.cd_p_admin_cx)} ÷ ${r.qtd_embalagem || 1}">${fmtR(r.cd_p_admin)}</td>
+        <td title="Caixa: ${fmtR(r.cd_tab4_cx)} ÷ ${r.qtd_embalagem || 1}">${fmtR(r.cd_tab4)}</td>
+        <td class="divisor-itb">${fmtN(r.l4_est_emb, 0)}</td>
+        <td>${fmtR(r.l4_custo_fab)}</td>
+        <td>${inpItb}</td>
+        <td class="${l4AtualCls}">${fmtR(r.l4_pv_atual)}</td>
+        <td data-lb-loja="4">${lbHtml(calcLb(l4Final, r.l4_custo_fab))}</td>
+        <td class="divisor-stm">${fmtN(r.l6_est_emb, 0)}</td>
+        <td>${fmtR(r.l6_custo_fab)}</td>
+        <td>${inpStm}</td>
+        <td class="${l6AtualCls}">${fmtR(r.l6_pv_atual)}</td>
+        <td data-lb-loja="6">${lbHtml(calcLb(l6Final, r.l6_custo_fab))}</td>
+      </tr>`);
+  }
+  html.push(`</tbody></table>`);
+  document.getElementById('tabelaWrap').innerHTML = html.join('');
+}
+
+// Recalcula LB% ao digitar — usa custo fab da loja + valor atual do input (ou PV atual da linha como fallback).
+function atualizarLb(input) {
+  const tr = input.closest('tr');
+  const loja = input.dataset.loja;
+  const cf = parseFloat(input.dataset.cf);
+  const valorEdit = parseFloat(input.value);
+  // Pega o linha completa pra ter PV atual de fallback
+  const mat = input.dataset.mat;
+  const linha = _linhas.find(x => x.mat_codi === mat) || {};
+  const pvAtual = loja === '4' ? linha.l4_pv_atual : linha.l6_pv_atual;
+  const final = valorEdit > 0 ? valorEdit : pvAtual;
+  const lb = calcLb(final, cf);
+  const cell = tr.querySelector(`td[data-lb-loja="${loja}"]`);
+  if (cell) cell.innerHTML = lbHtml(lb);
+}
+
+async function salvarPv(input) {
+  const mat = input.dataset.mat;
+  const loja = input.dataset.loja;
+  const valor = input.value === '' ? null : parseFloat(input.value);
+  // Detecta se mudou
+  const linha = _linhas.find(x => x.mat_codi === mat);
+  const original = loja === '4' ? linha?.l4_pv_otim : linha?.l6_pv_otim;
+  const originalNum = original == null ? null : parseFloat(original);
+  if ((valor === null && originalNum === null) ||
+      (valor !== null && originalNum !== null && Math.abs(valor - originalNum) < 0.001)) return;
+  input.classList.add('saving');
+  try {
+    await fetchApi(`/api/precos-otimizados/${loja}/${mat}`, 'PUT', { preco: valor });
+    // Atualiza cache local
+    if (linha) {
+      if (loja === '4') linha.l4_pv_otim = valor;
+      else linha.l6_pv_otim = valor;
+    }
+    input.classList.remove('saving');
+    input.classList.add('saved');
+    // Recalcula status: como o user acabou de editar, deve virar "editando" (verde)
+    // se o novo valor diverge do último enviado, ou ficar limpo se removeu.
+    input.classList.remove('editando','aguardando','aplicado');
+    if (valor != null && valor > 0) {
+      const loja = input.dataset.loja;
+      const ult = loja === '4' ? linha?.l4_ult_enviado : linha?.l6_ult_enviado;
+      const pvLoja = loja === '4' ? linha?.l4_pv_atual : linha?.l6_pv_atual;
+      const novoSt = statusOtim(valor, ult, pvLoja);
+      if (novoSt) input.classList.add(novoSt);
+    }
+    // Atualiza sombra da linha
+    const tr = input.closest('tr');
+    if (tr) {
+      const inputs = tr.querySelectorAll('.input-pv');
+      const sts = Array.from(inputs).map(i => i.classList.contains('editando') || i.classList.contains('aguardando'));
+      tr.classList.remove('com-pendencia','todas-pendentes');
+      const pendentes = sts.filter(Boolean).length;
+      if (pendentes === inputs.length && pendentes > 0) tr.classList.add('com-pendencia','todas-pendentes');
+      else if (pendentes > 0) tr.classList.add('com-pendencia');
+    }
+    setTimeout(() => input.classList.remove('saved'), 800);
+  } catch (e) {
+    input.classList.remove('saving');
+    alert('Falha ao salvar: ' + e.message);
+    input.value = originalNum != null ? originalNum.toFixed(2) : '';
+  }
+}
+
+async function abrirEnviarLote() {
+  // Diff dos 2 grupos
+  let itb, stm;
+  try {
+    [itb, stm] = await Promise.all([
+      fetchApi('/api/precos-otimizados/diff?grupo=itb'),
+      fetchApi('/api/precos-otimizados/diff?grupo=stm'),
+    ]);
+  } catch (e) { return alert('Erro ao calcular diff: ' + e.message); }
+
+  if (!itb.total && !stm.total) return alert('Nenhuma alteração desde o último envio.');
+
+  const fmtN = n => (n || 0).toLocaleString('pt-BR');
+  const msg = `Vai criar:\n\n` +
+              (itb.total ? `• Lote ITB com ${fmtN(itb.total)} item(ns) — vai pra L1, L2, L3, L4, L5\n` : '') +
+              (stm.total ? `• Lote STM com ${fmtN(stm.total)} item(ns) — vai pra L6\n` : '') +
+              `\nConfirmar envio?`;
+  if (!confirm(msg)) return;
+
+  try {
+    const r = await fetchApi('/api/precos-otimizados/enviar-lote', 'POST', {});
+    const lst = (r.lotes || []).map(l => `#${l.id} (${l.grupo}: ${l.total_itens})`).join(', ');
+    alert(`Lotes criados: ${lst || 'nenhum'}`);
+  } catch (e) { alert('Erro: ' + e.message); }
+}
+
+async function syncAgora() {
+  const btn = document.getElementById('btnSync');
+  btn.disabled = true; btn.textContent = '⏳ Sincronizando...';
+  try {
+    await fetchApi('/api/precos-otimizados/sync-now', 'POST');
+    await carregar();
+  } catch (e) {
+    alert('Falha ao sincronizar: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '🔄 Atualizar agora';
+  }
+}
+
+carregar();
+</script>
+</body>
+</html>

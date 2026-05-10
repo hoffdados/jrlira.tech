@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Preços Otimizados — Status por Loja</title>
+<link rel="stylesheet" href="/shared.css">
+<script src="/shared.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+nav{background:#1e293b;padding:12px 20px;display:flex;align-items:center;gap:14px;border-bottom:1px solid #334155}
+.brand{font-family:'Segoe UI Black','Segoe UI',sans-serif;font-weight:900;font-size:18px;color:#38bdf8}
+.nav-user{margin-left:auto;font-size:12px;color:#475569}
+.btn-nav{background:#0ea5e9;color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:12px;cursor:pointer}
+.main{padding:14px 18px;max-width:1300px;margin:0 auto}
+.lote{background:#1e293b;border-radius:10px;padding:14px;margin-bottom:14px}
+.lote-header{display:flex;align-items:center;gap:14px;margin-bottom:12px;flex-wrap:wrap;border-bottom:1px solid #334155;padding-bottom:10px}
+.lote-id{font-size:18px;font-weight:900;color:#38bdf8}
+.lote-meta{font-size:12px;color:#94a3b8}
+.lote-meta b{color:#cbd5e1}
+.lote-status{margin-left:auto;font-weight:700;font-size:12px;padding:5px 11px;border-radius:6px}
+.st-pendente{background:#451a03;color:#fbbf24}
+.st-parcial{background:#312e81;color:#a5b4fc}
+.st-concluido{background:#1a4731;color:#34d399}
+.lojas-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px}
+.loja-card{background:#0f172a;border:1px solid #334155;border-radius:8px;padding:10px 12px;font-size:12px}
+.loja-card.aplicado{border-color:#1a4731;background:#0f1f17}
+.loja-card.parcial{border-color:#312e81;background:#0f1029}
+.loja-nome{font-weight:700;font-size:13px;color:#cbd5e1;margin-bottom:4px}
+.loja-progress{height:6px;background:#1e293b;border-radius:3px;overflow:hidden;margin:6px 0 4px}
+.loja-progress-bar{height:100%;background:#34d399;transition:width .3s}
+.loja-meta{color:#64748b;font-size:11px}
+.loja-meta b{color:#94a3b8}
+.empty{text-align:center;color:#475569;padding:30px;font-size:13px}
+.chip-grupo{background:#1e3a5f;color:#bae6fd;font-size:10px;text-transform:uppercase;letter-spacing:.05em;padding:2px 8px;border-radius:4px;font-weight:700}
+.alerta-atrasado{background:#7f1d1d;color:#fff;border-color:#dc2626 !important}
+button{cursor:pointer;border:none;border-radius:6px;font-size:12px;padding:6px 12px;font-weight:600}
+.btn-ghost{background:#0f172a;color:#94a3b8;border:1px solid #334155}.btn-ghost:hover{background:#1a2744}
+</style>
+</head>
+<body>
+<nav>
+  <span class="brand">JR Lira Tech</span>
+  <span style="color:#475569">/</span>
+  <span style="font-size:13px;color:#94a3b8">Preços Otimizados — Status por Loja</span>
+  <span class="nav-user" id="nomeUsuario"></span>
+  <button class="btn-nav" onclick="location.href='/'">← Início</button>
+</nav>
+
+<div class="main">
+  <div style="margin-bottom:14px;display:flex;gap:10px;align-items:center">
+    <button class="btn-ghost" onclick="forcarValidacao()">⚙ Forçar auto-validação agora</button>
+    <span style="font-size:12px;color:#64748b" id="ultRefresh">—</span>
+  </div>
+  <div id="conteudo"><div class="empty">Carregando…</div></div>
+</div>
+
+<script>
+const API = '';
+const token = () => localStorage.getItem('jrlira_token');
+(function(){ const p = localStorage.getItem('jrlira_perfil'); if (!token() || !['admin','ceo'].includes(p)) location.href = '/'; })();
+document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
+
+async function fetchApi(url, method='GET', body=null) {
+  const opts = { method };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await apiFetch(API + url, opts);
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.erro || 'Erro');
+  return data;
+}
+
+function fmtData(d) { if (!d) return '—'; const dt = new Date(d); return dt.toLocaleString('pt-BR'); }
+function horasDe(d) { if (!d) return Infinity; return (Date.now() - new Date(d).getTime()) / 3600000; }
+
+async function carregar() {
+  try {
+    const data = await fetchApi('/api/precos-otimizados/status');
+    const lotes = data.lotes || [];
+    const aplics = data.aplicacoes || [];
+    if (!lotes.length) {
+      document.getElementById('conteudo').innerHTML = '<div class="empty">Nenhum lote ainda.</div>';
+      return;
+    }
+    const aplicsByLote = {};
+    for (const a of aplics) (aplicsByLote[a.lote_id] ||= []).push(a);
+    const html = lotes.map(l => renderLote(l, aplicsByLote[l.id] || [])).join('');
+    document.getElementById('conteudo').innerHTML = html;
+    document.getElementById('ultRefresh').textContent = 'Atualizado em ' + new Date().toLocaleTimeString('pt-BR');
+  } catch (e) {
+    document.getElementById('conteudo').innerHTML = `<div class="empty">Erro: ${e.message}</div>`;
+  }
+}
+
+function renderLote(l, aplics) {
+  const concluido = aplics.length > 0 && aplics.every(a => a.aplicados >= a.total_itens);
+  const algumPend = aplics.some(a => a.aplicados < a.total_itens);
+  const algumParc = aplics.some(a => a.aplicados > 0 && a.aplicados < a.total_itens);
+  const stCls = concluido ? 'st-concluido' : (algumParc ? 'st-parcial' : 'st-pendente');
+  const stTxt = concluido ? '✓ Concluído' : (algumParc ? 'Em andamento' : 'Pendente');
+  return `
+    <div class="lote">
+      <div class="lote-header">
+        <span class="lote-id">Lote #${l.id}</span>
+        <span class="chip-grupo">${l.grupo}</span>
+        <span class="lote-meta"><b>${l.total_itens}</b> itens · gerado <b>${fmtData(l.gerado_em)}</b> por <b>${l.gerado_por || '—'}</b></span>
+        <span class="lote-status ${stCls}">${stTxt}</span>
+      </div>
+      <div class="lojas-grid">
+        ${aplics.map(a => renderLojaCard(a, l.gerado_em)).join('')}
+      </div>
+    </div>`;
+}
+
+function renderLojaCard(a, geradoEm) {
+  const pct = a.total_itens > 0 ? (a.aplicados / a.total_itens * 100) : 0;
+  const concluido = a.aplicados >= a.total_itens;
+  const parcial = a.aplicados > 0 && !concluido;
+  const atrasado = !concluido && horasDe(geradoEm) > 24;
+  const cls = concluido ? 'aplicado' : (parcial ? 'parcial' : '') + (atrasado ? ' alerta-atrasado' : '');
+  const fonte = (a.aplicado_por || '').includes('auto') ? '⚡ auto' : (a.aplicado_por || '').includes('manual') ? '👤 manual' : '';
+  return `
+    <div class="loja-card ${cls}">
+      <div class="loja-nome">L${a.loja_id} · ${a.loja_nome || ''}</div>
+      <div class="loja-progress"><div class="loja-progress-bar" style="width:${pct.toFixed(0)}%"></div></div>
+      <div class="loja-meta">
+        ${concluido ? `✓ ${a.aplicados}/${a.total_itens}` : `${a.aplicados}/${a.total_itens} aplicados`}
+        ${concluido && a.aplicado_em ? `<br>${fmtData(a.aplicado_em)} ${fonte}` : ''}
+        ${atrasado && !concluido ? `<br><b style="color:#fca5a5">⚠ atrasado >24h</b>` : ''}
+      </div>
+    </div>`;
+}
+
+async function forcarValidacao() {
+  try {
+    const r = await fetchApi('/api/precos-otimizados/auto-validar', 'POST');
+    alert(`${r.itens_marcados} item(ns) marcados como aplicados`);
+    await carregar();
+  } catch (e) { alert('Erro: ' + e.message); }
+}
+
+carregar();
+setInterval(carregar, 60_000);
+</script>
+</body>
+</html>
