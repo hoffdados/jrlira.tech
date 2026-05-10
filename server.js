@@ -1971,6 +1971,52 @@ async function initDB() {
          ('CD','CD-casa-branca',      'CASA BRANCA',            '07961363000132', NULL, NULL)
        ON CONFLICT (codigo) DO NOTHING`);
 
+    // ─── Schema Multi-CD: adiciona cd_codigo nas tabelas cd_* ───
+    // Backfill com srv1-itautuba (todo dado existente veio do legado/relay default).
+    await runMigration(client, '20260510_cd_material_cd_codigo', `
+      ALTER TABLE cd_material ADD COLUMN IF NOT EXISTS cd_codigo VARCHAR(40);
+      UPDATE cd_material SET cd_codigo = 'srv1-itautuba' WHERE cd_codigo IS NULL;
+      ALTER TABLE cd_material ALTER COLUMN cd_codigo SET NOT NULL;
+      ALTER TABLE cd_material DROP CONSTRAINT IF EXISTS cd_material_pkey;
+      ALTER TABLE cd_material ADD PRIMARY KEY (cd_codigo, mat_codi);
+      CREATE INDEX IF NOT EXISTS idx_cd_material_ean ON cd_material (ean_codi);
+    `);
+    await runMigration(client, '20260510_cd_estoque_cd_codigo', `
+      ALTER TABLE cd_estoque ADD COLUMN IF NOT EXISTS cd_codigo VARCHAR(40);
+      UPDATE cd_estoque SET cd_codigo = 'srv1-itautuba' WHERE cd_codigo IS NULL;
+      ALTER TABLE cd_estoque ALTER COLUMN cd_codigo SET NOT NULL;
+      ALTER TABLE cd_estoque DROP CONSTRAINT IF EXISTS cd_estoque_pkey;
+      ALTER TABLE cd_estoque ADD PRIMARY KEY (cd_codigo, pro_codi);
+    `);
+    await runMigration(client, '20260510_cd_custoprod_cd_codigo', `
+      ALTER TABLE cd_custoprod ADD COLUMN IF NOT EXISTS cd_codigo VARCHAR(40);
+      UPDATE cd_custoprod SET cd_codigo = 'srv1-itautuba' WHERE cd_codigo IS NULL;
+      ALTER TABLE cd_custoprod ALTER COLUMN cd_codigo SET NOT NULL;
+      ALTER TABLE cd_custoprod DROP CONSTRAINT IF EXISTS cd_custoprod_pkey;
+      ALTER TABLE cd_custoprod ADD PRIMARY KEY (cd_codigo, pro_codi);
+    `);
+    await runMigration(client, '20260510_cd_vendapro_cd_codigo', `
+      ALTER TABLE cd_vendapro ADD COLUMN IF NOT EXISTS cd_codigo VARCHAR(40);
+      UPDATE cd_vendapro SET cd_codigo = 'srv1-itautuba' WHERE cd_codigo IS NULL;
+      ALTER TABLE cd_vendapro ALTER COLUMN cd_codigo SET NOT NULL;
+      ALTER TABLE cd_vendapro DROP CONSTRAINT IF EXISTS cd_vendapro_pkey;
+      ALTER TABLE cd_vendapro ADD PRIMARY KEY (cd_codigo, pro_codi);
+    `);
+    await runMigration(client, '20260510_cd_movcompra_cd_codigo', `
+      ALTER TABLE cd_movcompra ADD COLUMN IF NOT EXISTS cd_codigo VARCHAR(40);
+      UPDATE cd_movcompra SET cd_codigo = 'srv1-itautuba' WHERE cd_codigo IS NULL;
+      ALTER TABLE cd_movcompra ALTER COLUMN cd_codigo SET NOT NULL;
+      ALTER TABLE cd_movcompra DROP CONSTRAINT IF EXISTS cd_movcompra_pkey;
+      ALTER TABLE cd_movcompra ADD PRIMARY KEY (cd_codigo, mcp_codi, mcp_tipomov);
+    `);
+    await runMigration(client, '20260510_cd_itemcompra_cd_codigo', `
+      ALTER TABLE cd_itemcompra ADD COLUMN IF NOT EXISTS cd_codigo VARCHAR(40);
+      UPDATE cd_itemcompra SET cd_codigo = 'srv1-itautuba' WHERE cd_codigo IS NULL;
+      ALTER TABLE cd_itemcompra ALTER COLUMN cd_codigo SET NOT NULL;
+      ALTER TABLE cd_itemcompra DROP CONSTRAINT IF EXISTS cd_itemcompra_pkey;
+      ALTER TABLE cd_itemcompra ADD PRIMARY KEY (cd_codigo, mcp_codi, mcp_tipomov, mcp_seqitem);
+    `);
+
     // Quantidades editadas na grade (tipo planilha) — autosave por (cd_origem, destino, produto)
     await runMigration(client, '20260510_pedidos_distrib_quantidades',
       `CREATE TABLE IF NOT EXISTS pedidos_distrib_quantidades (

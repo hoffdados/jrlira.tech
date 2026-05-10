@@ -81,10 +81,10 @@ router.get('/estudo', autenticar, async (req, res) => {
         po6.preco_otimizado                            AS l6_pv_otim,
         uls.ultimo_enviado                             AS l6_ult_enviado
       FROM produtos_embalagem pe_emb
-      LEFT JOIN cd_material cd_m  ON cd_m.mat_codi = pe_emb.mat_codi
-      LEFT JOIN cd_estoque cd_e   ON cd_e.pro_codi = pe_emb.mat_codi
-      LEFT JOIN cd_custoprod cd_c ON cd_c.pro_codi = pe_emb.mat_codi
-      LEFT JOIN cd_vendapro cd_v  ON cd_v.pro_codi = pe_emb.mat_codi
+      LEFT JOIN cd_material cd_m  ON cd_m.cd_codigo = 'srv1-itautuba' AND cd_m.mat_codi = pe_emb.mat_codi
+      LEFT JOIN cd_estoque cd_e   ON cd_e.cd_codigo = 'srv1-itautuba' AND cd_e.pro_codi = pe_emb.mat_codi
+      LEFT JOIN cd_custoprod cd_c ON cd_c.cd_codigo = 'srv1-itautuba' AND cd_c.pro_codi = pe_emb.mat_codi
+      LEFT JOIN cd_vendapro cd_v  ON cd_v.cd_codigo = 'srv1-itautuba' AND cd_v.pro_codi = pe_emb.mat_codi
       LEFT JOIN produtos_externo pe4 ON pe4.loja_id = ${LOJA_ITB}
                                     AND NULLIF(LTRIM(pe4.codigobarra,'0'),'') = NULLIF(LTRIM(pe_emb.ean_principal_cd,'0'),'')
       LEFT JOIN produtos_externo pe6 ON pe6.loja_id = ${LOJA_STM}
@@ -184,7 +184,7 @@ async function diffPendente(grupo) {
            pe_loja.prsugerido         AS preco_loja_atual
       FROM precos_otimizados po
       JOIN produtos_embalagem pe_emb ON pe_emb.mat_codi = po.mat_codi
-      LEFT JOIN cd_material cd_m     ON cd_m.mat_codi = po.mat_codi
+      LEFT JOIN cd_material cd_m     ON cd_m.cd_codigo = 'srv1-itautuba' AND cd_m.mat_codi = po.mat_codi
       LEFT JOIN produtos_externo pe_loja
         ON pe_loja.loja_id = po.loja_id
        AND NULLIF(LTRIM(pe_loja.codigobarra,'0'),'') = NULLIF(LTRIM(pe_emb.ean_principal_cd,'0'),'')
@@ -313,7 +313,7 @@ router.get('/pendentes', autenticar, async (req, res) => {
         FROM precos_otimizados_aplicacao_item ai
         JOIN precos_otimizados_lote_itens li ON li.lote_id = ai.lote_id AND li.mat_codi = ai.mat_codi
         LEFT JOIN produtos_embalagem pe_emb ON pe_emb.mat_codi = ai.mat_codi
-        LEFT JOIN cd_material cd_m ON cd_m.mat_codi = ai.mat_codi
+        LEFT JOIN cd_material cd_m ON cd_m.cd_codigo = 'srv1-itautuba' AND cd_m.mat_codi = ai.mat_codi
         LEFT JOIN produtos_externo pe_loja
           ON pe_loja.loja_id = ai.loja_id
          AND NULLIF(LTRIM(pe_loja.codigobarra,'0'),'') = NULLIF(LTRIM(pe_emb.ean_principal_cd,'0'),'')

@@ -119,17 +119,17 @@ router.get('/grade', adminOuCeo, async (req, res) => {
       [cnpjOrigem]
     );
 
-    const params = [];
-    let where = `(cd_m.mat_situ = 'A' OR cd_m.mat_situ IS NULL)`;
+    // $1 = cd_origem (sempre presente), demais conforme builder
+    const params = [cdOrigem];
+    let where = `cd_m.cd_codigo = $1 AND (cd_m.mat_situ = 'A' OR cd_m.mat_situ IS NULL)`;
     if (busca) {
       params.push(`%${busca}%`);
       params.push(busca.replace(/[^0-9]/g, ''));
       where += ` AND (LOWER(cd_m.mat_desc) LIKE $${params.length-1} OR cd_m.mat_codi = $${params.length} OR cd_m.ean_codi = $${params.length})`;
     }
     if (soPedir) {
-      params.push(cdOrigem);
       where += ` AND EXISTS (SELECT 1 FROM pedidos_distrib_quantidades q
-                              WHERE q.cd_origem_codigo = $${params.length}::text AND q.mat_codi = cd_m.mat_codi AND q.qtd > 0)`;
+                              WHERE q.cd_origem_codigo = $1 AND q.mat_codi = cd_m.mat_codi AND q.qtd > 0)`;
     }
     params.push(limit);
 
@@ -141,8 +141,8 @@ router.get('/grade', adminOuCeo, async (req, res) => {
              cd_c.pro_prad AS preco_admin,
              pe.qtd_embalagem
         FROM cd_material cd_m
-        LEFT JOIN cd_estoque   cd_e ON cd_e.pro_codi = cd_m.mat_codi
-        LEFT JOIN cd_custoprod cd_c ON cd_c.pro_codi = cd_m.mat_codi
+        LEFT JOIN cd_estoque   cd_e ON cd_e.cd_codigo = cd_m.cd_codigo AND cd_e.pro_codi = cd_m.mat_codi
+        LEFT JOIN cd_custoprod cd_c ON cd_c.cd_codigo = cd_m.cd_codigo AND cd_c.pro_codi = cd_m.mat_codi
         LEFT JOIN produtos_embalagem pe ON pe.mat_codi = cd_m.mat_codi
        WHERE ${where}
        ORDER BY descricao
@@ -214,12 +214,12 @@ router.get('/produtos', adminOuCeo, async (req, res) => {
   try {
     const search = (req.query.search || '').toString().trim();
     const limit  = Math.min(parseInt(req.query.limit) || 50, 200);
-    const params = [];
-    let where = `cd_m.mat_situ = 'A' OR cd_m.mat_situ IS NULL`;
+    const params = ['srv1-itautuba']; // catalogo legado por enquanto
+    let where = `cd_m.cd_codigo = $1 AND (cd_m.mat_situ = 'A' OR cd_m.mat_situ IS NULL)`;
     if (search) {
       params.push(`%${search.toLowerCase()}%`);
       params.push(search.replace(/[^0-9]/g, ''));
-      where = `(LOWER(cd_m.mat_desc) LIKE $1 OR cd_m.mat_codi = $2 OR cd_m.ean_codi = $2)`;
+      where = `cd_m.cd_codigo = $1 AND (LOWER(cd_m.mat_desc) LIKE $2 OR cd_m.mat_codi = $3 OR cd_m.ean_codi = $3)`;
     }
     params.push(limit);
     const rows = await dbQuery(`
@@ -230,8 +230,8 @@ router.get('/produtos', adminOuCeo, async (req, res) => {
              pe.qtd_embalagem,
              pe.descricao_atual AS desc_local
         FROM cd_material cd_m
-        LEFT JOIN cd_custoprod cd_c ON cd_c.pro_codi = cd_m.mat_codi
-        LEFT JOIN cd_estoque   cd_e ON cd_e.pro_codi = cd_m.mat_codi
+        LEFT JOIN cd_custoprod cd_c ON cd_c.cd_codigo = cd_m.cd_codigo AND cd_c.pro_codi = cd_m.mat_codi
+        LEFT JOIN cd_estoque   cd_e ON cd_e.cd_codigo = cd_m.cd_codigo AND cd_e.pro_codi = cd_m.mat_codi
         LEFT JOIN produtos_embalagem pe ON pe.mat_codi = cd_m.mat_codi
        WHERE ${where}
        ORDER BY cd_m.mat_desc
@@ -333,14 +333,14 @@ router.post('/', adminOuCeo, async (req, res) => {
       }
     }
 
-    // 4) Hidrata todos mat_codi com preço admin do CD legado
+    // 4) Hidrata todos mat_codi com preço admin do CD origem
     const dadosCd = await dbQuery(
       `SELECT cd_m.mat_codi, cd_m.mat_desc, cd_c.pro_prad, pe.qtd_embalagem
          FROM cd_material cd_m
-         LEFT JOIN cd_custoprod cd_c ON cd_c.pro_codi = cd_m.mat_codi
+         LEFT JOIN cd_custoprod cd_c ON cd_c.cd_codigo = cd_m.cd_codigo AND cd_c.pro_codi = cd_m.mat_codi
          LEFT JOIN produtos_embalagem pe ON pe.mat_codi = cd_m.mat_codi
-        WHERE cd_m.mat_codi = ANY($1::text[])`,
-      [todosMatCodi]
+        WHERE cd_m.cd_codigo = $1 AND cd_m.mat_codi = ANY($2::text[])`,
+      [cd_origem_codigo, todosMatCodi]
     );
     const cdMap = new Map(dadosCd.map(x => [x.mat_codi, x]));
     for (const m of todosMatCodi) {
