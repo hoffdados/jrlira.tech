@@ -160,19 +160,17 @@ router.post('/:id/aprovar', compradorOuAdmin, async (req, res) => {
       await client.query('ROLLBACK');
       return res.status(400).json({ erro: 'Preço acordo deve ser menor que o preço atual do produto' });
     }
-    const qtdAcordada = parseFloat(a.qtde_acordada) || 0;
-    const diff = precoAtual - precoNovo;
-    const valorConfessado = qtdAcordada * diff;
     const renegociado = Math.abs(precoNovo - precoOriginal) > 0.001;
 
     const aprovador = req.usuario.email || req.usuario.usuario || req.usuario.nome || `id:${req.usuario.id}`;
+    // diferenca_unitaria e valor_confessado sao GENERATED ALWAYS — recalculam sozinhas ao atualizar preco_acordo.
     await client.query(
       `UPDATE acordos_comerciais
        SET status = 'ativo', aprovado_por = $1, aprovado_em = NOW(),
-           preco_acordo = $2, diferenca_unitaria = $3, valor_confessado = $4,
+           preco_acordo = $2,
            updated_at = NOW()
-       WHERE id = $5`,
-      [aprovador, precoNovo, diff, valorConfessado, a.id]
+       WHERE id = $3`,
+      [aprovador, precoNovo, a.id]
     );
 
     // Marca o validade_alertas como rebaixado pra etiqueta vermelha aparecer ao repositor
