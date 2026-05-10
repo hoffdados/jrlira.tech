@@ -138,6 +138,14 @@ td.fix-ult{color:#86efac;font-size:9px}
       </select>
     </div>
     <div class="grupo">
+      <label>MCP_CODI inicial</label>
+      <input id="mcpDe" type="number" placeholder="ex 12000" style="min-width:100px" onchange="recarregarGrade()">
+    </div>
+    <div class="grupo">
+      <label>MCP_CODI final</label>
+      <input id="mcpAte" type="number" placeholder="ex 12500" style="min-width:100px" onchange="recarregarGrade()">
+    </div>
+    <div class="grupo">
       <label>Limit</label>
       <select id="limit" onchange="recarregarGrade()">
         <option value="200">200</option>
@@ -235,7 +243,11 @@ async function recarregarGrade() {
   const soPedir = document.getElementById('soPedir').checked;
   const limit = document.getElementById('limit').value;
   const ordem = document.getElementById('ordem').value;
-  const url = `/api/pedidos-distribuidora/grade?cd_origem=${encodeURIComponent(cdOrigemAtual)}&busca=${encodeURIComponent(busca)}&so_pedir=${soPedir}&limit=${limit}&ordem=${encodeURIComponent(ordem)}`;
+  const mcpDe  = document.getElementById('mcpDe').value;
+  const mcpAte = document.getElementById('mcpAte').value;
+  let url = `/api/pedidos-distribuidora/grade?cd_origem=${encodeURIComponent(cdOrigemAtual)}&busca=${encodeURIComponent(busca)}&so_pedir=${soPedir}&limit=${limit}&ordem=${encodeURIComponent(ordem)}`;
+  if (mcpDe)  url += `&mcp_de=${encodeURIComponent(mcpDe)}`;
+  if (mcpAte) url += `&mcp_ate=${encodeURIComponent(mcpAte)}`;
   document.getElementById('gradeBody').innerHTML = '<tr><td>Carregando...</td></tr>';
   try {
     const r = await api(url);

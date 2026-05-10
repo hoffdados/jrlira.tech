@@ -109,6 +109,9 @@ router.get('/grade', adminOuCeo, async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit) || 500, 3000);
     // Ordenação: 'descricao' (default) | 'ultima_entrada' (MCP_DTEN desc) | 'ranking'
     const ordem = (req.query.ordem || 'descricao').toString().trim();
+    // Filtro por sequência MCP_CODI (range inicial/final)
+    const mcpDe  = req.query.mcp_de  ? parseInt(req.query.mcp_de)  : null;
+    const mcpAte = req.query.mcp_ate ? parseInt(req.query.mcp_ate) : null;
 
     // 1) Destinos (todos exceto o CD origem mesmo)
     const [origemRow] = await dbQuery(
@@ -138,6 +141,14 @@ router.get('/grade', adminOuCeo, async (req, res) => {
       where += ` AND EXISTS (SELECT 1 FROM pedidos_distrib_quantidades q
                               WHERE q.cd_origem_codigo = $1 AND q.mat_codi = cd_m.mat_codi AND q.qtd > 0)`;
     }
+    if (mcpDe != null) {
+      params.push(mcpDe);
+      where += ` AND uc.ultimo_mcp_codi_int >= $${params.length}`;
+    }
+    if (mcpAte != null) {
+      params.push(mcpAte);
+      where += ` AND uc.ultimo_mcp_codi_int <= $${params.length}`;
+    }
     params.push(limit);
     let orderBy = 'descricao';
     if (ordem === 'ultima_entrada') orderBy = 'ultima_entrada DESC NULLS LAST, descricao';
@@ -145,10 +156,10 @@ router.get('/grade', adminOuCeo, async (req, res) => {
     const produtos = await dbQuery(`
       WITH ult_compra AS (
         SELECT i.cd_codigo, i.pro_codi, MAX(m.mcp_dten) AS ultima_entrada,
-               MAX(m.mcp_codi::text) AS ultimo_mcp_codi
+               MAX((m.mcp_codi)::int) AS ultimo_mcp_codi_int
           FROM cd_itemcompra i
           JOIN cd_movcompra  m ON m.cd_codigo = i.cd_codigo AND m.mcp_codi = i.mcp_codi AND m.mcp_tipomov = i.mcp_tipomov
-         WHERE i.cd_codigo = $1
+         WHERE i.cd_codigo = $1 AND m.mcp_codi ~ '^[0-9]+$'
          GROUP BY i.cd_codigo, i.pro_codi
       )
       SELECT cd_m.mat_codi,
@@ -159,7 +170,7 @@ router.get('/grade', adminOuCeo, async (req, res) => {
              cd_c.pro_prad AS preco_admin,
              pe.qtd_embalagem,
              uc.ultima_entrada,
-             uc.ultimo_mcp_codi
+             uc.ultimo_mcp_codi_int AS ultimo_mcp_codi
         FROM cd_material cd_m
         LEFT JOIN cd_estoque   cd_e ON cd_e.cd_codigo = cd_m.cd_codigo AND cd_e.pro_codi = cd_m.mat_codi
         LEFT JOIN cd_custoprod cd_c ON cd_c.cd_codigo = cd_m.cd_codigo AND cd_c.pro_codi = cd_m.mat_codi
@@ -370,6 +381,70 @@ router.delete('/qtd-tudo', adminOuCeo, async (req, res) => {
     const r = await dbQuery(`DELETE FROM pedidos_distrib_quantidades WHERE cd_origem_codigo = $1`, [cdOrigem]);
     res.json({ ok: true, removidos: r.length });
   } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
+// Debug — investiga match de um produto entre cd_material e dados das lojas/CDs
+// GET /grade-debug?cd_origem=X&mat_codi=Y
+router.get('/grade-debug', adminOuCeo, async (req, res) => {
+  try {
+    const cdOrigem = String(req.query.cd_origem || '').trim();
+    const matCodi  = String(req.query.mat_codi  || '').trim();
+    if (!cdOrigem || !matCodi) return res.status(400).json({ erro: 'cd_origem e mat_codi obrigatorios' });
+
+    const [prod] = await dbQuery(
+      `SELECT mat_codi, mat_desc, ean_codi, mat_situ FROM cd_material WHERE cd_codigo = $1 AND mat_codi = $2`,
+      [cdOrigem, matCodi]
+    );
+    if (!prod) return res.json({ erro: 'mat_codi nao existe nesse CD', cd_origem: cdOrigem });
+
+    const eanRaw = prod.ean_codi;
+    const eanNorm = String(eanRaw || '').replace(/^0+/, '') || eanRaw;
+
+    // Cd_material em outros CDs (com mesmo EAN)
+    const cross = await dbQuery(
+      `SELECT cd_codigo, mat_codi, mat_desc, ean_codi FROM cd_material
+        WHERE NULLIF(LTRIM(ean_codi,'0'),'') = $1
+        ORDER BY cd_codigo`,
+      [eanNorm]
+    );
+
+    // produtos_externo das lojas
+    const externos = await dbQuery(
+      `SELECT loja_id, codigobarra, estdisponivel, prsugerido FROM produtos_externo
+        WHERE NULLIF(LTRIM(codigobarra,'0'),'') = $1
+        ORDER BY loja_id`,
+      [eanNorm]
+    );
+
+    // vendas (90d)
+    const vendas = await dbQuery(
+      `SELECT loja_id, COUNT(*) AS dias, SUM(qtd_vendida) AS qtd_total, MAX(data_venda) AS ult
+         FROM vendas_historico
+        WHERE NULLIF(LTRIM(codigobarra,'0'),'') = $1
+          AND data_venda >= CURRENT_DATE - INTERVAL '90 days'
+          AND COALESCE(tipo_saida,'venda')='venda'
+        GROUP BY loja_id ORDER BY loja_id`,
+      [eanNorm]
+    );
+
+    // Sample de produtos_externo (pra ver o formato real)
+    const sample = await dbQuery(
+      `SELECT loja_id, codigobarra, NULLIF(LTRIM(codigobarra,'0'),'') AS ean_norm
+         FROM produtos_externo WHERE loja_id = 1 LIMIT 3`
+    );
+
+    res.json({
+      produto_no_cd: prod,
+      ean_raw: eanRaw, ean_normalizado: eanNorm,
+      em_outros_cds: cross,
+      em_lojas: externos,
+      vendas_90d_por_loja: vendas,
+      sample_produtos_externo_loja1: sample,
+    });
+  } catch (e) {
+    console.error('[grade-debug]', e.message);
+    res.status(500).json({ erro: e.message });
+  }
 });
 
 // ── Catálogo de produtos (do CD legado já sincronizado) — usado pela busca antiga ──
