@@ -8,67 +8,99 @@
 <script src="/shared.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
-nav{background:#1e293b;padding:10px 16px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #334155}
-.brand{font-family:'Segoe UI Black','Segoe UI',sans-serif;font-weight:900;font-size:16px;color:#fde047}
-.btn-nav{background:#0ea5e9;color:#fff;border:none;padding:5px 10px;border-radius:5px;font-size:11px;cursor:pointer;text-decoration:none}
-.main{padding:10px 14px}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh;font-size:11px}
+nav{background:#1e293b;padding:8px 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #334155}
+.brand{font-family:'Segoe UI Black','Segoe UI',sans-serif;font-weight:900;font-size:15px;color:#fde047}
+.btn-nav{background:#0ea5e9;color:#fff;border:none;padding:4px 9px;border-radius:4px;font-size:11px;cursor:pointer;text-decoration:none}
+.main{padding:8px 12px}
 
-label{font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;display:block}
-input,select{background:#0f172a;border:1px solid #334155;border-radius:5px;color:#e2e8f0;padding:5px 8px;font-size:12px}
+label{font-size:9px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px;display:block}
+input,select{background:#0f172a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;padding:4px 7px;font-size:11px}
 input:focus,select:focus{outline:none;border-color:#fbbf24}
-button{cursor:pointer;border:none;border-radius:5px;font-size:12px;padding:6px 12px;font-weight:600}
+button{cursor:pointer;border:none;border-radius:4px;font-size:11px;padding:5px 10px;font-weight:600}
 .btn-primary{background:#fbbf24;color:#1a1a1a}.btn-primary:hover{background:#f59e0b}
 .btn-ghost{background:#1e293b;color:#94a3b8;border:1px solid #334155}.btn-ghost:hover{background:#273549}
-.btn-danger{background:#dc2626;color:#fff}
-.btn-sm{padding:3px 8px;font-size:11px}
+.btn-sm{padding:3px 7px;font-size:10px}
 
-.toolbar{display:flex;gap:10px;align-items:end;padding:10px 12px;background:#1e293b;border:1px solid #334155;border-radius:6px;margin-bottom:10px;flex-wrap:wrap}
+.toolbar{display:flex;gap:8px;align-items:end;padding:8px 10px;background:#1e293b;border:1px solid #334155;border-radius:5px;margin-bottom:8px;flex-wrap:wrap}
 .toolbar .grupo{display:flex;flex-direction:column}
-.toolbar .grupo input,.toolbar .grupo select{min-width:200px}
-.toolbar .check{display:flex;align-items:center;gap:6px;font-size:12px;color:#94a3b8;padding-bottom:5px}
+.toolbar .grupo input,.toolbar .grupo select{min-width:180px}
+.toolbar .check{display:flex;align-items:center;gap:5px;font-size:11px;color:#94a3b8;padding-bottom:4px}
 
-.grade-wrap{background:#1e293b;border:1px solid #334155;border-radius:6px;overflow:auto;max-height:calc(100vh - 230px)}
-table{width:100%;border-collapse:separate;border-spacing:0;font-size:11px}
-thead th{position:sticky;top:0;background:#0f172a;padding:6px 6px;text-align:center;color:#94a3b8;font-weight:700;font-size:10px;border-bottom:1px solid #334155;letter-spacing:.04em;text-transform:uppercase;z-index:10;white-space:nowrap}
-thead th.left{text-align:left}
-thead th.cd-col{background:#451a03;color:#fde047}
-thead th.loja-col{background:#0c1a2e;color:#7dd3fc}
-tbody td{padding:4px 6px;border-bottom:1px solid #1a2744;font-variant-numeric:tabular-nums;white-space:nowrap}
-tbody td.left{text-align:left}
-tbody td.right{text-align:right}
-tbody td.center{text-align:center}
-tbody tr:hover{background:#1a2744}
+.grade-wrap{background:#1e293b;border:1px solid #334155;border-radius:5px;overflow:auto;max-height:calc(100vh - 200px)}
+table.grade{border-collapse:separate;border-spacing:0;font-size:10px;font-variant-numeric:tabular-nums;white-space:nowrap}
 
-.qtd{width:55px;padding:3px 5px;font-size:11px;text-align:center;background:#0f172a;border:1px solid #1a2744;border-radius:4px;color:#e2e8f0}
-.qtd:focus{border-color:#fbbf24}
-.qtd.dirty{border-color:#fbbf24;box-shadow:0 0 0 1px #fbbf24}
+/* Headers — 2 níveis: grupo (destino/loja) e sub-coluna */
+table.grade thead tr.h1 th{background:#0f172a;padding:5px 6px;color:#94a3b8;font-weight:700;font-size:9px;text-transform:uppercase;letter-spacing:.04em;text-align:center;border-bottom:1px solid #1a2744;position:sticky;top:0;z-index:8}
+table.grade thead tr.h2 th{background:#0c1628;padding:4px 5px;color:#64748b;font-weight:600;font-size:8px;text-align:center;border-bottom:1px solid #334155;position:sticky;top:24px;z-index:8}
+
+table.grade thead tr.h1 th.grp-loja{background:#0c1a2e;color:#7dd3fc;border-left:2px solid #1e3a5f}
+table.grade thead tr.h1 th.grp-cd{background:#1c1300;color:#fcd34d;border-left:2px solid #451a03}
+table.grade thead tr.h1 th.grp-vendas{background:#0c2912;color:#86efac;border-left:2px solid #14532d}
+
+table.grade thead tr.h2 th.sub{font-size:8px}
+
+/* Body */
+table.grade tbody td{padding:3px 5px;border-bottom:1px solid #1a2744;text-align:center;border-right:1px solid #0f172a;height:24px}
+table.grade tbody tr:hover{background:#15233f}
+table.grade tbody td.left{text-align:left;color:#cbd5e1}
+table.grade tbody td.right{text-align:right}
+
+/* Cols fixas (sticky left) */
+table.grade th.fixed,table.grade td.fixed{position:sticky;background:#1e293b;z-index:6}
+table.grade thead tr.h1 th.fixed{background:#0f172a !important;z-index:9}
+table.grade thead tr.h2 th.fixed{background:#0c1628 !important;z-index:9}
+table.grade tbody tr:hover td.fixed{background:#15233f}
+
+th.fix-rk,td.fix-rk{left:0;width:38px;min-width:38px}
+th.fix-cod,td.fix-cod{left:38px;width:62px;min-width:62px}
+th.fix-desc,td.fix-desc{left:100px;width:240px;min-width:240px;text-align:left;border-right:2px solid #334155}
+th.fix-ref,td.fix-ref{left:340px;width:100px;min-width:100px;text-align:left;border-right:2px solid #334155}
+th.fix-est,td.fix-est{left:440px;width:55px;min-width:55px;border-right:2px solid #fde04766}
+th.fix-pre,td.fix-pre{left:495px;width:65px;min-width:65px;border-right:2px solid #fde04766}
+
+td.fix-desc{overflow:hidden;text-overflow:ellipsis}
+td.fix-cod,td.fix-rk{font-family:'Cascadia Code',Consolas,monospace;color:#7dd3fc;font-size:9px}
+td.fix-rk{color:#94a3b8;font-weight:700}
+td.fix-est,td.fix-pre{color:#fde047;font-weight:600;font-variant-numeric:tabular-nums}
+
+/* Cels de quantidade (input) */
+.qtd{width:48px;padding:2px 3px;font-size:10px;text-align:center;background:#0f172a;border:1px solid #1a2744;border-radius:3px;color:#fde047;font-weight:700}
+.qtd:focus{border-color:#fbbf24;outline:none}
+.qtd.dirty{border-color:#fbbf24}
 .qtd.saving{border-color:#38bdf8}
 .qtd.saved{border-color:#4ade80}
-.qtd.zero{color:#475569}
+.qtd.zero{color:#475569;font-weight:400}
 
-.cell-est{color:#64748b;font-size:10px;text-align:right}
-.desc{max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#cbd5e1}
-.code{font-family:'Cascadia Code',Consolas,monospace;color:#7dd3fc;font-size:10px}
+/* Sub-cols de info (não editáveis) */
+.cell-num{color:#94a3b8;font-size:10px}
+.cell-num.zero{color:#475569}
+.cell-num.high{color:#fbbf24}
+.cell-sug{color:#a78bfa;font-weight:600}
+.cell-est-d{color:#7dd3fc}
+.cell-trans{color:#fb923c}
+.cell-preco{color:#86efac}
+.cell-data{color:#64748b;font-size:9px}
+
 .muted{color:#64748b}
 
-.msg{padding:8px 12px;border-radius:5px;margin-bottom:8px;font-size:12px;display:none}
+.msg{padding:6px 10px;border-radius:4px;margin-bottom:6px;font-size:11px;display:none}
 .msg.ok{background:#14532d44;color:#4ade80;border:1px solid #14532d;display:block}
 .msg.err{background:#7f1d1d44;color:#f87171;border:1px solid #7f1d1d;display:block}
 
-.tag{display:inline-block;padding:1px 5px;border-radius:3px;font-size:9px;font-weight:700;text-transform:uppercase}
+.summary-bar{display:flex;gap:14px;align-items:center;padding:6px 10px;background:#1e293b;border:1px solid #334155;border-radius:5px;margin-top:8px;font-size:11px}
+.summary-bar .stat{display:flex;flex-direction:column}
+.summary-bar .stat label{font-size:9px;color:#64748b}
+.summary-bar .stat span{font-weight:700;color:#fde047;font-size:13px}
+.summary-bar .actions{margin-left:auto;display:flex;gap:6px;align-items:center}
+
+.download-bloco{display:flex;gap:8px;margin-top:6px}
+.download-bloco a{flex:1;padding:8px 12px;background:#14532d;border-radius:4px;color:#bbf7d0;text-decoration:none;font-size:11px;font-weight:600;text-align:center}
+.download-bloco a:hover{background:#166534}
+
+.tag{display:inline-block;padding:1px 4px;border-radius:3px;font-size:8px;font-weight:700;text-transform:uppercase}
 .tag-loja{background:#1e3a5f;color:#60a5fa}
 .tag-cd{background:#451a03;color:#fde047}
-
-.summary-bar{display:flex;gap:14px;align-items:center;padding:8px 12px;background:#1e293b;border:1px solid #334155;border-radius:6px;margin-top:10px;font-size:12px}
-.summary-bar .stat{display:flex;flex-direction:column}
-.summary-bar .stat label{font-size:10px;color:#64748b}
-.summary-bar .stat span{font-weight:700;color:#fde047}
-.summary-bar .actions{margin-left:auto;display:flex;gap:8px}
-
-.download-bloco{display:flex;gap:10px;margin-top:10px}
-.download-bloco a{flex:1;display:flex;align-items:center;gap:6px;padding:10px 14px;background:#14532d;border-radius:5px;color:#bbf7d0;text-decoration:none;font-size:12px;font-weight:600;justify-content:center}
-.download-bloco a:hover{background:#166534}
 </style>
 </head>
 <body>
@@ -91,11 +123,11 @@ tbody tr:hover{background:#1a2744}
       </select>
     </div>
     <div class="grupo">
-      <label>Buscar produto (nome / cod / EAN)</label>
+      <label>Buscar (nome / cod / EAN)</label>
       <input id="busca" placeholder="..." oninput="onBuscaChange()">
     </div>
     <div class="check">
-      <input type="checkbox" id="soPedir" onchange="recarregarGrade()"> só com qtd > 0
+      <input type="checkbox" id="soPedir" onchange="recarregarGrade()"> só com qtd
     </div>
     <div class="grupo">
       <label>Limit</label>
@@ -103,28 +135,25 @@ tbody tr:hover{background:#1a2744}
         <option value="200">200</option>
         <option value="500" selected>500</option>
         <option value="1000">1000</option>
-        <option value="3000">3000</option>
+        <option value="3000">tudo</option>
       </select>
     </div>
     <button class="btn-ghost btn-sm" onclick="limparTudo()">🗑 Limpar rascunho</button>
   </div>
 
-  <div class="grade-wrap">
-    <table id="grade">
-      <thead id="gradeHead"><tr><th class="left">Aguardando origem...</th></tr></thead>
-      <tbody id="gradeBody"></tbody>
+  <div class="grade-wrap" id="gradeWrap">
+    <table class="grade">
+      <thead id="gradeHead"></thead>
+      <tbody id="gradeBody"><tr><td>Selecione um CD origem</td></tr></tbody>
     </table>
   </div>
 
   <div class="summary-bar">
     <div class="stat"><label>Produtos editados</label><span id="totalProdutos">0</span></div>
-    <div class="stat"><label>Pedidos</label><span id="totalPedidos">0</span></div>
+    <div class="stat"><label>Pedidos a gerar</label><span id="totalPedidos">0</span></div>
     <div class="stat"><label>Total geral</label><span id="totalValor">R$ 0,00</span></div>
     <div class="actions">
-      <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#94a3b8">
-        Observação:
-        <input id="obs" placeholder="Transferência semanal" style="width:240px">
-      </label>
+      <input id="obs" placeholder="Observação" style="width:200px">
       <button class="btn-primary" onclick="gerarCsv(this)">Gerar CSVs</button>
     </div>
   </div>
@@ -143,10 +172,10 @@ const token = () => localStorage.getItem('jrlira_token');
 document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
 
 let cdOrigemAtual = null;
-let destinosAtuais = [];          // [{id, tipo, codigo, nome, ...}]
+let destinosAtuais = [];
 let produtosAtuais = [];
 let buscaTimeout = null;
-let salvarTimeouts = new Map();   // chave: mat_codi-destino_id
+let salvarTimeouts = new Map();
 
 function showMsg(txt, tipo = 'ok') {
   const el = document.getElementById('msg');
@@ -155,6 +184,9 @@ function showMsg(txt, tipo = 'ok') {
   setTimeout(() => { if (tipo !== 'err') { el.className='msg'; el.textContent=''; } }, 4500);
 }
 function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function fmtBRL(n) { return Number(n || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
+function fmtNum(n, cas=0) { if (n == null || n === '') return ''; const x = Number(n); return isNaN(x) ? '' : x.toLocaleString('pt-BR', { minimumFractionDigits: cas, maximumFractionDigits: cas }); }
+function fmtData(d) { if (!d) return ''; return new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }); }
 
 async function api(path, method = 'GET', body) {
   const r = await fetch(path, {
@@ -166,16 +198,11 @@ async function api(path, method = 'GET', body) {
   return data;
 }
 
-function fmtBRL(n) { return Number(n || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
-
 async function carregarOrigens() {
   try {
     const cds = await api('/api/pedidos-distribuidora/cds-origem');
     const sel = document.getElementById('cdOrigem');
-    if (!cds.length) {
-      sel.innerHTML = '<option value="">Nenhum CD ativo</option>';
-      return;
-    }
+    if (!cds.length) { sel.innerHTML = '<option value="">Nenhum CD ativo</option>'; return; }
     sel.innerHTML = '<option value="">Selecione...</option>' +
       cds.map(c => `<option value="${escapeHtml(c.codigo)}">${escapeHtml(c.nome)} (${escapeHtml(c.codigo)})</option>`).join('');
   } catch (e) { showMsg(e.message, 'err'); }
@@ -186,7 +213,7 @@ function onOrigemChange() {
   cdOrigemAtual = codigo || null;
   document.getElementById('downloadArea').style.display = 'none';
   if (cdOrigemAtual) recarregarGrade();
-  else { document.getElementById('gradeHead').innerHTML = '<tr><th class="left">Selecione um CD origem</th></tr>'; document.getElementById('gradeBody').innerHTML = ''; }
+  else { document.getElementById('gradeHead').innerHTML = ''; document.getElementById('gradeBody').innerHTML = '<tr><td>Selecione um CD origem</td></tr>'; }
 }
 
 function onBuscaChange() {
@@ -205,59 +232,101 @@ async function recarregarGrade() {
     const r = await api(url);
     destinosAtuais = r.destinos;
     produtosAtuais = r.produtos;
-    renderGrade();
+    renderHead();
+    renderBody();
     atualizarSummary();
   } catch (e) { showMsg(e.message, 'err'); }
 }
 
-function renderGrade() {
-  // Head: COD, DESC, REF, EST_DIST, [destinos]
-  const head = document.getElementById('gradeHead');
-  const colsDest = destinosAtuais.map(d => {
-    const cls = d.tipo === 'CD' ? 'cd-col' : 'loja-col';
-    return `<th class="${cls}" title="${escapeHtml(d.nome)}">${escapeHtml(siglaDestino(d))}</th>`;
-  }).join('');
-  head.innerHTML = `
-    <tr>
-      <th class="left">COD</th>
-      <th class="left">DESCRIÇÃO</th>
-      <th class="left">REF</th>
-      <th>EST DIST</th>
-      <th>R$ ADM</th>
-      ${colsDest}
-    </tr>
-  `;
-
-  // Body
-  const body = document.getElementById('gradeBody');
-  if (!produtosAtuais.length) {
-    body.innerHTML = '<tr><td colspan="' + (5 + destinosAtuais.length) + '" class="muted center">Nada encontrado</td></tr>';
-    return;
+function siglaDestino(d) {
+  if (d.codigo.startsWith('LOJA')) {
+    const map = { LOJA1:'EC', LOJA2:'BR', LOJA3:'JP', LOJA4:'FL', LOJA5:'SJ', LOJA6:'STM' };
+    return map[d.codigo] || d.codigo;
   }
-  body.innerHTML = produtosAtuais.map(p => {
-    const ref = (p.referencia || '').trim();
-    const cels = destinosAtuais.map(d => {
-      const v = p.qtds[d.id] || '';
-      return `<td class="center"><input class="qtd ${v?'':'zero'}" data-mat="${escapeHtml(p.mat_codi)}" data-dest="${d.id}" value="${v}" type="number" min="0" step="any" oninput="onQtdInput(this)"></td>`;
-    }).join('');
-    return `
-      <tr>
-        <td class="left code">${escapeHtml(p.mat_codi)}</td>
-        <td class="left desc" title="${escapeHtml(p.descricao)}">${escapeHtml(p.descricao)}</td>
-        <td class="left muted" style="font-size:10px">${escapeHtml(ref)}</td>
-        <td class="cell-est">${p.est_dist != null ? Number(p.est_dist).toFixed(0) : '-'}</td>
-        <td class="cell-est">${p.preco_admin ? fmtBRL(p.preco_admin) : '-'}</td>
-        ${cels}
-      </tr>
-    `;
-  }).join('');
+  if (d.cd_codigo === 'srv1-nprogresso') return 'NP';
+  if (d.cd_codigo === 'srv2-asafrio')    return 'AF-ITB';
+  if (d.cd_codigo === 'srv2-asasantarem') return 'AF-STM';
+  return d.codigo.slice(-6);
 }
 
-function siglaDestino(d) {
-  // Usa codigo (LOJA1-LOJA6, CD-srv1-itautuba, etc) ou abrevia o nome
-  if (d.codigo.startsWith('LOJA')) return d.codigo.replace('LOJA', 'L');
-  // Pega primeiras letras significativas do nome
-  return d.nome.split(/\s+/).slice(-2).map(s => s[0]).join('') || d.codigo.slice(0, 6);
+function renderHead() {
+  const lojas = destinosAtuais.filter(d => d.tipo === 'LOJA');
+  const cds   = destinosAtuais.filter(d => d.tipo === 'CD');
+  const allDest = [...lojas, ...cds];
+
+  // H1: cabeçalho de grupos (1 col por destino, colspan=4)
+  let h1 = `
+    <th class="fixed fix-rk" rowspan="2">RK</th>
+    <th class="fixed fix-cod" rowspan="2">COD</th>
+    <th class="fixed fix-desc" rowspan="2">DESCRIÇÃO</th>
+    <th class="fixed fix-ref" rowspan="2">REF</th>
+    <th class="fixed fix-est" rowspan="2" title="Estoque do CD origem (em unidades)">EST DIST</th>
+    <th class="fixed fix-pre" rowspan="2" title="Custo administrativo (R$/un)">R$ ADM</th>
+  `;
+  for (const d of allDest) {
+    const cls = d.tipo === 'CD' ? 'grp-cd' : 'grp-loja';
+    h1 += `<th class="${cls}" colspan="4" title="${escapeHtml(d.nome)}">${escapeHtml(siglaDestino(d))}</th>`;
+  }
+  // Vendas só pras lojas
+  for (const d of lojas) {
+    h1 += `<th class="grp-vendas" colspan="3" title="Vendas: ${escapeHtml(d.nome)}">${escapeHtml(siglaDestino(d))} V</th>`;
+  }
+
+  // H2: sub-cols
+  let h2 = '';
+  for (const d of allDest) h2 += `<th class="sub" title="Estoque (CX)">E</th><th class="sub" title="Trânsito (CX)">T</th><th class="sub" title="Sugestão 35d (CX)">S</th><th class="sub" title="Sug. Editada (CX) — vai pro CSV">QTD</th>`;
+  for (const d of lojas) h2 += `<th class="sub" title="Média 28d">M28</th><th class="sub" title="Preço atual">$</th><th class="sub" title="Última venda">ULT</th>`;
+
+  document.getElementById('gradeHead').innerHTML = `<tr class="h1">${h1}</tr><tr class="h2">${h2}</tr>`;
+}
+
+function renderBody() {
+  if (!produtosAtuais.length) {
+    const colspan = 6 + destinosAtuais.length * 4 + destinosAtuais.filter(d=>d.tipo==='LOJA').length * 3;
+    document.getElementById('gradeBody').innerHTML = `<tr><td colspan="${colspan}" class="muted">Nada encontrado</td></tr>`;
+    return;
+  }
+  const lojas = destinosAtuais.filter(d => d.tipo === 'LOJA');
+  const cds   = destinosAtuais.filter(d => d.tipo === 'CD');
+  const allDest = [...lojas, ...cds];
+
+  document.getElementById('gradeBody').innerHTML = produtosAtuais.map(p => {
+    const cells = [];
+
+    // Fixos
+    cells.push(`<td class="fixed fix-rk">${p.ranking || ''}</td>`);
+    cells.push(`<td class="fixed fix-cod">${escapeHtml(p.mat_codi)}</td>`);
+    cells.push(`<td class="fixed fix-desc" title="${escapeHtml(p.descricao)}">${escapeHtml(p.descricao)}</td>`);
+    cells.push(`<td class="fixed fix-ref left muted" style="font-size:9px">${escapeHtml(p.referencia || '')}</td>`);
+    cells.push(`<td class="fixed fix-est">${fmtNum(p.est_dist)}</td>`);
+    cells.push(`<td class="fixed fix-pre">${p.preco_admin ? fmtBRL(p.preco_admin) : '-'}</td>`);
+
+    // Por destino: 4 sub-cols (E, T, S, QTD)
+    for (const d of allDest) {
+      const dt = p.destinos[d.id] || {};
+      const e  = dt.estoque_cx || 0;
+      const t  = dt.transito_cx || 0;
+      const s  = dt.sugestao_cx || 0;
+      const q  = dt.sug_editada || '';
+      cells.push(`<td class="cell-num cell-est-d ${e?'':'zero'}">${e || ''}</td>`);
+      cells.push(`<td class="cell-num cell-trans ${t?'':'zero'}">${t || ''}</td>`);
+      cells.push(`<td class="cell-num cell-sug ${s?'':'zero'}">${s || ''}</td>`);
+      cells.push(`<td><input class="qtd ${q?'':'zero'}" data-mat="${escapeHtml(p.mat_codi)}" data-dest="${d.id}" value="${q}" type="number" min="0" step="any" oninput="onQtdInput(this)"></td>`);
+    }
+
+    // Vendas (só lojas): M28, $, ULT
+    for (const d of lojas) {
+      const v = p.vendas[d.loja_id] || {};
+      const m = v.media_28d != null ? Number(v.media_28d).toFixed(1) : '';
+      const pr = v.preco_atual ? fmtBRL(v.preco_atual) : '';
+      const ult = fmtData(v.ultima_venda);
+      cells.push(`<td class="cell-num">${m}</td>`);
+      cells.push(`<td class="cell-num cell-preco">${pr}</td>`);
+      cells.push(`<td class="cell-data">${ult}</td>`);
+    }
+
+    return `<tr>${cells.join('')}</tr>`;
+  }).join('');
 }
 
 function onQtdInput(input) {
@@ -266,10 +335,11 @@ function onQtdInput(input) {
   const matCodi = input.dataset.mat;
   const destId  = parseInt(input.dataset.dest);
   const qtd     = parseFloat(input.value) || 0;
-  // Atualiza local
   const p = produtosAtuais.find(x => x.mat_codi === matCodi);
-  if (p) { if (qtd > 0) p.qtds[destId] = qtd; else delete p.qtds[destId]; }
-  // Debounce save
+  if (p) {
+    if (!p.destinos[destId]) p.destinos[destId] = {};
+    p.destinos[destId].sug_editada = qtd;
+  }
   const k = `${matCodi}-${destId}`;
   if (salvarTimeouts.has(k)) clearTimeout(salvarTimeouts.get(k));
   salvarTimeouts.set(k, setTimeout(() => salvarQtd(input, matCodi, destId, qtd), 600));
@@ -289,24 +359,30 @@ async function salvarQtd(input, matCodi, destId, qtd) {
     if (qtd <= 0) input.classList.add('zero');
   } catch (e) {
     input.classList.remove('saving');
-    showMsg('Erro salvando: ' + e.message, 'err');
+    showMsg('Erro: ' + e.message, 'err');
   }
 }
 
 function atualizarSummary() {
-  const produtosEditados = produtosAtuais.filter(p => Object.keys(p.qtds || {}).length > 0).length;
+  let editados = 0;
   const destinosUsados = new Set();
   let valorTotal = 0;
   for (const p of produtosAtuais) {
-    if (!p.preco_admin) continue;
-    for (const [destId, qtd] of Object.entries(p.qtds || {})) {
-      if (qtd > 0) {
+    const preco = parseFloat(p.preco_admin) || 0;
+    const qtdEmb = parseInt(p.qtd_embalagem) || 1;
+    let teve = false;
+    for (const [destId, dt] of Object.entries(p.destinos || {})) {
+      const q = parseFloat(dt.sug_editada) || 0;
+      if (q > 0) {
+        teve = true;
         destinosUsados.add(destId);
-        valorTotal += qtd * parseFloat(p.preco_admin);
+        // valor estimado = qtd (CX) × qtd_embalagem × preco_admin (preco é por unidade)
+        valorTotal += q * qtdEmb * preco;
       }
     }
+    if (teve) editados++;
   }
-  document.getElementById('totalProdutos').textContent = produtosEditados;
+  document.getElementById('totalProdutos').textContent = editados;
   document.getElementById('totalPedidos').textContent  = destinosUsados.size;
   document.getElementById('totalValor').textContent    = fmtBRL(valorTotal);
 }
@@ -325,13 +401,10 @@ async function gerarCsv(btn) {
     showMsg(`✅ ${r.total_pedidos} pedido(s) · ${fmtBRL(r.valor_total)} · origem: ${r.cd_origem.nome}`, 'ok');
     const t = encodeURIComponent(token());
     document.getElementById('dlPedidos').href = `/api/pedidos-distribuidora/csv/${r.geracao_id}/P_PEDIDOS.csv?token=${t}`;
-    document.getElementById('dlItens'  ).href = `/api/pedidos-distribuidora/csv/${r.geracao_id}/P_PEDIDOS_ITENS.csv?token=${t}`;
+    document.getElementById('dlItens').href   = `/api/pedidos-distribuidora/csv/${r.geracao_id}/P_PEDIDOS_ITENS.csv?token=${t}`;
     document.getElementById('downloadArea').style.display = 'block';
-  } catch (e) {
-    showMsg('❌ ' + e.message, 'err');
-  } finally {
-    btn.disabled = false; btn.textContent = 'Gerar CSVs';
-  }
+  } catch (e) { showMsg('❌ ' + e.message, 'err'); }
+  finally { btn.disabled = false; btn.textContent = 'Gerar CSVs'; }
 }
 
 async function limparTudo() {

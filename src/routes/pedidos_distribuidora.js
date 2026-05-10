@@ -92,10 +92,14 @@ router.get('/cli-codi-lookup', adminOuCeo, async (req, res) => {
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
-// ── Grade tipo planilha: 1 linha por produto, 1 col por destino ──
+// ── Grade completa (replica relatório do CEO no Excel/PowerBI) ──
 //
 // GET /grade?cd_origem=X&busca=&so_pedir=true|false&limit=
-// Retorna: { destinos: [...], produtos: [{ mat_codi, descricao, ref, est_dist, qtds: { destino_id: qtd } }] }
+// Retorna pra cada produto do CD origem:
+//   - identidade (cod, desc, ref, ean, prioridade, est_dist, preco_admin, qtd_embalagem)
+//   - ranking (posição na soma de vendas R$ de todas lojas, 90d)
+//   - destinos[id]: { estoque_un, estoque_cx, transito_un, transito_cx, sugestao_cx, sug_editada }
+//   - vendas[loja_id]: { media_28d, preco_atual, ultima_venda }
 router.get('/grade', adminOuCeo, async (req, res) => {
   try {
     const cdOrigem = String(req.query.cd_origem || '').trim();
@@ -104,13 +108,12 @@ router.get('/grade', adminOuCeo, async (req, res) => {
     const soPedir = req.query.so_pedir === 'true';
     const limit = Math.min(parseInt(req.query.limit) || 500, 3000);
 
-    // Pega CNPJ do CD origem (separado pra evitar subquery com tipos ambiguos)
+    // 1) Destinos (todos exceto o CD origem mesmo)
     const [origemRow] = await dbQuery(
       `SELECT cnpj FROM pedidos_distrib_destinos WHERE cd_codigo = $1`,
       [cdOrigem]
     );
     const cnpjOrigem = origemRow?.cnpj || '';
-
     const destinos = await dbQuery(
       `SELECT id, tipo, codigo, nome, cnpj, loja_id, cd_codigo
          FROM pedidos_distrib_destinos
@@ -118,8 +121,10 @@ router.get('/grade', adminOuCeo, async (req, res) => {
         ORDER BY tipo DESC, nome`,
       [cnpjOrigem]
     );
+    const lojaIds = destinos.filter(d => d.tipo === 'LOJA' && d.loja_id).map(d => d.loja_id);
+    const cdDestinos = destinos.filter(d => d.tipo === 'CD' && d.cd_codigo);
 
-    // $1 = cd_origem (sempre presente), demais conforme builder
+    // 2) Catálogo do CD origem
     const params = [cdOrigem];
     let where = `cd_m.cd_codigo = $1 AND (cd_m.mat_situ = 'A' OR cd_m.mat_situ IS NULL)`;
     if (busca) {
@@ -132,9 +137,9 @@ router.get('/grade', adminOuCeo, async (req, res) => {
                               WHERE q.cd_origem_codigo = $1 AND q.mat_codi = cd_m.mat_codi AND q.qtd > 0)`;
     }
     params.push(limit);
-
     const produtos = await dbQuery(`
       SELECT cd_m.mat_codi,
+             cd_m.ean_codi,
              COALESCE(pe.descricao_atual, cd_m.mat_desc) AS descricao,
              cd_m.mat_refe AS referencia,
              cd_e.est_quan AS est_dist,
@@ -148,21 +153,164 @@ router.get('/grade', adminOuCeo, async (req, res) => {
        ORDER BY descricao
        LIMIT $${params.length}
     `, params);
+    if (!produtos.length) return res.json({ cd_origem: cdOrigem, destinos, produtos: [] });
 
+    const eans = [...new Set(produtos.map(p => p.ean_codi).filter(Boolean))];
     const matCodis = produtos.map(p => p.mat_codi);
-    const qtds = matCodis.length
-      ? await dbQuery(
-          `SELECT destino_id, mat_codi, qtd FROM pedidos_distrib_quantidades
-            WHERE cd_origem_codigo = $1 AND mat_codi = ANY($2::text[])`,
-          [cdOrigem, matCodis]
-        )
-      : [];
-    const qtdMap = new Map(); // mat_codi -> { destino_id: qtd }
-    for (const q of qtds) {
-      if (!qtdMap.has(q.mat_codi)) qtdMap.set(q.mat_codi, {});
-      qtdMap.get(q.mat_codi)[q.destino_id] = parseFloat(q.qtd);
+
+    // 3) Estoque + preço atual por (loja_id, ean) — produtos_externo
+    const estLojas = lojaIds.length && eans.length ? await dbQuery(
+      `SELECT loja_id, NULLIF(LTRIM(codigobarra,'0'),'') AS ean, estdisponivel, prsugerido
+         FROM produtos_externo
+        WHERE loja_id = ANY($1::int[])
+          AND NULLIF(LTRIM(codigobarra,'0'),'') = ANY($2::text[])`,
+      [lojaIds, eans.map(e => String(e).replace(/^0+/, '') || e)]
+    ) : [];
+
+    // 4) Vendas: media 28d, ultima_venda, qtd_total 90d (pro ranking)
+    const vendas = lojaIds.length && eans.length ? await dbQuery(
+      `SELECT loja_id,
+              NULLIF(LTRIM(codigobarra,'0'),'') AS ean,
+              SUM(CASE WHEN data_venda >= CURRENT_DATE - INTERVAL '28 days' THEN qtd_vendida ELSE 0 END) AS qtd_28d,
+              SUM(CASE WHEN data_venda >= CURRENT_DATE - INTERVAL '90 days' THEN qtd_vendida ELSE 0 END) AS qtd_90d,
+              MAX(data_venda) AS ultima_venda
+         FROM vendas_historico
+        WHERE loja_id = ANY($1::int[])
+          AND NULLIF(LTRIM(codigobarra,'0'),'') = ANY($2::text[])
+          AND COALESCE(tipo_saida,'venda') = 'venda'
+          AND data_venda >= CURRENT_DATE - INTERVAL '90 days'
+        GROUP BY loja_id, ean`,
+      [lojaIds, eans.map(e => String(e).replace(/^0+/, '') || e)]
+    ) : [];
+
+    // 5) Estoque dos CDs destino — match por mat_codi pelo EAN do produto origem
+    // cd_destino tem seu próprio mat_codi → join via cd_material[destino].ean_codi = ean_origem
+    const estCds = cdDestinos.length && eans.length ? await dbQuery(
+      `SELECT cd_m.cd_codigo, cd_m.ean_codi, cd_e.est_quan
+         FROM cd_material cd_m
+         LEFT JOIN cd_estoque cd_e ON cd_e.cd_codigo = cd_m.cd_codigo AND cd_e.pro_codi = cd_m.mat_codi
+        WHERE cd_m.cd_codigo = ANY($1::text[]) AND cd_m.ean_codi = ANY($2::text[])`,
+      [cdDestinos.map(d => d.cd_codigo), eans]
+    ) : [];
+
+    // 6) Trânsito por (loja_id, ean) — itens em notas_entrada origem='cd'/'transferencia_loja' não fechadas
+    const transito = lojaIds.length && eans.length ? await dbQuery(
+      `SELECT n.loja_id,
+              NULLIF(LTRIM(COALESCE(i.ean_validado, i.ean_nota),'0'),'') AS ean,
+              COALESCE(SUM(i.quantidade),0) AS qtd_transito
+         FROM itens_nota i
+         JOIN notas_entrada n ON n.id = i.nota_id
+        WHERE n.loja_id = ANY($1::int[])
+          AND n.origem IN ('cd','transferencia_loja')
+          AND n.status NOT IN ('fechada','validada','arquivada','cancelada')
+          AND NULLIF(LTRIM(COALESCE(i.ean_validado, i.ean_nota),'0'),'') = ANY($2::text[])
+        GROUP BY n.loja_id, ean`,
+      [lojaIds, eans.map(e => String(e).replace(/^0+/, '') || e)]
+    ) : [];
+
+    // 7) Quantidades editadas (Sug_Editada)
+    const qtds = await dbQuery(
+      `SELECT destino_id, mat_codi, qtd FROM pedidos_distrib_quantidades
+        WHERE cd_origem_codigo = $1 AND mat_codi = ANY($2::text[])`,
+      [cdOrigem, matCodis]
+    );
+
+    // 8) Ranking — soma qtd_vendida × preço admin do produto (todas lojas, 90d)
+    // Usa preco_admin do CD como proxy do "valor vendido"
+    const rankingRows = eans.length ? await dbQuery(
+      `SELECT NULLIF(LTRIM(codigobarra,'0'),'') AS ean,
+              SUM(qtd_vendida) AS qtd_total
+         FROM vendas_historico
+        WHERE NULLIF(LTRIM(codigobarra,'0'),'') = ANY($1::text[])
+          AND COALESCE(tipo_saida,'venda') = 'venda'
+          AND data_venda >= CURRENT_DATE - INTERVAL '90 days'
+        GROUP BY ean`,
+      [eans.map(e => String(e).replace(/^0+/, '') || e)]
+    ) : [];
+
+    // ── Consolida tudo no JSON por produto ──
+    const norm = e => String(e || '').replace(/^0+/, '') || e;
+    const eanIdx = new Map();
+    for (const p of produtos) {
+      eanIdx.set(norm(p.ean_codi), p);
+      p.destinos = {};
+      p.vendas = {};
     }
-    for (const p of produtos) p.qtds = qtdMap.get(p.mat_codi) || {};
+
+    // Estoque + preço por loja
+    const estLojaMap = new Map(); // `${loja_id}|${ean}` → { est, preco }
+    for (const r of estLojas) estLojaMap.set(`${r.loja_id}|${r.ean}`, r);
+
+    // Vendas por loja
+    const vendaMap = new Map();
+    for (const v of vendas) vendaMap.set(`${v.loja_id}|${v.ean}`, v);
+
+    // Estoque CD destino
+    const estCdMap = new Map(); // `${cd_codigo}|${ean}` → { est }
+    for (const e of estCds) estCdMap.set(`${e.cd_codigo}|${norm(e.ean_codi)}`, e);
+
+    // Trânsito loja
+    const transitoMap = new Map();
+    for (const t of transito) transitoMap.set(`${t.loja_id}|${t.ean}`, parseFloat(t.qtd_transito));
+
+    // Sug_Editada
+    const sugEditMap = new Map(); // `${mat_codi}|${destino_id}` → qtd
+    for (const q of qtds) sugEditMap.set(`${q.mat_codi}|${q.destino_id}`, parseFloat(q.qtd));
+
+    // Ranking
+    const totaisRanking = rankingRows
+      .map(r => {
+        const p = eanIdx.get(r.ean);
+        const preco = p?.preco_admin ? parseFloat(p.preco_admin) : 0;
+        return { ean: r.ean, valor: parseFloat(r.qtd_total) * preco };
+      })
+      .sort((a, b) => b.valor - a.valor);
+    const rankMap = new Map(totaisRanking.map((r, i) => [r.ean, i + 1]));
+
+    for (const p of produtos) {
+      const eanN = norm(p.ean_codi);
+      p.ranking = rankMap.get(eanN) || null;
+      const qtdEmb = parseInt(p.qtd_embalagem) || 1;
+
+      for (const d of destinos) {
+        const slot = { estoque_un: 0, estoque_cx: 0, transito_un: 0, transito_cx: 0, sugestao_cx: 0, sug_editada: 0 };
+
+        if (d.tipo === 'LOJA' && d.loja_id) {
+          const e = estLojaMap.get(`${d.loja_id}|${eanN}`);
+          const v = vendaMap.get(`${d.loja_id}|${eanN}`);
+          const t = transitoMap.get(`${d.loja_id}|${eanN}`) || 0;
+          slot.estoque_un = e ? parseFloat(e.estdisponivel) : 0;
+          slot.transito_un = t;
+          slot.estoque_cx = qtdEmb > 0 ? Math.floor(slot.estoque_un / qtdEmb) : 0;
+          slot.transito_cx = qtdEmb > 0 ? Math.floor(slot.transito_un / qtdEmb) : 0;
+          // Sugestão: max(0, 35 × media_dia − est − trans), em CX
+          const media_dia = v ? parseFloat(v.qtd_28d) / 28 : 0;
+          const sug_un = Math.max(0, 35 * media_dia - slot.estoque_un - slot.transito_un);
+          slot.sugestao_cx = qtdEmb > 0 ? Math.ceil(sug_un / qtdEmb) : 0;
+          // Vendas
+          if (v) {
+            p.vendas[d.loja_id] = {
+              media_28d: media_dia,
+              preco_atual: e ? parseFloat(e.prsugerido) : null,
+              ultima_venda: v.ultima_venda,
+            };
+          } else if (e) {
+            p.vendas[d.loja_id] = { media_28d: 0, preco_atual: parseFloat(e.prsugerido), ultima_venda: null };
+          }
+        } else if (d.tipo === 'CD' && d.cd_codigo) {
+          const e = estCdMap.get(`${d.cd_codigo}|${eanN}`);
+          slot.estoque_un = e?.est_quan ? parseFloat(e.est_quan) : 0;
+          slot.estoque_cx = qtdEmb > 0 ? Math.floor(slot.estoque_un / qtdEmb) : 0;
+          // Trânsito CD destino e sugestão CD: deferido (Task 5)
+          slot.transito_un = 0;
+          slot.transito_cx = 0;
+          slot.sugestao_cx = 0;
+        }
+
+        slot.sug_editada = sugEditMap.get(`${p.mat_codi}|${d.id}`) || 0;
+        p.destinos[d.id] = slot;
+      }
+    }
 
     res.json({ cd_origem: cdOrigem, destinos, produtos });
   } catch (e) {
