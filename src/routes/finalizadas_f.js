@@ -257,6 +257,32 @@ router.get('/resumo', apenasAdmin, async (req, res) => {
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
+// Limpa "lixo pré-cutoff": remove notas criadas pelo detector antes do cutoff
+// e desmarca auditoria_eco_status de notas pré-cutoff.
+router.post('/limpar-pre-cutoff', apenasAdmin, async (req, res) => {
+  try {
+    const deletadas = await dbQuery(`
+      DELETE FROM notas_entrada
+       WHERE status = 'finalizada_f'
+         AND COALESCE(finalizada_f_motivo,'') LIKE 'NUNCA IMPORTADA%'
+         AND chegou_no_erp_em < $1::date
+       RETURNING id`, [DATA_CORTE_ECO]);
+
+    const desmarcadas = await dbQuery(`
+      UPDATE notas_entrada
+         SET auditoria_eco_status = NULL,
+             auditoria_eco_em = NULL
+       WHERE auditoria_eco_status IS NOT NULL
+         AND (chegou_no_erp_em IS NULL OR chegou_no_erp_em < $1::date)
+       RETURNING id`, [DATA_CORTE_ECO]);
+
+    res.json({ ok: true, deletadas: deletadas.length, desmarcadas: desmarcadas.length });
+  } catch (e) {
+    console.error('[finalizadas_f limpar]', e.message);
+    res.status(500).json({ erro: e.message });
+  }
+});
+
 // Diagnóstico (token via QS)
 router.get('/diagnosticar/:numero_nota', autenticarComQS, async (req, res) => {
   try {

@@ -93,9 +93,10 @@ tbody tr:hover{background:#1a2744}
   <div class="card">
     <h3>Resumo (categoria atual) por loja</h3>
     <div class="resumo-grid" id="resumo"><p class="muted">Carregando...</p></div>
-    <div style="margin-top:10px">
+    <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <button class="btn-ghost btn-sm" onclick="rodarDeteccao(this)">⚡ Detectar agora</button>
-      <span class="muted" style="font-size:11px">(roda automaticamente 1x ao dia)</span>
+      <button class="btn-ghost btn-sm" onclick="limparPreCutoff(this)" style="border-color:#dc2626;color:#fca5a5">🗑 Limpar lixo pré-10/05/2026</button>
+      <span class="muted" style="font-size:11px">(detector roda automaticamente 1x ao dia)</span>
     </div>
   </div>
 
@@ -255,6 +256,18 @@ function reabrir(id) {
       <button class="btn-success btn-sm" onclick="justificar(${id})">Salvar</button>
     </div>
   `;
+}
+
+async function limparPreCutoff(btn) {
+  if (!confirm('Apagar TODAS as notas finalizada_f criadas pelo detector com chegada antes de 10/05/2026, e desmarcar auditoria_eco_status de notas pré-cutoff. Continuar?')) return;
+  btn.disabled = true; btn.textContent = 'Limpando...';
+  try {
+    const r = await api('/api/finalizadas-f/limpar-pre-cutoff', 'POST');
+    showMsg(`✅ ${r.deletadas} apagadas + ${r.desmarcadas} desmarcadas`, 'ok');
+    carregarResumo();
+    carregar();
+  } catch (e) { showMsg(e.message, 'err'); }
+  finally { btn.disabled = false; btn.textContent = '🗑 Limpar lixo pré-10/05/2026'; }
 }
 
 async function rodarDeteccao(btn) {
