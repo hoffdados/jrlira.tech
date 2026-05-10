@@ -163,7 +163,7 @@ router.get('/grade', adminOuCeo, async (req, res) => {
          GROUP BY i.cd_codigo, i.pro_codi
       )
       SELECT cd_m.mat_codi,
-             cd_m.ean_codi,
+             COALESCE(NULLIF(pe.ean_principal_cd,''), NULLIF(cd_m.ean_codi,'')) AS ean_codi,
              cd_m.mat_desc AS descricao,
              cd_m.mat_refe AS referencia,
              cd_e.est_quan AS est_dist,
@@ -186,18 +186,33 @@ router.get('/grade', adminOuCeo, async (req, res) => {
     const matCodis = produtos.map(p => p.mat_codi);
 
     // 3) Estoque + preço atual por (loja_id, ean) — produtos_externo
+    // Match por codigobarra OU produtoprincipal (loja pode usar EAN alternativo apontando pro principal)
+    const eansNorm = eans.map(e => String(e).replace(/^0+/, '') || e);
     const estLojas = lojaIds.length && eans.length ? await dbQuery(
-      `SELECT loja_id, NULLIF(LTRIM(codigobarra,'0'),'') AS ean, estdisponivel, prsugerido
+      `SELECT loja_id,
+              NULLIF(LTRIM(codigobarra,'0'),'') AS codbarra,
+              NULLIF(LTRIM(produtoprincipal,'0'),'') AS principal,
+              estdisponivel, prsugerido
          FROM produtos_externo
         WHERE loja_id = ANY($1::int[])
-          AND NULLIF(LTRIM(codigobarra,'0'),'') = ANY($2::text[])`,
-      [lojaIds, eans.map(e => String(e).replace(/^0+/, '') || e)]
+          AND (NULLIF(LTRIM(codigobarra,'0'),'')      = ANY($2::text[])
+            OR NULLIF(LTRIM(produtoprincipal,'0'),'') = ANY($2::text[]))`,
+      [lojaIds, eansNorm]
     ) : [];
 
     // 4) Vendas: media 28d, ultima_venda, qtd_total 90d (pro ranking)
-    const vendas = lojaIds.length && eans.length ? await dbQuery(
+    // vendas_historico não tem produtoprincipal, então usa também os codigobarra alternativos das lojas
+    // que apontam pro principal. Coletamos primeiro essa lista expandida via produtos_externo.
+    const eansExpandidos = new Set(eansNorm);
+    for (const r of estLojas) {
+      if (r.codbarra)  eansExpandidos.add(r.codbarra);
+      if (r.principal) eansExpandidos.add(r.principal);
+    }
+    const eansList = [...eansExpandidos];
+
+    const vendas = lojaIds.length && eansList.length ? await dbQuery(
       `SELECT loja_id,
-              NULLIF(LTRIM(codigobarra,'0'),'') AS ean,
+              NULLIF(LTRIM(codigobarra,'0'),'') AS codbarra,
               SUM(CASE WHEN data_venda >= CURRENT_DATE - INTERVAL '28 days' THEN qtd_vendida ELSE 0 END) AS qtd_28d,
               SUM(CASE WHEN data_venda >= CURRENT_DATE - INTERVAL '90 days' THEN qtd_vendida ELSE 0 END) AS qtd_90d,
               MAX(data_venda) AS ultima_venda
@@ -206,8 +221,8 @@ router.get('/grade', adminOuCeo, async (req, res) => {
           AND NULLIF(LTRIM(codigobarra,'0'),'') = ANY($2::text[])
           AND COALESCE(tipo_saida,'venda') = 'venda'
           AND data_venda >= CURRENT_DATE - INTERVAL '90 days'
-        GROUP BY loja_id, ean`,
-      [lojaIds, eans.map(e => String(e).replace(/^0+/, '') || e)]
+        GROUP BY loja_id, codbarra`,
+      [lojaIds, eansList]
     ) : [];
 
     // 5) Estoque dos CDs destino — match por mat_codi pelo EAN do produto origem
@@ -221,9 +236,9 @@ router.get('/grade', adminOuCeo, async (req, res) => {
     ) : [];
 
     // 6) Trânsito por (loja_id, ean) — itens em notas_entrada origem='cd'/'transferencia_loja' não fechadas
-    const transito = lojaIds.length && eans.length ? await dbQuery(
+    const transito = lojaIds.length && eansList.length ? await dbQuery(
       `SELECT n.loja_id,
-              NULLIF(LTRIM(COALESCE(i.ean_validado, i.ean_nota),'0'),'') AS ean,
+              NULLIF(LTRIM(COALESCE(i.ean_validado, i.ean_nota),'0'),'') AS codbarra,
               COALESCE(SUM(i.quantidade),0) AS qtd_transito
          FROM itens_nota i
          JOIN notas_entrada n ON n.id = i.nota_id
@@ -231,8 +246,8 @@ router.get('/grade', adminOuCeo, async (req, res) => {
           AND n.origem IN ('cd','transferencia_loja')
           AND n.status NOT IN ('fechada','validada','arquivada','cancelada')
           AND NULLIF(LTRIM(COALESCE(i.ean_validado, i.ean_nota),'0'),'') = ANY($2::text[])
-        GROUP BY n.loja_id, ean`,
-      [lojaIds, eans.map(e => String(e).replace(/^0+/, '') || e)]
+        GROUP BY n.loja_id, codbarra`,
+      [lojaIds, eansList]
     ) : [];
 
     // 7) Quantidades editadas (Sug_Editada)
@@ -243,16 +258,15 @@ router.get('/grade', adminOuCeo, async (req, res) => {
     );
 
     // 8) Ranking — soma qtd_vendida × preço admin do produto (todas lojas, 90d)
-    // Usa preco_admin do CD como proxy do "valor vendido"
-    const rankingRows = eans.length ? await dbQuery(
-      `SELECT NULLIF(LTRIM(codigobarra,'0'),'') AS ean,
+    const rankingRows = eansList.length ? await dbQuery(
+      `SELECT NULLIF(LTRIM(codigobarra,'0'),'') AS codbarra,
               SUM(qtd_vendida) AS qtd_total
          FROM vendas_historico
         WHERE NULLIF(LTRIM(codigobarra,'0'),'') = ANY($1::text[])
           AND COALESCE(tipo_saida,'venda') = 'venda'
           AND data_venda >= CURRENT_DATE - INTERVAL '90 days'
-        GROUP BY ean`,
-      [eans.map(e => String(e).replace(/^0+/, '') || e)]
+        GROUP BY codbarra`,
+      [eansList]
     ) : [];
 
     // ── Consolida tudo no JSON por produto ──
@@ -264,32 +278,67 @@ router.get('/grade', adminOuCeo, async (req, res) => {
       p.vendas = {};
     }
 
-    // Estoque + preço por loja
+    // Estoque + preço por loja — mapeia BOTH codbarra E principal apontando pra mesma loja×ean_principal
+    // Soma estoques quando há múltiplos codbarra pro mesmo principal (ex: produto + variação)
     const estLojaMap = new Map(); // `${loja_id}|${ean}` → { est, preco }
-    for (const r of estLojas) estLojaMap.set(`${r.loja_id}|${r.ean}`, r);
+    const lojaEanCodbarras = new Map(); // `${loja_id}|${ean_principal}` → Set<codbarras alternativos>
+    for (const r of estLojas) {
+      // r tem codbarra e principal. O EAN "destino" é o principal se existir, senão o codbarra
+      const ean = r.principal || r.codbarra;
+      if (!ean) continue;
+      const key = `${r.loja_id}|${ean}`;
+      const acc = estLojaMap.get(key);
+      const est = parseFloat(r.estdisponivel) || 0;
+      const preco = parseFloat(r.prsugerido) || null;
+      if (acc) {
+        acc.estdisponivel = (parseFloat(acc.estdisponivel) || 0) + est;
+        if (!acc.prsugerido && preco) acc.prsugerido = preco;
+      } else {
+        estLojaMap.set(key, { estdisponivel: est, prsugerido: preco });
+      }
+      // Coleta os codbarras (pra usar nas vendas)
+      const k2 = `${r.loja_id}|${ean}`;
+      if (!lojaEanCodbarras.has(k2)) lojaEanCodbarras.set(k2, new Set());
+      if (r.codbarra) lojaEanCodbarras.get(k2).add(r.codbarra);
+      if (r.principal) lojaEanCodbarras.get(k2).add(r.principal);
+    }
 
-    // Vendas por loja
-    const vendaMap = new Map();
-    for (const v of vendas) vendaMap.set(`${v.loja_id}|${v.ean}`, v);
+    // Vendas por loja — agregadas por (loja_id, codbarra). Soma os codbarras vinculados ao ean principal.
+    const vendaPorCb = new Map();
+    for (const v of vendas) vendaPorCb.set(`${v.loja_id}|${v.codbarra}`, v);
+
+    // Trânsito loja — idem
+    const transitoPorCb = new Map();
+    for (const t of transito) transitoPorCb.set(`${t.loja_id}|${t.codbarra}`, parseFloat(t.qtd_transito));
 
     // Estoque CD destino
-    const estCdMap = new Map(); // `${cd_codigo}|${ean}` → { est }
+    const estCdMap = new Map();
     for (const e of estCds) estCdMap.set(`${e.cd_codigo}|${norm(e.ean_codi)}`, e);
 
-    // Trânsito loja
-    const transitoMap = new Map();
-    for (const t of transito) transitoMap.set(`${t.loja_id}|${t.ean}`, parseFloat(t.qtd_transito));
-
     // Sug_Editada
-    const sugEditMap = new Map(); // `${mat_codi}|${destino_id}` → qtd
+    const sugEditMap = new Map();
     for (const q of qtds) sugEditMap.set(`${q.mat_codi}|${q.destino_id}`, parseFloat(q.qtd));
 
-    // Ranking
-    const totaisRanking = rankingRows
-      .map(r => {
-        const p = eanIdx.get(r.ean);
+    // Ranking — soma TOTAL de qtd vendida por ean principal (somando todos codbarras vinculados)
+    // Pra cada produto, agrega pelas lojas/codbarras
+    const qtdPorPrincipal = new Map(); // ean_principal → qtd_total
+    for (const r of rankingRows) {
+      // r.codbarra é um codigobarra qualquer; precisa achar o principal
+      // Procura nos estLojas: qual codbarra/principal aponta pra esse codbarra
+      const cb = r.codbarra;
+      // Tenta direto: cb É o principal (caso simples)
+      let principal = cb;
+      // Sobrepõe se cb aparece como codbarra de alguma linha que tem principal diferente
+      for (const er of estLojas) {
+        if (er.codbarra === cb && er.principal && er.principal !== cb) { principal = er.principal; break; }
+      }
+      qtdPorPrincipal.set(principal, (qtdPorPrincipal.get(principal) || 0) + parseFloat(r.qtd_total));
+    }
+    const totaisRanking = [...qtdPorPrincipal.entries()]
+      .map(([ean, qtd]) => {
+        const p = eanIdx.get(ean);
         const preco = p?.preco_admin ? parseFloat(p.preco_admin) : 0;
-        return { ean: r.ean, valor: parseFloat(r.qtd_total) * preco };
+        return { ean, valor: qtd * preco };
       })
       .sort((a, b) => b.valor - a.valor);
     const rankMap = new Map(totaisRanking.map((r, i) => [r.ean, i + 1]));
@@ -304,25 +353,32 @@ router.get('/grade', adminOuCeo, async (req, res) => {
 
         if (d.tipo === 'LOJA' && d.loja_id) {
           const e = estLojaMap.get(`${d.loja_id}|${eanN}`);
-          const v = vendaMap.get(`${d.loja_id}|${eanN}`);
-          const t = transitoMap.get(`${d.loja_id}|${eanN}`) || 0;
+          // Soma vendas/trânsito de todos os codbarras vinculados ao ean principal nessa loja
+          const cbs = lojaEanCodbarras.get(`${d.loja_id}|${eanN}`) || new Set([eanN]);
+          let qtd_28d = 0, qtd_90d = 0, ultima = null, transitoUn = 0;
+          for (const cb of cbs) {
+            const v = vendaPorCb.get(`${d.loja_id}|${cb}`);
+            if (v) {
+              qtd_28d += parseFloat(v.qtd_28d) || 0;
+              qtd_90d += parseFloat(v.qtd_90d) || 0;
+              if (v.ultima_venda && (!ultima || v.ultima_venda > ultima)) ultima = v.ultima_venda;
+            }
+            const t = transitoPorCb.get(`${d.loja_id}|${cb}`);
+            if (t) transitoUn += t;
+          }
           slot.estoque_un = e ? parseFloat(e.estdisponivel) : 0;
-          slot.transito_un = t;
+          slot.transito_un = transitoUn;
           slot.estoque_cx = qtdEmb > 0 ? Math.floor(slot.estoque_un / qtdEmb) : 0;
           slot.transito_cx = qtdEmb > 0 ? Math.floor(slot.transito_un / qtdEmb) : 0;
-          // Sugestão: max(0, 35 × media_dia − est − trans), em CX
-          const media_dia = v ? parseFloat(v.qtd_28d) / 28 : 0;
+          const media_dia = qtd_28d / 28;
           const sug_un = Math.max(0, 35 * media_dia - slot.estoque_un - slot.transito_un);
           slot.sugestao_cx = qtdEmb > 0 ? Math.ceil(sug_un / qtdEmb) : 0;
-          // Vendas
-          if (v) {
+          if (e || qtd_28d > 0) {
             p.vendas[d.loja_id] = {
               media_28d: media_dia,
-              preco_atual: e ? parseFloat(e.prsugerido) : null,
-              ultima_venda: v.ultima_venda,
+              preco_atual: e?.prsugerido ? parseFloat(e.prsugerido) : null,
+              ultima_venda: ultima,
             };
-          } else if (e) {
-            p.vendas[d.loja_id] = { media_28d: 0, preco_atual: parseFloat(e.prsugerido), ultima_venda: null };
           }
         } else if (d.tipo === 'CD' && d.cd_codigo) {
           const e = estCdMap.get(`${d.cd_codigo}|${eanN}`);
