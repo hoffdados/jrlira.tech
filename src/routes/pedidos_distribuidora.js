@@ -252,6 +252,8 @@ router.get('/grade', adminOuCeo, async (req, res) => {
         WHERE n.loja_id = ANY($1::int[])
           AND n.origem IN ('cd','transferencia_loja')
           AND n.status NOT IN ('fechada','validada','arquivada','cancelada','finalizada_f')
+          AND COALESCE(n.mcp_status_cd, 'A') <> 'C'
+          AND n.chegou_no_erp_em IS NULL
           AND NULLIF(LTRIM(COALESCE(i.ean_validado, i.ean_nota),'0'),'') = ANY($2::text[])
         GROUP BY n.loja_id, codbarra`,
       [lojaIds, eansList]

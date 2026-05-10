@@ -1,13 +1,18 @@
-// Notas Finalizadas_F: notas que saíram do CD, chegaram na loja (sync Pentaho confirmou),
-// mas pularam nosso fluxo de cadastro/conferência/auditoria.
+// Cross-check app x ERP (Ecocentauro). Roda 1x ao dia.
 //
-// Detector:
-// - notas_entrada origem='cd'/'transferencia_loja'
-// - status NOT IN (fechada/validada/arquivada/cancelada/finalizada_f)
-// - existe match em compras_historico (loja_id + numeronfe + fornecedor_cnpj)
-// → marca como 'finalizada_f', registra motivo, sai do trânsito
+// Categorias:
 //
-// Diretor (admin) justifica via /auditoria-finalizada-f.
+//   FINALIZADAS_ECO  = nota CHEGOU NO ERP da loja (compras_historico)
+//                      MAS NÃO foi finalizada no nosso app
+//                      (ou nem foi importada no app — XML perdido)
+//                      Excluindo: notas com mcp_status='C' no CD (canceladas)
+//
+//   N_FINALIZADAS_ECO = nota foi FECHADA no app (status fechada/validada)
+//                       MAS NÃO chegou no ERP da loja (sem compras_historico)
+//                       Janela: importado_em > 24h atrás
+//
+// Match nota_entrada ↔ compras_historico: loja_id + numero_nota + fornecedor_cnpj
+// Match nota_entrada ↔ cd_movcompra (pra mcp_status): cd_codigo do CD origem (via fornecedor_cnpj→destino) + mcp_nnotafis = numero_nota
 
 const express = require('express');
 const router = express.Router();
@@ -17,7 +22,6 @@ const jwt = require('jsonwebtoken');
 
 const apenasAdmin = [autenticar, exigirPerfil('admin')];
 
-// Aceita token via Authorization header OU ?token= (pra abrir url no browser)
 function autenticarComQS(req, res, next) {
   let token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
   if (!token && req.query.token) token = String(req.query.token);
@@ -29,34 +33,75 @@ function autenticarComQS(req, res, next) {
   } catch { res.status(401).json({ erro: 'Token invalido' }); }
 }
 
-// Detecta e marca/cria notas como finalizada_f.
-// 2 cenários:
-//   A) Nota EXISTE em notas_entrada (origem=cd) mas pulou o fluxo → UPDATE pra finalizada_f
-//   B) Nota NÃO EXISTE em notas_entrada (Pentaho recebeu mas XML nunca foi importado) → INSERT como finalizada_f
-async function detectarFinalizadasF() {
-  // Cenário A: UPDATE
-  const updated = await dbQuery(`
-    UPDATE notas_entrada
-       SET status = 'finalizada_f',
-           finalizada_f_em = NOW(),
-           finalizada_f_motivo = 'detectada via compras_historico (chegou na loja sem passar pelo app)'
-     WHERE id IN (
-       SELECT DISTINCT n.id
-         FROM notas_entrada n
-         JOIN compras_historico c
-           ON c.loja_id = n.loja_id
-          AND c.numeronfe = n.numero_nota
-          AND COALESCE(NULLIF(c.fornecedor_cnpj,''),'') =
-              COALESCE(NULLIF(n.fornecedor_cnpj,''),'')
-        WHERE n.origem IN ('cd','transferencia_loja')
-          AND n.status NOT IN ('fechada','validada','arquivada','cancelada','finalizada_f')
-     )
-     RETURNING id, loja_id, numero_nota, fornecedor_cnpj, fornecedor_nome
+// Detector — 3 cenários:
+//
+// A) UPDATE notas existentes que chegaram no ERP, status intermediário no app,
+//    NÃO canceladas no CD (mcp_status != 'C')
+//      → status='finalizada_f', auditoria_eco_status='finalizadas_eco'
+//
+// B) INSERT notas que vieram de CDs cadastrados, chegaram no ERP, MAS não existem em notas_entrada
+//    NÃO canceladas no CD
+//      → status='finalizada_f', auditoria_eco_status='finalizadas_eco', motivo='NUNCA IMPORTADA'
+//
+// C) UPDATE notas fechadas no app que NÃO chegaram no ERP em >24h
+//      → mantém status original, marca auditoria_eco_status='n_finalizadas_eco'
+async function detectarStatusEco() {
+  // Atualiza cache mcp_status_cd das notas com origem=cd via JOIN com cd_movcompra do CD origem
+  // (subquery: encontra cd_codigo cujo CNPJ bate com fornecedor_cnpj da nota, e busca mcp_status)
+  await dbQuery(`
+    UPDATE notas_entrada n
+       SET mcp_status_cd = sub.mcp_status
+      FROM (
+        SELECT n2.id, mc.mcp_status
+          FROM notas_entrada n2
+          JOIN pedidos_distrib_destinos d
+            ON d.tipo='CD' AND d.cd_codigo IS NOT NULL
+           AND COALESCE(NULLIF(d.cnpj,''),'') = COALESCE(NULLIF(n2.fornecedor_cnpj,''),'')
+          JOIN cd_movcompra mc
+            ON mc.cd_codigo = d.cd_codigo
+           AND mc.mcp_nnotafis = n2.numero_nota
+         WHERE n2.origem IN ('cd','transferencia_loja')
+           AND (n2.mcp_status_cd IS NULL OR n2.mcp_status_cd <> mc.mcp_status)
+      ) sub
+     WHERE sub.id = n.id
   `);
 
-  // Cenário B: INSERT — notas em compras_historico vindas de CDs cadastrados que nunca foram importadas
-  // Usa CNPJ dos destinos pra saber quais CNPJs são "CD origem"
-  const inserted = await dbQuery(`
+  // Atualiza cache chegou_no_erp_em via compras_historico
+  await dbQuery(`
+    UPDATE notas_entrada n
+       SET chegou_no_erp_em = sub.data_entrada
+      FROM (
+        SELECT n2.id, MIN(c.data_entrada) AS data_entrada
+          FROM notas_entrada n2
+          JOIN compras_historico c
+            ON c.loja_id = n2.loja_id
+           AND c.numeronfe = n2.numero_nota
+           AND COALESCE(NULLIF(c.fornecedor_cnpj,''),'') =
+               COALESCE(NULLIF(n2.fornecedor_cnpj,''),'')
+         WHERE n2.origem IN ('cd','transferencia_loja')
+           AND n2.chegou_no_erp_em IS NULL
+         GROUP BY n2.id
+      ) sub
+     WHERE sub.id = n.id
+  `);
+
+  // Cenário A: notas EXISTENTES que chegaram no ERP, status nao fechado, e NAO canceladas no CD
+  const updatedA = await dbQuery(`
+    UPDATE notas_entrada
+       SET status = 'finalizada_f',
+           auditoria_eco_status = 'finalizadas_eco',
+           auditoria_eco_em = NOW(),
+           finalizada_f_em = NOW(),
+           finalizada_f_motivo = 'chegou no ERP mas pulou cadastro/conferencia/auditoria do app'
+     WHERE chegou_no_erp_em IS NOT NULL
+       AND origem IN ('cd','transferencia_loja')
+       AND status NOT IN ('fechada','validada','arquivada','cancelada','finalizada_f')
+       AND COALESCE(mcp_status_cd, 'A') <> 'C'
+     RETURNING id, loja_id, numero_nota, fornecedor_cnpj
+  `);
+
+  // Cenário B: notas que NAO existem em notas_entrada mas chegaram no ERP via CD
+  const insertedB = await dbQuery(`
     WITH cnpjs_cd AS (
       SELECT DISTINCT cnpj, nome FROM pedidos_distrib_destinos WHERE tipo = 'CD' AND cnpj IS NOT NULL
     ),
@@ -64,59 +109,86 @@ async function detectarFinalizadasF() {
       SELECT c.loja_id, c.numeronfe, c.fornecedor_cnpj,
              cd.nome AS fornecedor_nome,
              MIN(c.data_emissao) AS data_emissao,
+             MIN(c.data_entrada) AS data_entrada,
              SUM(COALESCE(c.custo_total, 0)) AS valor_total
         FROM compras_historico c
         JOIN cnpjs_cd cd ON cd.cnpj = c.fornecedor_cnpj
        WHERE NOT EXISTS (
          SELECT 1 FROM notas_entrada n
-          WHERE n.loja_id = c.loja_id
-            AND n.numero_nota = c.numeronfe
+          WHERE n.loja_id = c.loja_id AND n.numero_nota = c.numeronfe
             AND COALESCE(NULLIF(n.fornecedor_cnpj,''),'') =
                 COALESCE(NULLIF(c.fornecedor_cnpj,''),'')
        )
        GROUP BY c.loja_id, c.numeronfe, c.fornecedor_cnpj, cd.nome
     )
     INSERT INTO notas_entrada (
-      loja_id, numero_nota, fornecedor_cnpj, fornecedor_nome, data_emissao, valor_total,
-      status, origem, finalizada_f_em, finalizada_f_motivo, importado_em
+      loja_id, numero_nota, fornecedor_cnpj, fornecedor_nome,
+      data_emissao, valor_total, status, origem,
+      auditoria_eco_status, auditoria_eco_em,
+      finalizada_f_em, finalizada_f_motivo,
+      chegou_no_erp_em, importado_em
     )
-    SELECT loja_id, numeronfe, fornecedor_cnpj, fornecedor_nome, data_emissao, valor_total,
-           'finalizada_f', 'cd', NOW(),
-           'NUNCA IMPORTADA — XML nao foi processado mas chegou na loja (compras_historico)',
-           NOW()
+    SELECT loja_id, numeronfe, fornecedor_cnpj, fornecedor_nome,
+           data_emissao, valor_total, 'finalizada_f', 'cd',
+           'finalizadas_eco', NOW(),
+           NOW(), 'NUNCA IMPORTADA — XML nao processado, mas chegou na loja',
+           data_entrada, NOW()
       FROM candidatas
-    RETURNING id, loja_id, numero_nota, fornecedor_cnpj, fornecedor_nome
+    RETURNING id, loja_id, numero_nota, fornecedor_cnpj
   `);
 
-  return { updated, inserted };
+  // Cenário C: notas FECHADAS no app que NAO chegaram no ERP em >24h
+  const updatedC = await dbQuery(`
+    UPDATE notas_entrada
+       SET auditoria_eco_status = 'n_finalizadas_eco',
+           auditoria_eco_em = NOW()
+     WHERE status IN ('fechada','validada')
+       AND origem IN ('cd','transferencia_loja')
+       AND chegou_no_erp_em IS NULL
+       AND importado_em < NOW() - INTERVAL '24 hours'
+       AND auditoria_eco_status IS NULL
+       AND COALESCE(mcp_status_cd, 'A') <> 'C'
+     RETURNING id, loja_id, numero_nota, fornecedor_cnpj
+  `);
+
+  return {
+    updated_finalizadas_eco: updatedA,
+    inserted_finalizadas_eco: insertedB,
+    updated_n_finalizadas_eco: updatedC,
+  };
 }
 
-// Endpoint manual pra disparar detecção
+// POST /detectar (admin) — dispara manual
 router.post('/detectar', apenasAdmin, async (req, res) => {
   try {
-    const r = await detectarFinalizadasF();
+    const r = await detectarStatusEco();
     res.json({
       ok: true,
-      atualizadas: r.updated.length,
-      criadas: r.inserted.length,
-      total: r.updated.length + r.inserted.length,
-      detalhes: { updated: r.updated, inserted: r.inserted },
+      finalizadas_eco_atualizadas: r.updated_finalizadas_eco.length,
+      finalizadas_eco_criadas:     r.inserted_finalizadas_eco.length,
+      n_finalizadas_eco_marcadas:  r.updated_n_finalizadas_eco.length,
+      total: r.updated_finalizadas_eco.length + r.inserted_finalizadas_eco.length + r.updated_n_finalizadas_eco.length,
     });
   } catch (e) {
-    console.error('[finalizadas_f detectar]', e.message);
+    console.error('[finalizadas_eco detectar]', e.message);
     res.status(500).json({ erro: e.message });
   }
 });
 
-// Lista notas finalizada_f (com filtro: pendentes de justificativa por padrão)
+// GET / — lista por categoria. ?categoria=finalizadas_eco|n_finalizadas_eco
 router.get('/', apenasAdmin, async (req, res) => {
   try {
-    const filtro = req.query.filtro || 'pendentes'; // pendentes | justificadas | todas
+    const cat = req.query.categoria || 'finalizadas_eco';
+    const filtro = req.query.filtro || 'pendentes';
     const lojaId = req.query.loja_id ? parseInt(req.query.loja_id) : null;
     const limit  = Math.min(parseInt(req.query.limit) || 100, 500);
 
-    const params = [];
-    let where = `n.status = 'finalizada_f'`;
+    if (!['finalizadas_eco', 'n_finalizadas_eco'].includes(cat)) {
+      return res.status(400).json({ erro: 'categoria invalida' });
+    }
+
+    const params = [cat];
+    let where = `n.auditoria_eco_status = $1`;
     if (filtro === 'pendentes')   where += ` AND n.justificativa_diretor IS NULL`;
     if (filtro === 'justificadas') where += ` AND n.justificativa_diretor IS NOT NULL`;
     if (lojaId) {
@@ -128,27 +200,23 @@ router.get('/', apenasAdmin, async (req, res) => {
     const rows = await dbQuery(`
       SELECT n.id, n.numero_nota, n.serie, n.fornecedor_cnpj, n.fornecedor_nome,
              n.loja_id, l.nome AS loja_nome,
-             n.origem, n.data_emissao, n.valor_total,
-             n.finalizada_f_em, n.finalizada_f_motivo,
+             n.origem, n.status, n.data_emissao, n.valor_total,
+             n.mcp_status_cd, n.chegou_no_erp_em,
+             n.auditoria_eco_status, n.auditoria_eco_em,
+             n.finalizada_f_motivo,
              n.justificativa_diretor, n.justificada_em, n.justificada_por,
-             (SELECT MIN(data_entrada) FROM compras_historico c
-               WHERE c.loja_id = n.loja_id AND c.numeronfe = n.numero_nota
-                 AND COALESCE(NULLIF(c.fornecedor_cnpj,''),'') =
-                     COALESCE(NULLIF(n.fornecedor_cnpj,''),'')) AS data_entrada_loja
+             n.importado_em, n.fechado_em
         FROM notas_entrada n
         LEFT JOIN lojas l ON l.id = n.loja_id
        WHERE ${where}
-       ORDER BY n.finalizada_f_em DESC NULLS LAST
+       ORDER BY n.auditoria_eco_em DESC NULLS LAST
        LIMIT $${params.length}
     `, params);
     res.json(rows);
-  } catch (e) {
-    console.error('[finalizadas_f get]', e.message);
-    res.status(500).json({ erro: e.message });
-  }
+  } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
-// PUT /:id/justificar — Diretor justifica
+// PUT /:id/justificar
 router.put('/:id/justificar', apenasAdmin, async (req, res) => {
   try {
     const { justificativa } = req.body || {};
@@ -157,102 +225,62 @@ router.put('/:id/justificar', apenasAdmin, async (req, res) => {
     await dbQuery(
       `UPDATE notas_entrada
          SET justificativa_diretor = $1, justificada_em = NOW(), justificada_por = $2
-       WHERE id = $3 AND status = 'finalizada_f'`,
+       WHERE id = $3 AND auditoria_eco_status IS NOT NULL`,
       [justificativa.trim(), por, parseInt(req.params.id)]
     );
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
-// Resumo: contagem por loja (pendentes vs justificadas)
+// GET /resumo — contagem por (categoria, loja)
 router.get('/resumo', apenasAdmin, async (req, res) => {
   try {
     const rows = await dbQuery(`
-      SELECT n.loja_id, l.nome AS loja_nome,
+      SELECT n.auditoria_eco_status AS categoria,
+             n.loja_id, l.nome AS loja_nome,
              COUNT(*)::int AS total,
-             COUNT(*) FILTER (WHERE n.justificativa_diretor IS NULL)::int AS pendentes,
-             COUNT(*) FILTER (WHERE n.justificativa_diretor IS NOT NULL)::int AS justificadas
+             COUNT(*) FILTER (WHERE n.justificativa_diretor IS NULL)::int AS pendentes
         FROM notas_entrada n
         LEFT JOIN lojas l ON l.id = n.loja_id
-       WHERE n.status = 'finalizada_f'
-       GROUP BY n.loja_id, l.nome
-       ORDER BY n.loja_id
+       WHERE n.auditoria_eco_status IS NOT NULL
+       GROUP BY n.auditoria_eco_status, n.loja_id, l.nome
+       ORDER BY n.auditoria_eco_status, n.loja_id
     `);
     res.json(rows);
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
-// Diagnóstico de uma nota: por que não foi marcada como finalizada_f?
+// Diagnóstico (token via QS)
 router.get('/diagnosticar/:numero_nota', autenticarComQS, async (req, res) => {
   try {
     const num = String(req.params.numero_nota).trim();
-
     const noNotas = await dbQuery(
       `SELECT id, numero_nota, serie, fornecedor_cnpj, fornecedor_nome,
               loja_id, status, origem, data_emissao, valor_total,
-              importado_em, finalizada_f_em
-         FROM notas_entrada
-        WHERE numero_nota = $1
-        ORDER BY id DESC`, [num]
+              importado_em, finalizada_f_em, mcp_status_cd, chegou_no_erp_em,
+              auditoria_eco_status
+         FROM notas_entrada WHERE numero_nota = $1 ORDER BY id DESC`, [num]
     );
-
     const noCompras = await dbQuery(
       `SELECT loja_id, numeronfe, fornecedor_cnpj,
               MIN(data_emissao) AS data_emissao, MIN(data_entrada) AS data_entrada,
               COUNT(*)::int AS itens, SUM(qtd_comprada)::float AS qtd_total
-         FROM compras_historico
-        WHERE numeronfe = $1
-        GROUP BY loja_id, numeronfe, fornecedor_cnpj
-        ORDER BY loja_id`, [num]
+         FROM compras_historico WHERE numeronfe = $1
+         GROUP BY loja_id, numeronfe, fornecedor_cnpj ORDER BY loja_id`, [num]
     );
-
-    // Pra cada nota_entrada, simula o JOIN
-    const matches = await dbQuery(
-      `SELECT n.id AS nota_id, n.loja_id AS nota_loja, n.numero_nota, n.fornecedor_cnpj AS nota_cnpj, n.status, n.origem,
-              c.loja_id AS compra_loja, c.fornecedor_cnpj AS compra_cnpj, c.data_entrada
-         FROM notas_entrada n
-         LEFT JOIN compras_historico c
-           ON c.loja_id = n.loja_id
-          AND c.numeronfe = n.numero_nota
-          AND COALESCE(NULLIF(c.fornecedor_cnpj,''),'') =
-              COALESCE(NULLIF(n.fornecedor_cnpj,''),'')
-        WHERE n.numero_nota = $1
-        ORDER BY n.id DESC`, [num]
+    const noCdMov = await dbQuery(
+      `SELECT cd_codigo, mcp_codi, mcp_tipomov, mcp_status, mcp_dten, mcp_nnotafis, for_codi
+         FROM cd_movcompra WHERE mcp_nnotafis = $1`, [num]
     );
-
-    // Critérios atuais
-    const criterio = {
-      origem_aceitas: ['cd','transferencia_loja'],
-      status_excluidos: ['fechada','validada','arquivada','cancelada','finalizada_f'],
-    };
-
     res.json({
       numero_nota: num,
       em_notas_entrada: noNotas,
       em_compras_historico: noCompras,
-      tentativa_join: matches,
-      criterio,
-      diagnostico: noNotas.map(n => {
-        const motivos = [];
-        if (!criterio.origem_aceitas.includes(n.origem))
-          motivos.push(`origem='${n.origem}' nao esta em (${criterio.origem_aceitas.join(',')})`);
-        if (criterio.status_excluidos.includes(n.status))
-          motivos.push(`status='${n.status}' esta na lista de exclusao`);
-        const compraMatch = noCompras.find(c =>
-          c.loja_id === n.loja_id &&
-          (c.fornecedor_cnpj || '') === (n.fornecedor_cnpj || ''));
-        if (!compraMatch)
-          motivos.push(`sem match em compras_historico (loja_id=${n.loja_id}, fornecedor_cnpj=${n.fornecedor_cnpj || '(vazio)'})`);
-        return {
-          nota_id: n.id, loja_id: n.loja_id, status: n.status, origem: n.origem,
-          fornecedor_cnpj: n.fornecedor_cnpj,
-          ja_finalizada_f: !!n.finalizada_f_em,
-          motivos_pra_nao_marcar: motivos.length ? motivos : ['DEVERIA ESTAR MARCADA — bug ou cron nao rodou ainda'],
-        };
-      }),
+      em_cd_movcompra: noCdMov,
     });
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
-router.detectarFinalizadasF = detectarFinalizadasF;
+router.detectarFinalizadasF = detectarStatusEco; // mantém nome do export pra compatibilidade do server.js
+router.detectarStatusEco = detectarStatusEco;
 module.exports = router;

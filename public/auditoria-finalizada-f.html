@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Auditoria Finalizada_F</title>
+<title>Auditoria ECO — Cross-check App x ERP</title>
 <link rel="stylesheet" href="/shared.css">
 <script src="/shared.js"></script>
 <style>
@@ -13,7 +13,12 @@ nav{background:#1e293b;padding:10px 16px;display:flex;align-items:center;gap:12p
 .brand{font-family:'Segoe UI Black','Segoe UI',sans-serif;font-weight:900;font-size:16px;color:#f87171}
 .btn-nav{background:#0ea5e9;color:#fff;border:none;padding:5px 10px;border-radius:5px;font-size:11px;cursor:pointer;text-decoration:none}
 .main{padding:16px;max-width:1400px;margin:0 auto}
-h1{font-size:20px;color:#f87171;margin-bottom:14px}
+h1{font-size:20px;color:#f87171;margin-bottom:6px}
+
+.tabs{display:flex;gap:4px;margin-bottom:14px;border-bottom:2px solid #334155}
+.tab{padding:8px 16px;background:#1e293b;color:#94a3b8;cursor:pointer;border:none;border-radius:5px 5px 0 0;font-size:13px;font-weight:600}
+.tab.active{background:#7f1d1d;color:#fca5a5}
+.tab .count{background:#0f172a;border-radius:10px;padding:1px 6px;font-size:10px;margin-left:6px}
 
 .card{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:14px;margin-bottom:14px}
 .card h3{font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px}
@@ -45,6 +50,9 @@ tbody tr:hover{background:#1a2744}
 .tag{display:inline-block;padding:2px 6px;border-radius:4px;font-size:9px;font-weight:700;text-transform:uppercase}
 .tag-pendente{background:#7f1d1d;color:#fca5a5}
 .tag-justificada{background:#14532d;color:#86efac}
+.tag-mcp-A{background:#1e3a5f;color:#7dd3fc}
+.tag-mcp-F{background:#14532d;color:#86efac}
+.tag-mcp-C{background:#7f1d1d;color:#fca5a5}
 
 .msg{padding:10px 14px;border-radius:6px;margin-bottom:14px;font-size:13px;display:none}
 .msg.ok{background:#14532d44;color:#4ade80;border:1px solid #14532d;display:block}
@@ -60,29 +68,39 @@ tbody tr:hover{background:#1a2744}
 
 <nav>
   <a href="/" class="brand">JR Lira Tech</a>
-  <span style="color:#64748b;font-size:12px">› Auditoria Finalizada_F</span>
+  <span style="color:#64748b;font-size:12px">› Auditoria ECO (Cross-check App ↔ ERP)</span>
   <span style="margin-left:auto;color:#475569;font-size:12px" id="nomeUsuario"></span>
   <a href="/" class="btn-nav">Voltar</a>
 </nav>
 
 <div class="main">
-  <h1>Notas Finalizada_F — Auditoria</h1>
+  <h1>Auditoria — Cross-check App ↔ Ecocentauro</h1>
   <p class="muted" style="margin-bottom:12px">
-    Notas que saíram do CD e chegaram na loja (sync Pentaho confirmou) mas pularam o fluxo de cadastro/conferência/auditoria. Diretor deve justificar caso a caso.
+    Roda 1x ao dia. Identifica divergências entre o status no nosso app e o ERP da loja (sync Pentaho).
+    Notas canceladas no CD (mcp_status=C) são ignoradas.
   </p>
   <div id="msg" class="msg"></div>
 
+  <div class="tabs">
+    <button class="tab active" data-cat="finalizadas_eco" onclick="trocarTab('finalizadas_eco')">
+      🟥 FINALIZADAS_ECO <span class="count" id="countA">0</span>
+    </button>
+    <button class="tab" data-cat="n_finalizadas_eco" onclick="trocarTab('n_finalizadas_eco')">
+      🟧 N_FINALIZADAS_ECO <span class="count" id="countB">0</span>
+    </button>
+  </div>
+
   <div class="card">
-    <h3>Resumo por loja</h3>
+    <h3>Resumo (categoria atual) por loja</h3>
     <div class="resumo-grid" id="resumo"><p class="muted">Carregando...</p></div>
     <div style="margin-top:10px">
       <button class="btn-ghost btn-sm" onclick="rodarDeteccao(this)">⚡ Detectar agora</button>
-      <span class="muted" style="font-size:11px">(roda automaticamente a cada 1h)</span>
+      <span class="muted" style="font-size:11px">(roda automaticamente 1x ao dia)</span>
     </div>
   </div>
 
   <div class="card">
-    <h3>Notas finalizadas_f</h3>
+    <h3 id="tituloLista">Notas FINALIZADAS_ECO — chegaram no ERP, não fecharam no app</h3>
     <div class="toolbar">
       <div>
         <label>Filtro</label>
@@ -102,13 +120,13 @@ tbody tr:hover{background:#1a2744}
     <table>
       <thead>
         <tr>
-          <th>Loja</th><th>Nº Nota</th><th>Fornecedor</th><th>Origem</th>
+          <th>Loja</th><th>Nº Nota</th><th>Fornecedor</th><th>Status (App)</th><th>CD</th>
           <th class="right">Valor</th>
-          <th>Detectada em</th><th>Entrou na loja</th>
+          <th>Detectada</th><th id="thChegou">Entrou no ERP</th>
           <th style="min-width:300px">Justificativa</th>
         </tr>
       </thead>
-      <tbody id="tbody"><tr><td colspan="8" class="muted">Carregando...</td></tr></tbody>
+      <tbody id="tbody"><tr><td colspan="9" class="muted">Carregando...</td></tr></tbody>
     </table>
   </div>
 </div>
@@ -117,6 +135,8 @@ tbody tr:hover{background:#1a2744}
 const token = () => localStorage.getItem('jrlira_token');
 (function(){ const p = localStorage.getItem('jrlira_perfil'); if (!token() || p !== 'admin') location.href = '/'; })();
 document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
+
+let categoriaAtual = 'finalizadas_eco';
 
 function showMsg(t, tipo='ok') {
   const el = document.getElementById('msg');
@@ -138,8 +158,18 @@ async function api(path, method='GET', body) {
   return d;
 }
 
+function trocarTab(cat) {
+  categoriaAtual = cat;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.cat === cat));
+  document.getElementById('tituloLista').textContent = cat === 'finalizadas_eco'
+    ? 'Notas FINALIZADAS_ECO — chegaram no ERP, não fecharam no app'
+    : 'Notas N_FINALIZADAS_ECO — fechadas no app, NÃO chegaram no ERP (>24h)';
+  document.getElementById('thChegou').textContent = cat === 'finalizadas_eco' ? 'Entrou no ERP' : 'Fechado no app';
+  carregarResumo();
+  carregar();
+}
+
 async function carregarLojas() {
-  // Reusa lojas do shared.js se houver, senão extrai do resumo
   const sel = document.getElementById('loja');
   if (typeof LOJAS !== 'undefined') {
     sel.innerHTML = '<option value="">Todas</option>' + LOJAS.map(l => `<option value="${l.id}">${escapeHtml(l.nome)}</option>`).join('');
@@ -149,14 +179,21 @@ async function carregarLojas() {
 async function carregarResumo() {
   try {
     const r = await api('/api/finalizadas-f/resumo');
+    // Conta totais por categoria pra atualizar os tabs
+    const totA = r.filter(x => x.categoria === 'finalizadas_eco').reduce((s,x) => s + x.pendentes, 0);
+    const totB = r.filter(x => x.categoria === 'n_finalizadas_eco').reduce((s,x) => s + x.pendentes, 0);
+    document.getElementById('countA').textContent = totA;
+    document.getElementById('countB').textContent = totB;
+
+    const filtrado = r.filter(x => x.categoria === categoriaAtual);
     const div = document.getElementById('resumo');
-    if (!r.length) { div.innerHTML = '<p class="muted">Nenhuma nota finalizada_f detectada</p>'; return; }
-    const total = r.reduce((s,x) => s + x.total, 0);
-    const pendTotal = r.reduce((s,x) => s + x.pendentes, 0);
+    if (!filtrado.length) { div.innerHTML = '<p class="muted">Nenhuma nota nessa categoria</p>'; return; }
+    const total = filtrado.reduce((s,x) => s + x.total, 0);
+    const pend  = filtrado.reduce((s,x) => s + x.pendentes, 0);
     div.innerHTML = `
       <div class="stat"><label>Total geral</label><div class="v">${total}</div></div>
-      <div class="stat"><label>Pendentes total</label><div class="v">${pendTotal}</div></div>
-    ` + r.map(x => `
+      <div class="stat"><label>Pendentes</label><div class="v">${pend}</div></div>
+    ` + filtrado.map(x => `
       <div class="stat">
         <label>${escapeHtml(x.loja_nome || ('Loja ' + x.loja_id))}</label>
         <div class="v ${x.pendentes ? '' : 'ok'}">${x.pendentes}/${x.total}</div>
@@ -169,26 +206,27 @@ async function carregar() {
   try {
     const filtro = document.getElementById('filtro').value;
     const loja = document.getElementById('loja').value;
-    let url = `/api/finalizadas-f?filtro=${filtro}&limit=200`;
+    let url = `/api/finalizadas-f?categoria=${categoriaAtual}&filtro=${filtro}&limit=200`;
     if (loja) url += `&loja_id=${loja}`;
     const rows = await api(url);
     const tb = document.getElementById('tbody');
-    if (!rows.length) { tb.innerHTML = '<tr><td colspan="8" class="muted">Nenhuma nota encontrada</td></tr>'; return; }
+    if (!rows.length) { tb.innerHTML = '<tr><td colspan="9" class="muted">Nenhuma nota encontrada</td></tr>'; return; }
     tb.innerHTML = rows.map(n => `
       <tr data-id="${n.id}">
         <td>${escapeHtml(n.loja_nome || ('L' + n.loja_id))}</td>
         <td class="code">${escapeHtml(n.numero_nota)}${n.serie ? '/' + escapeHtml(n.serie) : ''}</td>
         <td>${escapeHtml(n.fornecedor_nome || '')}<br><span class="muted">${escapeHtml(n.fornecedor_cnpj || '')}</span></td>
-        <td><span class="tag" style="background:#451a03;color:#fde047">${escapeHtml(n.origem)}</span></td>
+        <td><span class="muted">${escapeHtml(n.status)}</span></td>
+        <td>${n.mcp_status_cd ? `<span class="tag tag-mcp-${n.mcp_status_cd}">${n.mcp_status_cd}</span>` : ''}</td>
         <td class="right">${n.valor_total ? fmtBRL(n.valor_total) : '-'}</td>
-        <td><span class="muted">${fmtDataHora(n.finalizada_f_em)}</span><br><span class="muted" style="font-size:9px">${escapeHtml(n.finalizada_f_motivo || '')}</span></td>
-        <td>${fmtData(n.data_entrada_loja)}</td>
+        <td><span class="muted">${fmtDataHora(n.auditoria_eco_em)}</span></td>
+        <td>${categoriaAtual === 'finalizadas_eco' ? fmtData(n.chegou_no_erp_em) : fmtDataHora(n.fechado_em || n.importado_em)}</td>
         <td>
           ${n.justificativa_diretor
             ? `<div class="justif-text">${escapeHtml(n.justificativa_diretor)}<small>por ${escapeHtml(n.justificada_por || '')} em ${fmtDataHora(n.justificada_em)}</small></div>
                <button class="btn-sm btn-ghost" style="margin-top:4px" onclick="reabrir(${n.id})">Editar</button>`
             : `<div class="justif-box">
-                 <textarea id="just-${n.id}" placeholder="Por que essa nota pulou o fluxo?"></textarea>
+                 <textarea id="just-${n.id}" placeholder="Justificativa..."></textarea>
                  <button class="btn-success btn-sm" onclick="justificar(${n.id})">Salvar</button>
                </div>`}
         </td>
@@ -208,8 +246,7 @@ async function justificar(id) {
   } catch (e) { showMsg(e.message, 'err'); }
 }
 
-async function reabrir(id) {
-  // Pra reescrever, força textarea editável
+function reabrir(id) {
   const tr = document.querySelector(`tr[data-id="${id}"]`);
   const td = tr.querySelector('td:last-child');
   td.innerHTML = `
@@ -224,7 +261,7 @@ async function rodarDeteccao(btn) {
   btn.disabled = true; btn.textContent = 'Detectando...';
   try {
     const r = await api('/api/finalizadas-f/detectar', 'POST');
-    showMsg(`✅ ${r.atualizadas} atualizadas + ${r.criadas} criadas (= ${r.total} no total)`, 'ok');
+    showMsg(`✅ FINALIZADAS_ECO: ${r.finalizadas_eco_atualizadas} atualizadas + ${r.finalizadas_eco_criadas} criadas | N_FINALIZADAS_ECO: ${r.n_finalizadas_eco_marcadas}`, 'ok');
     carregarResumo();
     carregar();
   } catch (e) { showMsg(e.message, 'err'); }

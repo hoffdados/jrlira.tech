@@ -2041,6 +2041,22 @@ async function initDB() {
         ON notas_entrada (status, loja_id) WHERE status = 'finalizada_f';
     `);
 
+    // Cross-check app x ERP (Ecocentauro):
+    // - auditoria_eco_status: 'finalizadas_eco' (chegou ERP, falta fechar app)
+    //                       | 'n_finalizadas_eco' (fechou app, falta chegar ERP em >24h)
+    // - chegou_no_erp_em: cache do MIN(data_entrada) de compras_historico
+    // - mcp_status_cd: status no UltraSyst do CD origem (A/F/C). C = cancelada, ignorar.
+    await runMigration(client, '20260510_notas_auditoria_eco', `
+      ALTER TABLE notas_entrada
+        ADD COLUMN IF NOT EXISTS auditoria_eco_status VARCHAR(30),
+        ADD COLUMN IF NOT EXISTS auditoria_eco_em TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS chegou_no_erp_em DATE,
+        ADD COLUMN IF NOT EXISTS mcp_status_cd CHAR(1);
+      CREATE INDEX IF NOT EXISTS idx_notas_auditoria_eco
+        ON notas_entrada (auditoria_eco_status, loja_id)
+        WHERE auditoria_eco_status IS NOT NULL AND justificativa_diretor IS NULL;
+    `);
+
     // cd_ean: codigos de barra por produto (UltraSyst tabela EAN), 1 produto pode ter N EANs.
     // Usado pra match cross-CD e pra preencher cd_material.ean_codi quando MATERIAL nao tem.
     await runMigration(client, '20260510_cd_ean', `
@@ -2580,19 +2596,21 @@ initDB().then(() => {
   setTimeout(limparProdutosExternoOrfaos, 30 * 60 * 1000);
   setInterval(limparProdutosExternoOrfaos, 24 * 60 * 60 * 1000);
 
-  // Detecta notas finalizada_f a cada 1h (notas que chegaram na loja sem passar pelo app)
+  // Cross-check app x ERP (Ecocentauro) — roda 1x ao dia, 5min apos boot
   const finalizadasF = require('./src/routes/finalizadas_f');
-  const detectarFf = async () => {
+  const detectarEco = async () => {
     try {
-      const r = await finalizadasF.detectarFinalizadasF();
-      const total = (r.updated?.length || 0) + (r.inserted?.length || 0);
-      if (total > 0) {
-        console.log(`[finalizadas_f] ${r.updated.length} atualizadas + ${r.inserted.length} criadas (= ${total} no total)`);
+      const r = await finalizadasF.detectarStatusEco();
+      const a = r.updated_finalizadas_eco?.length || 0;
+      const b = r.inserted_finalizadas_eco?.length || 0;
+      const c = r.updated_n_finalizadas_eco?.length || 0;
+      if (a + b + c > 0) {
+        console.log(`[auditoria_eco] FINALIZADAS_ECO: ${a} atualizadas + ${b} criadas | N_FINALIZADAS_ECO: ${c} marcadas`);
       }
-    } catch (e) { console.error('[finalizadas_f] falha:', e.message); }
+    } catch (e) { console.error('[auditoria_eco] falha:', e.message); }
   };
-  setTimeout(detectarFf, 5 * 60 * 1000);
-  setInterval(detectarFf, 60 * 60 * 1000);
+  setTimeout(detectarEco, 5 * 60 * 1000);
+  setInterval(detectarEco, 24 * 60 * 60 * 1000);
 }).catch(err => {
   console.error('[DB] Erro init:', err.message);
   process.exit(1);
