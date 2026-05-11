@@ -73,9 +73,10 @@ async function detectarStatusEco() {
      WHERE sub.id = n.id
   `);
 
-  // Atualiza cache chegou_no_erp_em via compras_historico
-  // Match pra transferências CD: c.numeronfe = n.cd_mov_codi (MCP_CODI)
-  // Match pra NF-e fornecedor: c.numeronfe = n.numero_nota (CNPJ tem que bater também)
+  // Atualiza cache chegou_no_erp_em via compras_historico — DOIS UPDATEs separados
+  // (origem='nfe' usa match direto = pode usar índice; origem='cd' usa REGEXP)
+
+  // Cache 1: NF-e fornecedor — match direto numero_nota=numeronfe (rápido com índice)
   await dbQuery(`
     UPDATE notas_entrada n
        SET chegou_no_erp_em = sub.data_entrada
@@ -84,16 +85,32 @@ async function detectarStatusEco() {
           FROM notas_entrada n2
           JOIN compras_historico c
             ON c.loja_id = n2.loja_id
-           AND COALESCE(NULLIF(c.fornecedor_cnpj,''),'') =
-               COALESCE(NULLIF(n2.fornecedor_cnpj,''),'')
-           AND (
-             (n2.origem = 'nfe' AND c.numeronfe = n2.numero_nota)
-             OR
-             (n2.origem IN ('cd','transferencia_loja') AND
-              REGEXP_REPLACE(c.numeronfe, '^0+', '') =
-              REGEXP_REPLACE(COALESCE(n2.cd_mov_codi, n2.numero_nota), '^0+', ''))
-           )
+           AND c.fornecedor_cnpj = n2.fornecedor_cnpj
+           AND c.numeronfe = n2.numero_nota
          WHERE n2.chegou_no_erp_em IS NULL
+           AND n2.origem = 'nfe'
+           AND n2.fornecedor_cnpj IS NOT NULL
+           AND n2.numero_nota IS NOT NULL
+         GROUP BY n2.id
+      ) sub
+     WHERE sub.id = n.id
+  `);
+
+  // Cache 2: transferências CD — match com normalização de zeros via cd_mov_codi
+  await dbQuery(`
+    UPDATE notas_entrada n
+       SET chegou_no_erp_em = sub.data_entrada
+      FROM (
+        SELECT n2.id, MIN(c.data_entrada) AS data_entrada
+          FROM notas_entrada n2
+          JOIN compras_historico c
+            ON c.loja_id = n2.loja_id
+           AND c.fornecedor_cnpj = n2.fornecedor_cnpj
+           AND REGEXP_REPLACE(c.numeronfe, '^0+', '') =
+               REGEXP_REPLACE(COALESCE(n2.cd_mov_codi, n2.numero_nota), '^0+', '')
+         WHERE n2.chegou_no_erp_em IS NULL
+           AND n2.origem IN ('cd','transferencia_loja')
+           AND n2.fornecedor_cnpj IS NOT NULL
          GROUP BY n2.id
       ) sub
      WHERE sub.id = n.id

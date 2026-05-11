@@ -2041,6 +2041,20 @@ async function initDB() {
         ON notas_entrada (status, loja_id) WHERE status = 'finalizada_f';
     `);
 
+    // Índices pra acelerar o detector eco (cross-check) — evita timeout
+    await runMigration(client, '20260510_idx_eco_match', `
+      CREATE INDEX IF NOT EXISTS idx_compras_match
+        ON compras_historico (loja_id, fornecedor_cnpj, numeronfe);
+      CREATE INDEX IF NOT EXISTS idx_notas_match_nfe
+        ON notas_entrada (loja_id, fornecedor_cnpj, numero_nota)
+        WHERE origem = 'nfe';
+      CREATE INDEX IF NOT EXISTS idx_notas_match_cd
+        ON notas_entrada (loja_id, fornecedor_cnpj, cd_mov_codi)
+        WHERE origem IN ('cd','transferencia_loja') AND cd_mov_codi IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_notas_chegou_null
+        ON notas_entrada (id) WHERE chegou_no_erp_em IS NULL;
+    `);
+
     // Cross-check app x ERP (Ecocentauro):
     // - auditoria_eco_status: 'finalizadas_eco' (chegou ERP, falta fechar app)
     //                       | 'n_finalizadas_eco' (fechou app, falta chegar ERP em >24h)
