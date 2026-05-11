@@ -564,6 +564,20 @@ router.get('/sync-cd-status', adminOuCeo, async (req, res) => {
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
+// GET /material-codi-cols?cd_origem= — lista colunas com '_CODI' na MATERIAL
+router.get('/material-codi-cols', adminOuCeo, async (req, res) => {
+  try {
+    const cdOrigem = String(req.query.cd_origem || 'srv1-itautuba').trim();
+    const { clientePorCodigo } = require('../cds');
+    const cli = await clientePorCodigo(cdOrigem);
+    const cols = await cli.colunas('MATERIAL');
+    const codiCols = (cols.colunas || []).filter(c =>
+      /_CODI$|GRU|SUB|SGR|DPT|SEC|DEP|FAM|CAT|CLASS|GRP/i.test(c.COLUMN_NAME)
+    );
+    res.json({ cd_origem: cdOrigem, colunas: codiCols });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
 // GET /descobrir-grupos?cd_origem= — descobre tabelas/colunas de grupo de produto no UltraSyst
 router.get('/descobrir-grupos', adminOuCeo, async (req, res) => {
   try {
