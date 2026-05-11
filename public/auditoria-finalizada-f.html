@@ -88,6 +88,9 @@ tbody tr:hover{background:#1a2744}
     <button class="tab" data-cat="n_finalizadas_eco" onclick="trocarTab('n_finalizadas_eco')">
       🟧 N_FINALIZADAS_ECO <span class="count" id="countB">0</span>
     </button>
+    <button class="tab" data-cat="transito_perdido" onclick="trocarTab('transito_perdido')">
+      🚛 TRÂNSITO PERDIDO <span class="count" id="countC">0</span>
+    </button>
   </div>
 
   <div class="card">
@@ -165,10 +168,18 @@ async function api(path, method='GET', body) {
 function trocarTab(cat) {
   categoriaAtual = cat;
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.cat === cat));
-  document.getElementById('tituloLista').textContent = cat === 'finalizadas_eco'
-    ? 'Notas FINALIZADAS_ECO — chegaram no ERP, não fecharam no app'
-    : 'Notas N_FINALIZADAS_ECO — fechadas no app, NÃO chegaram no ERP (>24h)';
-  document.getElementById('thChegou').textContent = cat === 'finalizadas_eco' ? 'Entrou no ERP' : 'Fechado no app';
+  const titulos = {
+    finalizadas_eco: 'Notas FINALIZADAS_ECO — chegaram no ERP, não fecharam no app',
+    n_finalizadas_eco: 'Notas N_FINALIZADAS_ECO — fechadas no app, NÃO chegaram no ERP (>24h)',
+    transito_perdido: 'Notas TRÂNSITO_PERDIDO — em trânsito há >30 dias sem chegar no ERP',
+  };
+  const colDireita = {
+    finalizadas_eco: 'Entrou no ERP',
+    n_finalizadas_eco: 'Fechado no app',
+    transito_perdido: 'Emitido em',
+  };
+  document.getElementById('tituloLista').textContent = titulos[cat];
+  document.getElementById('thChegou').textContent = colDireita[cat];
   carregarResumo();
   carregar();
 }
@@ -186,8 +197,10 @@ async function carregarResumo() {
     // Conta totais por categoria pra atualizar os tabs
     const totA = r.filter(x => x.categoria === 'finalizadas_eco').reduce((s,x) => s + x.pendentes, 0);
     const totB = r.filter(x => x.categoria === 'n_finalizadas_eco').reduce((s,x) => s + x.pendentes, 0);
+    const totC = r.filter(x => x.categoria === 'transito_perdido').reduce((s,x) => s + x.pendentes, 0);
     document.getElementById('countA').textContent = totA;
     document.getElementById('countB').textContent = totB;
+    document.getElementById('countC').textContent = totC;
 
     const filtrado = r.filter(x => x.categoria === categoriaAtual);
     const div = document.getElementById('resumo');
@@ -224,7 +237,11 @@ async function carregar() {
         <td>${n.mcp_status_cd ? `<span class="tag tag-mcp-${n.mcp_status_cd}">${n.mcp_status_cd}</span>` : ''}</td>
         <td class="right">${n.valor_total ? fmtBRL(n.valor_total) : '-'}</td>
         <td><span class="muted">${fmtDataHora(n.auditoria_eco_em)}</span></td>
-        <td>${categoriaAtual === 'finalizadas_eco' ? fmtData(n.chegou_no_erp_em) : fmtDataHora(n.fechado_em || n.importado_em)}</td>
+        <td>${
+          categoriaAtual === 'finalizadas_eco' ? fmtData(n.chegou_no_erp_em) :
+          categoriaAtual === 'transito_perdido' ? fmtData(n.data_emissao) :
+          fmtDataHora(n.fechado_em || n.importado_em)
+        }</td>
         <td>
           ${n.justificativa_diretor
             ? `<div class="justif-text">${escapeHtml(n.justificativa_diretor)}<small>por ${escapeHtml(n.justificada_por || '')} em ${fmtDataHora(n.justificada_em)}</small></div>
@@ -289,7 +306,7 @@ async function rodarDeteccao(btn) {
   btn.disabled = true; btn.textContent = 'Detectando...';
   try {
     const r = await api('/api/finalizadas-f/detectar', 'POST');
-    showMsg(`✅ FINALIZADAS_ECO: ${r.finalizadas_eco_atualizadas} atualizadas + ${r.finalizadas_eco_criadas} criadas | N_FINALIZADAS_ECO: ${r.n_finalizadas_eco_marcadas}`, 'ok');
+    showMsg(`✅ FINALIZADAS_ECO: ${r.finalizadas_eco_atualizadas}u+${r.finalizadas_eco_criadas}c | N_FINALIZADAS_ECO: ${r.n_finalizadas_eco_marcadas} | TRANSITO_PERDIDO: ${r.transito_perdido_marcadas}`, 'ok');
     carregarResumo();
     carregar();
   } catch (e) { showMsg(e.message, 'err'); }

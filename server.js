@@ -2604,8 +2604,9 @@ initDB().then(() => {
       const a = r.updated_finalizadas_eco?.length || 0;
       const b = r.inserted_finalizadas_eco?.length || 0;
       const c = r.updated_n_finalizadas_eco?.length || 0;
-      if (a + b + c > 0) {
-        console.log(`[auditoria_eco] FINALIZADAS_ECO: ${a} atualizadas + ${b} criadas | N_FINALIZADAS_ECO: ${c} marcadas`);
+      const d = r.updated_transito_perdido?.length || 0;
+      if (a + b + c + d > 0) {
+        console.log(`[auditoria_eco] FINALIZADAS_ECO: ${a}u+${b}c | N_FINALIZADAS_ECO: ${c} | TRANSITO_PERDIDO: ${d}`);
       }
     } catch (e) { console.error('[auditoria_eco] falha:', e.message); }
   };

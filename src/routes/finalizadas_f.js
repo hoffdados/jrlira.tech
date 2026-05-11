@@ -170,10 +170,28 @@ async function detectarStatusEco() {
      RETURNING id, loja_id, numero_nota, fornecedor_cnpj
   `, [DATA_CORTE_ECO]);
 
+  // Cenário D: TRANSITO_PERDIDO — notas em_transito ha >30 dias que nao chegaram ao ERP
+  // Não aplica cutoff (problema é independente da data de importação)
+  const updatedD = await dbQuery(`
+    UPDATE notas_entrada
+       SET auditoria_eco_status = 'transito_perdido',
+           auditoria_eco_em = NOW()
+     WHERE status IN ('em_transito','aguardando_estoque','em_conferencia','em_estoque',
+                      'em_validacao_cadastro','em_validacao_comercial','aguardando_auditoria')
+       AND origem IN ('cd','transferencia_loja')
+       AND chegou_no_erp_em IS NULL
+       AND data_emissao IS NOT NULL
+       AND data_emissao < CURRENT_DATE - INTERVAL '30 days'
+       AND auditoria_eco_status IS NULL
+       AND COALESCE(mcp_status_cd, 'A') <> 'C'
+     RETURNING id, loja_id, numero_nota, fornecedor_cnpj
+  `);
+
   return {
     updated_finalizadas_eco: updatedA,
     inserted_finalizadas_eco: insertedB,
     updated_n_finalizadas_eco: updatedC,
+    updated_transito_perdido: updatedD,
   };
 }
 
@@ -186,7 +204,8 @@ router.post('/detectar', apenasAdmin, async (req, res) => {
       finalizadas_eco_atualizadas: r.updated_finalizadas_eco.length,
       finalizadas_eco_criadas:     r.inserted_finalizadas_eco.length,
       n_finalizadas_eco_marcadas:  r.updated_n_finalizadas_eco.length,
-      total: r.updated_finalizadas_eco.length + r.inserted_finalizadas_eco.length + r.updated_n_finalizadas_eco.length,
+      transito_perdido_marcadas:   r.updated_transito_perdido.length,
+      total: r.updated_finalizadas_eco.length + r.inserted_finalizadas_eco.length + r.updated_n_finalizadas_eco.length + r.updated_transito_perdido.length,
     });
   } catch (e) {
     console.error('[finalizadas_eco detectar]', e.message);
@@ -202,7 +221,7 @@ router.get('/', apenasAdmin, async (req, res) => {
     const lojaId = req.query.loja_id ? parseInt(req.query.loja_id) : null;
     const limit  = Math.min(parseInt(req.query.limit) || 100, 500);
 
-    if (!['finalizadas_eco', 'n_finalizadas_eco'].includes(cat)) {
+    if (!['finalizadas_eco', 'n_finalizadas_eco', 'transito_perdido'].includes(cat)) {
       return res.status(400).json({ erro: 'categoria invalida' });
     }
 
