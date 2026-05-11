@@ -535,6 +535,18 @@ router.get('/sync-cd-status', adminOuCeo, async (req, res) => {
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
+// GET /cd-colunas-material?cd_origem= — lista colunas da MATERIAL pra descobrir peso
+router.get('/cd-colunas-material', adminOuCeo, async (req, res) => {
+  try {
+    const cdCodigo = String(req.query.cd_origem || '').trim();
+    if (!cdCodigo) return res.status(400).json({ erro: 'cd_origem obrigatorio' });
+    const { clientePorCodigo } = require('../cds');
+    const cli = await clientePorCodigo(cdCodigo);
+    const cols = await cli.colunas('MATERIAL');
+    res.json(cols);
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
 // POST /sync-cd-now (admin) — força sync_cd imediato (todos CDs ativos)
 router.post('/sync-cd-now', adminOuCeo, async (req, res) => {
   try {

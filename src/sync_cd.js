@@ -52,24 +52,27 @@ async function paginarQuery(cli, sqlBase, orderBy, pageSize = 5000) {
 
 async function syncMaterial(cd, cli) {
   const t0 = Date.now();
-  // Tenta com MAT_PSBR (peso bruto). Se a coluna não existir nesse banco, fallback sem ela.
-  let rows;
-  try {
-    rows = await paginarQuery(cli,
-      `SELECT MAT_CODI, MAT_DESC, MAT_REFE, MAT_SITU, EAN_CODI, MAT_PSLI, MAT_PSBR
-         FROM MATERIAL WITH (NOLOCK)`,
-      'MAT_CODI'
-    );
-  } catch (e) {
-    if (/Invalid column name|MAT_PSBR/i.test(e.message)) {
-      // Banco sem MAT_PSBR — pega só MAT_PSLI
+  // Tenta combinações em ordem (com mais → com menos colunas de peso)
+  const tentativas = [
+    'MAT_CODI, MAT_DESC, MAT_REFE, MAT_SITU, EAN_CODI, MAT_PSLI, MAT_PSBR',
+    'MAT_CODI, MAT_DESC, MAT_REFE, MAT_SITU, EAN_CODI, MAT_PSLI',
+    'MAT_CODI, MAT_DESC, MAT_REFE, MAT_SITU, EAN_CODI, MAT_PSBR',
+    'MAT_CODI, MAT_DESC, MAT_REFE, MAT_SITU, EAN_CODI', // sem peso
+  ];
+  let rows = null, ultimoErro = null;
+  for (const sel of tentativas) {
+    try {
       rows = await paginarQuery(cli,
-        `SELECT MAT_CODI, MAT_DESC, MAT_REFE, MAT_SITU, EAN_CODI, MAT_PSLI
-           FROM MATERIAL WITH (NOLOCK)`,
+        `SELECT ${sel} FROM MATERIAL WITH (NOLOCK)`,
         'MAT_CODI'
       );
-    } else throw e;
+      break;
+    } catch (e) {
+      ultimoErro = e;
+      if (!/Invalid column name|MAT_PS/i.test(e.message)) throw e;
+    }
   }
+  if (!rows) throw ultimoErro || new Error('Falha em todas as tentativas de SELECT MATERIAL');
   if (rows.length) {
     await dbQuery(
       `INSERT INTO cd_material (cd_codigo, mat_codi, mat_desc, mat_refe, mat_situ, ean_codi,
@@ -79,7 +82,8 @@ async function syncMaterial(cd, cli) {
        ON CONFLICT (cd_codigo, mat_codi) DO UPDATE SET
          mat_desc=EXCLUDED.mat_desc, mat_refe=EXCLUDED.mat_refe,
          mat_situ=EXCLUDED.mat_situ, ean_codi=EXCLUDED.ean_codi,
-         peso_liquido_kg=EXCLUDED.peso_liquido_kg, peso_bruto_kg=EXCLUDED.peso_bruto_kg,
+         peso_liquido_kg=COALESCE(EXCLUDED.peso_liquido_kg, cd_material.peso_liquido_kg),
+         peso_bruto_kg=COALESCE(EXCLUDED.peso_bruto_kg, cd_material.peso_bruto_kg),
          sincronizado_em=NOW()`,
       [
         cd.codigo,
@@ -88,8 +92,8 @@ async function syncMaterial(cd, cli) {
         rows.map(x => String(x.MAT_REFE || '').trim() || null),
         rows.map(x => String(x.MAT_SITU || '').trim() || null),
         rows.map(x => String(x.EAN_CODI || '').trim() || null),
-        rows.map(x => x.MAT_PSLI != null ? Number(x.MAT_PSLI) : null),
-        rows.map(x => x.MAT_PSBR != null ? Number(x.MAT_PSBR) : null),
+        rows.map(x => 'MAT_PSLI' in x && x.MAT_PSLI != null ? Number(x.MAT_PSLI) : null),
+        rows.map(x => 'MAT_PSBR' in x && x.MAT_PSBR != null ? Number(x.MAT_PSBR) : null),
         rows.map(() => new Date().toISOString()),
       ]
     );
