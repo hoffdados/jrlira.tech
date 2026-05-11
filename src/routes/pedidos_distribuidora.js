@@ -15,6 +15,16 @@ const { listarCds, clientePorCodigo } = require('../cds');
 
 const adminOuCeo = [autenticar, exigirPerfil('admin', 'ceo')];
 
+// Regras de transferência entre CDs (quem pode mandar pra quem)
+// Lojas sempre são destino válido pra qualquer CD origem.
+// ASA FRIOS não envia pra ASA BRANCA (nem ITAITUBA nem N_PROGRESSO) — só pra outro ASA FRIOS.
+const REGRAS_CD_DESTINOS = {
+  'srv1-itautuba':    ['srv1-nprogresso', 'srv2-asafrio', 'srv2-asasantarem'],
+  'srv1-nprogresso':  ['srv1-itautuba',   'srv2-asafrio', 'srv2-asasantarem'],
+  'srv2-asafrio':     ['srv2-asasantarem'],
+  'srv2-asasantarem': ['srv2-asafrio'],
+};
+
 // Defaults do CSV de exemplo
 const EMPRESA_PADRAO        = '1';
 const LOCALIZACAO_PADRAO    = '1';
@@ -119,12 +129,15 @@ router.get('/grade', adminOuCeo, async (req, res) => {
       [cdOrigem]
     );
     const cnpjOrigem = origemRow?.cnpj || '';
+    const cdsPermitidos = REGRAS_CD_DESTINOS[cdOrigem] || [];
     const destinos = await dbQuery(
       `SELECT id, tipo, codigo, nome, cnpj, loja_id, cd_codigo
          FROM pedidos_distrib_destinos
-        WHERE ativo = TRUE AND cnpj <> $1
+        WHERE ativo = TRUE
+          AND cnpj <> $1
+          AND (tipo = 'LOJA' OR (tipo = 'CD' AND cd_codigo = ANY($2::text[])))
         ORDER BY tipo DESC, nome`,
-      [cnpjOrigem]
+      [cnpjOrigem, cdsPermitidos]
     );
     const lojaIds = destinos.filter(d => d.tipo === 'LOJA' && d.loja_id).map(d => d.loja_id);
     const cdDestinos = destinos.filter(d => d.tipo === 'CD' && d.cd_codigo);
