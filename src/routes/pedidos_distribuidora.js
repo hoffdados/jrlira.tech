@@ -512,6 +512,57 @@ router.get('/grade-trace', adminOuCeo, async (req, res) => {
   } catch (e) { res.status(500).json({ erro: e.message, stack: e.stack }); }
 });
 
+// Debug do trânsito: dado uma nota_id, lista itens + EAN vs EAN principal de produtos_embalagem
+// GET /transito-debug?nota_id=X
+router.get('/transito-debug', adminOuCeo, async (req, res) => {
+  try {
+    const notaId = parseInt(req.query.nota_id);
+    if (!notaId) return res.status(400).json({ erro: 'nota_id obrigatorio' });
+    const [nota] = await dbQuery(
+      `SELECT id, numero_nota, cd_mov_codi, loja_id, status, origem,
+              fornecedor_cnpj, fornecedor_nome, chegou_no_erp_em, mcp_status_cd
+         FROM notas_entrada WHERE id = $1`, [notaId]
+    );
+    if (!nota) return res.status(404).json({ erro: 'nota nao encontrada' });
+    const itens = await dbQuery(
+      `SELECT i.id, i.numero_item, i.ean_nota, i.ean_validado, i.descricao_nota,
+              i.quantidade, i.cd_pro_codi,
+              NULLIF(LTRIM(COALESCE(i.ean_validado, i.ean_nota),'0'),'') AS ean_norm,
+              pe.mat_codi AS produto_embalagem_mat_codi,
+              pe.descricao_atual AS produto_embalagem_desc,
+              pe.ean_principal_cd AS pe_ean_principal_cd,
+              pe.qtd_embalagem
+         FROM itens_nota i
+         LEFT JOIN produtos_embalagem pe
+           ON NULLIF(LTRIM(pe.ean_principal_cd,'0'),'') =
+              NULLIF(LTRIM(COALESCE(i.ean_validado, i.ean_nota),'0'),'')
+        WHERE i.nota_id = $1
+        ORDER BY i.numero_item`, [notaId]
+    );
+
+    // Pra cada item, veja se aparece como trânsito (ie, query da grade pegaria)
+    const filtroOk =
+      ['cd','transferencia_loja'].includes(nota.origem) &&
+      !['fechada','validada','arquivada','cancelada','finalizada_f'].includes(nota.status) &&
+      (nota.mcp_status_cd || 'A') !== 'C' &&
+      nota.chegou_no_erp_em == null;
+
+    res.json({
+      nota,
+      filtro_passa: filtroOk,
+      motivos_filtro: filtroOk ? ['nota passa no filtro de trânsito ✓'] : [
+        ...(['cd','transferencia_loja'].includes(nota.origem) ? [] : [`origem='${nota.origem}' não é cd/transferencia_loja`]),
+        ...(['fechada','validada','arquivada','cancelada','finalizada_f'].includes(nota.status) ? [`status='${nota.status}' está na lista de exclusão`] : []),
+        ...((nota.mcp_status_cd || 'A') === 'C' ? [`mcp_status_cd='C' (cancelada no CD)`] : []),
+        ...(nota.chegou_no_erp_em ? [`chegou_no_erp_em='${nota.chegou_no_erp_em}' (já chegou ERP, sai do trânsito)`] : []),
+      ],
+      total_itens: itens.length,
+      itens_com_match_produtos_embalagem: itens.filter(i => i.produto_embalagem_mat_codi).length,
+      itens,
+    });
+  } catch (e) { res.status(500).json({ erro: e.message, stack: e.stack }); }
+});
+
 // Debug — investiga match de um produto entre cd_material e dados das lojas/CDs
 // GET /grade-debug?cd_origem=X&mat_codi=Y
 router.get('/grade-debug', adminOuCeo, async (req, res) => {
