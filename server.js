@@ -2092,6 +2092,17 @@ async function initDB() {
       CREATE INDEX IF NOT EXISTS idx_cd_ean_mat    ON cd_ean (cd_codigo, mat_codi);
     `);
 
+    // Marcação de produto prioritário pelo CEO/Admin (1 flag por produto, global ao CD origem)
+    await runMigration(client, '20260511_pedidos_distrib_prioridades', `
+      CREATE TABLE IF NOT EXISTS pedidos_distrib_prioridades (
+        cd_origem_codigo VARCHAR(40) NOT NULL,
+        mat_codi VARCHAR(20) NOT NULL,
+        atualizado_em TIMESTAMPTZ DEFAULT NOW(),
+        atualizado_por VARCHAR(120),
+        PRIMARY KEY (cd_origem_codigo, mat_codi)
+      );
+    `);
+
     // Quantidades editadas na grade (tipo planilha) — autosave por (cd_origem, destino, produto)
     await runMigration(client, '20260510_pedidos_distrib_quantidades',
       `CREATE TABLE IF NOT EXISTS pedidos_distrib_quantidades (

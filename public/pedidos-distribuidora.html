@@ -55,8 +55,8 @@ table.grade tbody tr:hover td.fixed{background:#15233f}
 th.fix-rk,td.fix-rk{left:0;width:38px;min-width:38px}
 th.fix-cod,td.fix-cod{left:38px;width:62px;min-width:62px;text-align:left !important}
 th.fix-desc,td.fix-desc{left:100px;width:280px;min-width:280px;text-align:left !important;border-right:1px solid #334155}
-th.fix-ref,td.fix-ref{left:380px;width:130px;min-width:130px;text-align:left !important;border-right:2px solid #334155}
-th.fix-est,td.fix-est{left:510px;width:55px;min-width:55px;border-right:2px solid #fde04766}
+th.fix-ref,td.fix-ref{left:380px;width:78px;min-width:78px;text-align:left !important;border-right:2px solid #334155}
+th.fix-est,td.fix-est{left:458px;width:55px;min-width:55px;border-right:2px solid #fde04766}
 .btn-dbg{background:transparent;border:1px solid #475569;color:#64748b;padding:1px 4px;border-radius:3px;font-size:9px;cursor:pointer}
 .btn-dbg:hover{background:#1e293b;color:#94a3b8}
 #dbgModal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;align-items:center;justify-content:center}
@@ -69,23 +69,40 @@ td.fix-cod{font-family:'Cascadia Code',Consolas,monospace;color:#7dd3fc;font-siz
 td.fix-rk{color:#94a3b8;font-weight:700;font-size:10px;text-align:center !important}
 td.fix-est{color:#fde047;font-weight:600;font-variant-numeric:tabular-nums}
 
-/* Cels de quantidade (input) */
-.qtd{width:48px;padding:2px 3px;font-size:10px;text-align:center;background:#0f172a;border:1px solid #1a2744;border-radius:3px;color:#fde047;font-weight:700}
+/* Cels de quantidade (input) — sem spinners */
+.qtd{width:48px;padding:2px 3px;font-size:10px;text-align:center;background:#0f172a;border:1px solid #1a2744;border-radius:3px;color:#fde047;font-weight:700;-moz-appearance:textfield}
+.qtd::-webkit-outer-spin-button,.qtd::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
 .qtd:focus{border-color:#fbbf24;outline:none}
 .qtd.dirty{border-color:#fbbf24}
 .qtd.saving{border-color:#38bdf8}
 .qtd.saved{border-color:#4ade80}
 .qtd.zero{color:#475569;font-weight:400}
+.qtd.has-value{background:#16a34a !important;color:#fff !important;border-color:#16a34a}
 
 /* Sub-cols de info (não editáveis) */
 .cell-num{color:#94a3b8;font-size:10px}
 .cell-num.zero{color:#475569}
 .cell-num.high{color:#fbbf24}
 .cell-sug{color:#a78bfa;font-weight:600}
+.cell-sug.has-value{background:#dc2626;color:#fff;font-weight:700}
 .cell-est-d{color:#7dd3fc}
 .cell-trans{color:#fb923c}
 .cell-preco{color:#86efac}
 .cell-data{color:#64748b;font-size:9px}
+.cell-data.stale{background:#dc2626;color:#fff;font-weight:600}
+
+/* Linha selecionada (igual otimizador) */
+table.grade tbody tr:hover,table.grade tbody tr:focus-within{background:#1a2744}
+table.grade tbody tr:hover td,table.grade tbody tr:focus-within td{border-bottom-color:#fff}
+
+/* Linha prioritária (sombra suave + tinta sutil) */
+table.grade tbody tr.prioritario{box-shadow:inset 3px 0 0 #fbbf24, inset 0 -1px 0 #fbbf2433;background:#1c1c10}
+table.grade tbody tr.prioritario:hover{background:#27220e}
+
+/* Botão prioridade */
+.btn-prio{background:transparent;border:1px solid #475569;color:#64748b;padding:1px 5px;border-radius:3px;font-size:9px;font-weight:700;cursor:pointer;font-family:'Cascadia Code',Consolas,monospace}
+.btn-prio:hover{border-color:#fbbf24;color:#fbbf24}
+.btn-prio.on{background:#fbbf24;color:#1a1a1a;border-color:#fbbf24}
 
 .muted{color:#64748b}
 
@@ -112,7 +129,7 @@ td.fix-est{color:#fde047;font-weight:600;font-variant-numeric:tabular-nums}
 
 <nav>
   <a href="/" class="brand">JR Lira Tech</a>
-  <span style="color:#64748b;font-size:11px">› Pedidos pra Distribuidora</span>
+  <span style="color:#64748b;font-size:11px">› Pedidos do CD</span>
   <span style="margin-left:auto;color:#475569;font-size:11px" id="nomeUsuario"></span>
   <a href="/" class="btn-nav">Voltar</a>
 </nav>
@@ -138,7 +155,7 @@ td.fix-est{color:#fde047;font-weight:600;font-variant-numeric:tabular-nums}
       <label>Ordem</label>
       <select id="ordem" onchange="recarregarGrade()">
         <option value="descricao">Descrição A-Z</option>
-        <option value="ultima_entrada">Última entrada (mais recente)</option>
+        <option value="ranking">Ranking de vendas</option>
       </select>
     </div>
     <div class="grupo">
@@ -327,13 +344,14 @@ function renderBody() {
 
     // Fixos
     const codSemZeros = String(p.mat_codi || '').replace(/^0+/, '') || '0';
+    const prioCls = p.prioritario ? ' on' : '';
     cells.push(`<td class="fixed fix-rk">${p.ranking || ''}</td>`);
-    cells.push(`<td class="fixed fix-cod"><button class="btn-dbg" onclick="debugProduto('${escapeHtml(p.mat_codi)}')" title="Debug match EAN">?</button> ${escapeHtml(codSemZeros)}</td>`);
+    cells.push(`<td class="fixed fix-cod"><button class="btn-prio${prioCls}" onclick="togglePrio('${escapeHtml(p.mat_codi)}', this)" title="Marcar como prioritário">P</button> ${escapeHtml(codSemZeros)}</td>`);
     cells.push(`<td class="fixed fix-desc" title="${escapeHtml(p.descricao)}">${escapeHtml(p.descricao)}</td>`);
     cells.push(`<td class="fixed fix-ref muted" style="font-size:10px">${escapeHtml(p.referencia || '')}</td>`);
     cells.push(`<td class="fixed fix-est">${fmtNum(p.est_dist)}</td>`);
 
-    // Por destino: 4 sub-cols (E, T, S, QTD) — sempre mostra inteiros, 0 incluido
+    // Por destino: 4 sub-cols (E, T, S, QTD)
     for (const d of allDest) {
       const dt = p.destinos[d.id] || {};
       const e  = Math.floor(parseFloat(dt.estoque_cx)  || 0);
@@ -342,31 +360,53 @@ function renderBody() {
       const q  = dt.sug_editada || '';
       cells.push(`<td class="cell-num cell-est-d ${e?'':'zero'}">${e}</td>`);
       cells.push(`<td class="cell-num cell-trans ${t?'':'zero'}">${t}</td>`);
-      cells.push(`<td class="cell-num cell-sug ${s?'':'zero'}">${s}</td>`);
-      cells.push(`<td><input class="qtd ${q?'':'zero'}" data-mat="${escapeHtml(p.mat_codi)}" data-dest="${d.id}" value="${q}" type="number" min="0" step="any" oninput="onQtdInput(this)"></td>`);
+      cells.push(`<td class="cell-num cell-sug ${s?'has-value':'zero'}">${s}</td>`);
+      cells.push(`<td><input class="qtd ${q && parseFloat(q)>0?'has-value':'zero'}" data-mat="${escapeHtml(p.mat_codi)}" data-dest="${d.id}" value="${q}" type="number" min="0" step="any" oninput="onQtdInput(this)"></td>`);
     }
 
     // Vendas (só lojas): M28, $, ULT
+    const HOJE = new Date();
     for (const d of lojas) {
       const v = p.vendas[d.loja_id] || {};
       const m = v.media_28d != null ? Number(v.media_28d).toFixed(1) : '';
       const pr = v.preco_atual ? fmtBRL(v.preco_atual) : '';
       const ult = fmtData(v.ultima_venda);
+      let staleCls = '';
+      if (v.ultima_venda) {
+        const diasSemVenda = Math.floor((HOJE - new Date(v.ultima_venda)) / 86400000);
+        if (diasSemVenda > 10) staleCls = ' stale';
+      } else if (v.media_28d != null) {
+        // tem cadastro na loja mas sem venda recente — considera stale
+        staleCls = ' stale';
+      }
       cells.push(`<td class="cell-num">${m}</td>`);
       cells.push(`<td class="cell-num cell-preco">${pr}</td>`);
-      cells.push(`<td class="cell-data">${ult}</td>`);
+      cells.push(`<td class="cell-data${staleCls}">${ult}</td>`);
     }
 
-    return `<tr>${cells.join('')}</tr>`;
+    return `<tr class="${p.prioritario?'prioritario':''}" data-mat="${escapeHtml(p.mat_codi)}">${cells.join('')}</tr>`;
   }).join('');
+}
+
+async function togglePrio(matCodi, btn) {
+  try {
+    const r = await api('/api/pedidos-distribuidora/prioridade', 'PUT', { cd_origem: cdOrigemAtual, mat_codi: matCodi });
+    btn.classList.toggle('on', r.prioritario);
+    const tr = btn.closest('tr');
+    if (tr) tr.classList.toggle('prioritario', r.prioritario);
+    const p = produtosAtuais.find(x => x.mat_codi === matCodi);
+    if (p) p.prioritario = r.prioritario;
+  } catch (e) { showMsg(e.message, 'err'); }
 }
 
 function onQtdInput(input) {
   input.classList.add('dirty');
-  input.classList.remove('saved', 'zero');
+  input.classList.remove('saved', 'zero', 'has-value');
   const matCodi = input.dataset.mat;
   const destId  = parseInt(input.dataset.dest);
   const qtd     = parseFloat(input.value) || 0;
+  if (qtd > 0) input.classList.add('has-value');
+  else input.classList.add('zero');
   const p = produtosAtuais.find(x => x.mat_codi === matCodi);
   if (p) {
     if (!p.destinos[destId]) p.destinos[destId] = {};
@@ -388,7 +428,8 @@ async function salvarQtd(input, matCodi, destId, qtd) {
     input.classList.remove('saving');
     input.classList.add('saved');
     setTimeout(() => input.classList.remove('saved'), 1500);
-    if (qtd <= 0) input.classList.add('zero');
+    if (qtd <= 0) { input.classList.add('zero'); input.classList.remove('has-value'); }
+    else { input.classList.add('has-value'); input.classList.remove('zero'); }
   } catch (e) {
     input.classList.remove('saving');
     showMsg('Erro: ' + e.message, 'err');

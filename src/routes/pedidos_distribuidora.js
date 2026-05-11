@@ -176,12 +176,15 @@ router.get('/grade', adminOuCeo, async (req, res) => {
              cd_c.pro_prad AS preco_admin,
              pe.qtd_embalagem,
              uc.ultima_entrada,
-             uc.ultimo_mcp_codi_int AS ultimo_mcp_codi
+             uc.ultimo_mcp_codi_int AS ultimo_mcp_codi,
+             (pp.mat_codi IS NOT NULL) AS prioritario
         FROM cd_material cd_m
         LEFT JOIN cd_estoque   cd_e ON cd_e.cd_codigo = cd_m.cd_codigo AND cd_e.pro_codi = cd_m.mat_codi
         LEFT JOIN cd_custoprod cd_c ON cd_c.cd_codigo = cd_m.cd_codigo AND cd_c.pro_codi = cd_m.mat_codi
         LEFT JOIN produtos_embalagem pe ON pe.mat_codi = cd_m.mat_codi
         LEFT JOIN ult_compra uc ON uc.cd_codigo = cd_m.cd_codigo AND uc.pro_codi = cd_m.mat_codi
+        LEFT JOIN pedidos_distrib_prioridades pp
+          ON pp.cd_origem_codigo = cd_m.cd_codigo AND pp.mat_codi = cd_m.mat_codi
        WHERE ${where}
        ORDER BY ${orderBy}
        LIMIT $${params.length}
@@ -395,11 +398,42 @@ router.get('/grade', adminOuCeo, async (req, res) => {
       }
     }
 
+    // Ordena por ranking se solicitado (ranking só calcula depois — no Node)
+    if (ordem === 'ranking') {
+      produtos.sort((a, b) => {
+        const ra = a.ranking ?? Number.MAX_SAFE_INTEGER;
+        const rb = b.ranking ?? Number.MAX_SAFE_INTEGER;
+        return ra - rb;
+      });
+    }
+
     res.json({ cd_origem: cdOrigem, destinos, produtos });
   } catch (e) {
     console.error('[pedidos-distrib grade]', e.message);
     res.status(500).json({ erro: e.message });
   }
+});
+
+// PUT /prioridade — toggle prioritário do produto. Body: { cd_origem, mat_codi }
+router.put('/prioridade', adminOuCeo, async (req, res) => {
+  try {
+    const { cd_origem, mat_codi } = req.body || {};
+    if (!cd_origem || !mat_codi) return res.status(400).json({ erro: 'cd_origem e mat_codi obrigatorios' });
+    const por = req.usuario.email || req.usuario.usuario || req.usuario.nome || `id:${req.usuario.id}`;
+    // Toggle: se existir, deleta; senão, insere
+    const r = await dbQuery(
+      `DELETE FROM pedidos_distrib_prioridades WHERE cd_origem_codigo = $1 AND mat_codi = $2 RETURNING 1`,
+      [cd_origem, String(mat_codi).trim()]
+    );
+    if (!r.length) {
+      await dbQuery(
+        `INSERT INTO pedidos_distrib_prioridades (cd_origem_codigo, mat_codi, atualizado_por) VALUES ($1,$2,$3)`,
+        [cd_origem, String(mat_codi).trim(), por]
+      );
+      return res.json({ ok: true, prioritario: true });
+    }
+    res.json({ ok: true, prioritario: false });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
 // PUT /qtd — salva qtd editada. Body: { cd_origem, destino_id, mat_codi, qtd }
