@@ -52,11 +52,24 @@ async function paginarQuery(cli, sqlBase, orderBy, pageSize = 5000) {
 
 async function syncMaterial(cd, cli) {
   const t0 = Date.now();
-  const rows = await paginarQuery(cli,
-    `SELECT MAT_CODI, MAT_DESC, MAT_REFE, MAT_SITU, EAN_CODI, MAT_PSLI, MAT_PSBR
-       FROM MATERIAL WITH (NOLOCK)`,
-    'MAT_CODI'
-  );
+  // Tenta com MAT_PSBR (peso bruto). Se a coluna não existir nesse banco, fallback sem ela.
+  let rows;
+  try {
+    rows = await paginarQuery(cli,
+      `SELECT MAT_CODI, MAT_DESC, MAT_REFE, MAT_SITU, EAN_CODI, MAT_PSLI, MAT_PSBR
+         FROM MATERIAL WITH (NOLOCK)`,
+      'MAT_CODI'
+    );
+  } catch (e) {
+    if (/Invalid column name|MAT_PSBR/i.test(e.message)) {
+      // Banco sem MAT_PSBR — pega só MAT_PSLI
+      rows = await paginarQuery(cli,
+        `SELECT MAT_CODI, MAT_DESC, MAT_REFE, MAT_SITU, EAN_CODI, MAT_PSLI
+           FROM MATERIAL WITH (NOLOCK)`,
+        'MAT_CODI'
+      );
+    } else throw e;
+  }
   if (rows.length) {
     await dbQuery(
       `INSERT INTO cd_material (cd_codigo, mat_codi, mat_desc, mat_refe, mat_situ, ean_codi,
