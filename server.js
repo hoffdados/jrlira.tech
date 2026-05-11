@@ -2368,10 +2368,12 @@ initDB().then(() => {
   // Sync UltraSyst CD→loja (a cada 10 min, se relay configurado).
   // Sync + match + detecção de produtos novos rodam juntos.
   if (process.env.ULTRASYST_RELAY_URL && process.env.ULTRASYST_RELAY_TOKEN) {
-    const { syncTransferenciasCD, matchTransferenciasRecebidas, detectarProdutosNovosCD } = require('./src/sync_ultrasyst');
+    const { syncTransferenciasCD, matchTransferenciasRecebidas, detectarProdutosNovosCD, ressincronizarTransferenciasAbertas } = require('./src/sync_ultrasyst');
     const rodarSyncEMatch = async () => {
       try { await syncTransferenciasCD(); }
       catch (e) { console.error('[ultrasyst sync] falha:', e.message); }
+      try { await ressincronizarTransferenciasAbertas(); }
+      catch (e) { console.error('[ultrasyst ressync] falha:', e.message); }
       try { await matchTransferenciasRecebidas(); }
       catch (e) { console.error('[ultrasyst match] falha:', e.message); }
       try { await detectarProdutosNovosCD(); }

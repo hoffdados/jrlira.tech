@@ -389,4 +389,118 @@ async function matchTransferenciasRecebidas() {
   return { validadas: ids.length, alertas: alertasCriados, ms };
 }
 
-module.exports = { syncTransferenciasCD, mapearLojas, matchTransferenciasRecebidas, detectarProdutosNovosCD };
+// Re-sincroniza notas que estão ABERTAS no CD (mcp_status='A') e ainda em fluxo
+// editável no app (em_transito ou recebida). Detecta edições do CD após emissão inicial.
+async function ressincronizarTransferenciasAbertas() {
+  const t0 = Date.now();
+  const stats = { verificadas: 0, ressincronizadas: 0, alertadas: 0, sem_diff: 0, erros: 0 };
+
+  // Pega notas candidatas: origem=cd, em_transito ou recebida, fornecedor=CD legado
+  const candidatas = await dbQuery(
+    `SELECT id, cd_mov_codi, status, valor_total
+       FROM notas_entrada
+      WHERE origem = 'cd'
+        AND fornecedor_cnpj = $1
+        AND status IN ('em_transito','recebida')
+        AND cd_mov_codi IS NOT NULL
+      ORDER BY id DESC LIMIT 500`, [CD_CNPJ]);
+  if (!candidatas.length) return stats;
+  stats.verificadas = candidatas.length;
+
+  const mcpCodis = candidatas.map(c => c.cd_mov_codi);
+  // Busca header + itens em batch (evita N queries)
+  const headerSql = `
+    SELECT MCP_CODI, MCP_DTEM, MCP_VTOT, MCP_STATUS
+      FROM TBMOVCOMPRA WITH (NOLOCK)
+     WHERE EMP_CODI='001' AND MCP_TIPOMOV='S'
+       AND MCP_CODI IN (${mcpCodis.map(c => `'${c}'`).join(',')})`;
+  const headers = await ultrasyst.query(headerSql);
+  const headersByMcp = new Map((headers.rows || []).map(h => [String(h.MCP_CODI).trim(), h]));
+
+  let itensPorMcp = {};
+  try { itensPorMcp = await buscarItensBatch('001', mcpCodis, 'S'); } catch (e) { console.error('[ressync itens batch]', e.message); }
+
+  for (const c of candidatas) {
+    try {
+      const mcpStr = String(c.cd_mov_codi).trim();
+      const h = headersByMcp.get(mcpStr);
+      if (!h) continue; // não achou no UltraSyst — pode ter sido excluída
+      const itensNovos = itensPorMcp[mcpStr] || [];
+      const novoValor = parseFloat(h.MCP_VTOT || 0);
+      const valorAtual = parseFloat(c.valor_total || 0);
+
+      // Conta itens que tem hoje no app
+      const r = await dbQuery(`SELECT COUNT(*)::int AS n FROM itens_nota WHERE nota_id = $1`, [c.id]);
+      const nAtual = r[0]?.n || 0;
+      const nNovo  = itensNovos.length;
+
+      const diffValor = Math.abs(novoValor - valorAtual) > 0.01;
+      const diffItens = nAtual !== nNovo;
+      if (!diffValor && !diffItens) { stats.sem_diff++; continue; }
+
+      // Tem diferença. Re-sync (em_transito e recebida — ainda dentro do fluxo "antes de conferir")
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query(`DELETE FROM itens_nota WHERE nota_id = $1`, [c.id]);
+        await client.query(
+          `UPDATE notas_entrada
+              SET valor_total = $2,
+                  cd_synced_em = NOW()
+            WHERE id = $1`,
+          [c.id, novoValor]
+        );
+        // Reinsere itens (mesma lógica de inserirTransferencia)
+        if (itensNovos.length) {
+          const nota_id = itensNovos.map(() => c.id);
+          const numero  = itensNovos.map(i => Math.floor(i.MCP_SEQITEM || 0));
+          const proCodi = itensNovos.map(i => (i.PRO_CODI || '').trim() || null);
+          const ean     = itensNovos.map(i => ((i.ean || '').trim() || null));
+          const desc    = itensNovos.map(i => ((i.descricao || '').trim() || null));
+          const qtd     = itensNovos.map(i => i.MCP_QUAN || 0);
+          const vuni    = itensNovos.map(i => i.MCP_VUNI || 0);
+          const vtot    = itensNovos.map(i => (i.MCP_QUAN || 0) * (i.MCP_VUNI || 0));
+          const semCod  = itensNovos.map(i => {
+            const e = (i.ean || '').replace(/\D/g, '').replace(/^0+/, '');
+            return !e;
+          });
+          await client.query(
+            `INSERT INTO itens_nota
+                (nota_id, numero_item, cd_pro_codi, ean_nota, descricao_nota,
+                 quantidade, preco_unitario_nota, preco_total_nota, produto_novo, sem_codigo_barras)
+               SELECT * FROM UNNEST(
+                 $1::int[], $2::int[], $3::text[], $4::text[], $5::text[],
+                 $6::numeric[], $7::numeric[], $8::numeric[],
+                 ARRAY_FILL(FALSE, ARRAY[array_length($1,1)]), $9::bool[]
+               )`,
+            [nota_id, numero, proCodi, ean, desc, qtd, vuni, vtot, semCod]
+          );
+        }
+        // Alerta admin sobre o re-sync
+        await client.query(
+          `INSERT INTO alertas_admin (tipo, entidade, entidade_id, titulo, mensagem)
+           VALUES ('cd_nota_editada','nota',$1,
+                   'Nota CD editada após emissão',
+                   $2)`,
+          [c.id, `Nota MCP ${c.cd_mov_codi} (status app=${c.status}) foi RE-SINCRONIZADA. Antes: ${nAtual} itens / R$ ${valorAtual.toFixed(2)}. Agora: ${nNovo} itens / R$ ${novoValor.toFixed(2)}.`]
+        );
+        await client.query('COMMIT');
+        stats.ressincronizadas++;
+      } catch (e) {
+        await client.query('ROLLBACK').catch(() => {});
+        stats.erros++;
+        console.error(`[ressync ${c.cd_mov_codi}]`, e.message);
+      } finally {
+        client.release();
+      }
+    } catch (e) {
+      stats.erros++;
+      console.error(`[ressync nota ${c.id}]`, e.message);
+    }
+  }
+  stats.ms = Date.now() - t0;
+  console.log(`[ressync_transferencias] verif=${stats.verificadas} ressync=${stats.ressincronizadas} sem_diff=${stats.sem_diff} erros=${stats.erros} em ${stats.ms}ms`);
+  return stats;
+}
+
+module.exports = { syncTransferenciasCD, mapearLojas, matchTransferenciasRecebidas, detectarProdutosNovosCD, ressincronizarTransferenciasAbertas };
