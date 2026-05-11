@@ -569,6 +569,35 @@ router.delete('/qtd-tudo', adminOuCeo, async (req, res) => {
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
+// GET /debug-cliente?cd_origem=&cnpj= — tenta achar cliente no UltraSyst com varias estrategias
+router.get('/debug-cliente', adminOuCeo, async (req, res) => {
+  try {
+    const cdOrigem = String(req.query.cd_origem || 'srv1-itautuba').trim();
+    const cnpj = String(req.query.cnpj || '17764296000110').replace(/\D/g, '');
+    const { clientePorCodigo } = require('../cds');
+    const cli = await clientePorCodigo(cdOrigem);
+
+    // 1) Sample de 5 clientes pra ver formato real
+    const sample = await cli.query(`SELECT TOP 5 CLI_CODI, CLI_RAZS, CLI_CGC FROM CLIENTE WITH (NOLOCK)`);
+
+    // 2) Tenta varias estrategias
+    const tentativas = [
+      { nome: 'REPLACE pontuacao', sql: `SELECT TOP 5 CLI_CODI, CLI_RAZS, CLI_CGC FROM CLIENTE WITH (NOLOCK) WHERE REPLACE(REPLACE(REPLACE(CLI_CGC,'.',''),'/',''),'-','') = '${cnpj}'` },
+      { nome: 'TRIM + REPLACE',     sql: `SELECT TOP 5 CLI_CODI, CLI_RAZS, CLI_CGC FROM CLIENTE WITH (NOLOCK) WHERE REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(CLI_CGC)),'.',''),'/',''),'-','') = '${cnpj}'` },
+      { nome: 'LIKE %cnpj%',         sql: `SELECT TOP 5 CLI_CODI, CLI_RAZS, CLI_CGC FROM CLIENTE WITH (NOLOCK) WHERE CLI_CGC LIKE '%${cnpj}%'` },
+      { nome: 'LIKE primeiros 8',    sql: `SELECT TOP 5 CLI_CODI, CLI_RAZS, CLI_CGC FROM CLIENTE WITH (NOLOCK) WHERE CLI_CGC LIKE '%${cnpj.slice(0,8)}%'` },
+    ];
+    const resultados = [];
+    for (const t of tentativas) {
+      try {
+        const r = await cli.query(t.sql);
+        resultados.push({ ...t, total: r.rows?.length || 0, rows: r.rows?.slice(0,3) });
+      } catch (e) { resultados.push({ ...t, erro: e.message }); }
+    }
+    res.json({ cd_origem: cdOrigem, cnpj_procurado: cnpj, sample_clientes: sample.rows, tentativas: resultados });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
 // GET /grupos?cd_origem= — lista de grupos+subgrupos do CD (pra dropdowns)
 router.get('/grupos', adminOuCeo, async (req, res) => {
   try {
