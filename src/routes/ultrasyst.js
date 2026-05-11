@@ -51,6 +51,26 @@ router.post('/ressync-abertas', apenasAdmin, async (req, res) => {
   }
 });
 
+// GET /api/ultrasyst/sync-now?token= — link clicável no browser
+router.get('/sync-now', async (req, res) => {
+  const jwt = require('jsonwebtoken');
+  const { JWT_SECRET } = require('../auth');
+  let token = req.query.token || (req.headers.authorization || '').replace(/^Bearer\s+/i,'');
+  if (!token) return res.status(401).json({ erro: 'Token ausente' });
+  try {
+    const u = jwt.verify(token, JWT_SECRET);
+    if (u.perfil !== 'admin') return res.status(403).json({ erro: 'Acesso negado' });
+  } catch { return res.status(401).json({ erro: 'Token invalido' }); }
+  try {
+    const novas    = await sync.syncTransferenciasCD();
+    const ressync  = await sync.ressincronizarTransferenciasAbertas();
+    const matched  = await sync.matchTransferenciasRecebidas();
+    res.json({ ok: true, novas, ressync, matched });
+  } catch (e) {
+    res.status(500).json({ ok: false, erro: e.message });
+  }
+});
+
 // POST /api/ultrasyst/match-recebidas — atualiza status das já recebidas
 router.post('/match-recebidas', apenasAdmin, async (req, res) => {
   try {
