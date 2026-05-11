@@ -410,18 +410,18 @@ router.get('/grade', adminOuCeo, async (req, res) => {
             };
           }
         } else if (d.tipo === 'CD' && d.cd_codigo) {
+          // CDs destino controlam estoque na MESMA unidade do CD origem (CX) — não dividir por qtd_embalagem
           const e = estCdMap.get(`${d.cd_codigo}|${eanN}`);
           const v = vendasCdMap.get(`${d.cd_codigo}|${eanN}`);
           slot.estoque_un = e?.est_quan ? parseFloat(e.est_quan) : 0;
-          slot.estoque_cx = qtdEmb > 0 ? Math.floor(slot.estoque_un / qtdEmb) : 0;
-          // Trânsito CD destino: deferido (Task 5 — replica fluxo notas ASA FRIOS)
+          slot.estoque_cx = Math.floor(slot.estoque_un); // já em CX
           slot.transito_un = 0;
           slot.transito_cx = 0;
-          // Sugestão baseada em transferências saídas do CD (consumo)
+          // Sugestão também em CX direto (saídas do CD já estão em CX)
           const qtd_28d = v ? parseFloat(v.qtd_28d) || 0 : 0;
           const media_dia = qtd_28d / 28;
-          const sug_un = Math.max(0, 35 * media_dia - slot.estoque_un - slot.transito_un);
-          slot.sugestao_cx = qtdEmb > 0 ? Math.ceil(sug_un / qtdEmb) : 0;
+          const sug_cx = Math.max(0, 35 * media_dia - slot.estoque_un - slot.transito_un);
+          slot.sugestao_cx = Math.ceil(sug_cx);
         }
 
         slot.sug_editada = sugEditMap.get(`${p.mat_codi}|${d.id}`) || 0;
@@ -501,6 +501,22 @@ router.delete('/qtd-tudo', adminOuCeo, async (req, res) => {
     if (!cdOrigem) return res.status(400).json({ erro: 'cd_origem obrigatorio' });
     const r = await dbQuery(`DELETE FROM pedidos_distrib_quantidades WHERE cd_origem_codigo = $1`, [cdOrigem]);
     res.json({ ok: true, removidos: r.length });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
+// GET /ultima-sequencia?cd_origem= — último mcp_codi (S=saída) do CD pra sugerir filtro final
+router.get('/ultima-sequencia', adminOuCeo, async (req, res) => {
+  try {
+    const cdOrigem = String(req.query.cd_origem || '').trim();
+    if (!cdOrigem) return res.status(400).json({ erro: 'cd_origem obrigatorio' });
+    const [r] = await dbQuery(
+      `SELECT MAX((mcp_codi)::int) AS ultima
+         FROM cd_movcompra
+        WHERE cd_codigo = $1
+          AND mcp_tipomov = 'S'
+          AND mcp_codi ~ '^[0-9]+$'`, [cdOrigem]
+    );
+    res.json({ cd_origem: cdOrigem, ultima_sequencia: r?.ultima || null });
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 

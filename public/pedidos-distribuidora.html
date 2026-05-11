@@ -159,12 +159,12 @@ table.grade tbody tr.prioritario:hover{background:#27220e}
       </select>
     </div>
     <div class="grupo">
-      <label>MCP_CODI inicial</label>
+      <label>Sequência inicial</label>
       <input id="mcpDe" type="number" placeholder="ex 12000" style="min-width:100px" onchange="recarregarGrade()">
     </div>
     <div class="grupo">
-      <label>MCP_CODI final</label>
-      <input id="mcpAte" type="number" placeholder="ex 12500" style="min-width:100px" onchange="recarregarGrade()">
+      <label>Sequência final</label>
+      <input id="mcpAte" type="number" placeholder="(carregando...)" style="min-width:100px" onchange="recarregarGrade()">
     </div>
     <div class="grupo">
       <label>Limit</label>
@@ -253,12 +253,25 @@ async function carregarOrigens() {
   } catch (e) { showMsg(e.message, 'err'); }
 }
 
-function onOrigemChange() {
+async function onOrigemChange() {
   const codigo = document.getElementById('cdOrigem').value;
   cdOrigemAtual = codigo || null;
   document.getElementById('downloadArea').style.display = 'none';
-  if (cdOrigemAtual) recarregarGrade();
-  else { document.getElementById('gradeHead').innerHTML = ''; document.getElementById('gradeBody').innerHTML = '<tr><td>Selecione um CD origem</td></tr>'; }
+  if (cdOrigemAtual) {
+    // Sugere a última sequência disponível como filtro final
+    try {
+      const r = await api(`/api/pedidos-distribuidora/ultima-sequencia?cd_origem=${encodeURIComponent(cdOrigemAtual)}`);
+      const inp = document.getElementById('mcpAte');
+      if (r.ultima_sequencia) {
+        inp.value = r.ultima_sequencia;
+        inp.placeholder = `máx ${r.ultima_sequencia}`;
+      }
+    } catch (e) { /* ignora */ }
+    recarregarGrade();
+  } else {
+    document.getElementById('gradeHead').innerHTML = '';
+    document.getElementById('gradeBody').innerHTML = '<tr><td>Selecione um CD origem</td></tr>';
+  }
 }
 
 function onBuscaChange() {
