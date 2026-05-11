@@ -1996,6 +1996,34 @@ async function initDB() {
         ADD COLUMN IF NOT EXISTS peso_liquido_kg NUMERIC(12,4),
         ADD COLUMN IF NOT EXISTS peso_bruto_kg   NUMERIC(12,4);
     `);
+    await runMigration(client, '20260511_cd_material_grupo', `
+      ALTER TABLE cd_material
+        ADD COLUMN IF NOT EXISTS gru_codi VARCHAR(10),
+        ADD COLUMN IF NOT EXISTS sgr_codi VARCHAR(10);
+      CREATE INDEX IF NOT EXISTS idx_cd_material_gru ON cd_material (cd_codigo, gru_codi);
+      CREATE INDEX IF NOT EXISTS idx_cd_material_sgr ON cd_material (cd_codigo, sgr_codi);
+    `);
+    await runMigration(client, '20260511_cd_grupo', `
+      CREATE TABLE IF NOT EXISTS cd_grupo (
+        cd_codigo VARCHAR(40) NOT NULL,
+        gru_codi VARCHAR(10) NOT NULL,
+        gru_desc VARCHAR(120),
+        gru_giro NUMERIC(14,4),
+        gru_stsup CHAR(1),
+        sincronizado_em TIMESTAMPTZ DEFAULT NOW(),
+        PRIMARY KEY (cd_codigo, gru_codi)
+      );
+      CREATE TABLE IF NOT EXISTS cd_subgrupo (
+        cd_codigo VARCHAR(40) NOT NULL,
+        gru_codi VARCHAR(10) NOT NULL,
+        sgr_codi VARCHAR(10) NOT NULL,
+        sgr_desc VARCHAR(120),
+        sgr_giro NUMERIC(14,4),
+        sgr_stsup CHAR(1),
+        sincronizado_em TIMESTAMPTZ DEFAULT NOW(),
+        PRIMARY KEY (cd_codigo, gru_codi, sgr_codi)
+      );
+    `);
     await runMigration(client, '20260510_cd_estoque_cd_codigo', `
       ALTER TABLE cd_estoque ADD COLUMN IF NOT EXISTS cd_codigo VARCHAR(40);
       UPDATE cd_estoque SET cd_codigo = 'srv1-itautuba' WHERE cd_codigo IS NULL;

@@ -55,10 +55,11 @@ async function syncMaterial(cd, cli) {
   // Tenta combinações em ordem (com mais → com menos colunas de peso)
   // Nome real descoberto via /columns/MATERIAL: MAT_PESO + MAT_PESOBR
   const tentativas = [
-    'MAT_CODI, MAT_DESC, MAT_REFE, MAT_SITU, EAN_CODI, MAT_PESO AS MAT_PSLI, MAT_PESOBR AS MAT_PSBR',
-    'MAT_CODI, MAT_DESC, MAT_REFE, MAT_SITU, EAN_CODI, MAT_PESO AS MAT_PSLI',
-    'MAT_CODI, MAT_DESC, MAT_REFE, MAT_SITU, EAN_CODI, MAT_PSLI, MAT_PSBR',
-    'MAT_CODI, MAT_DESC, MAT_REFE, MAT_SITU, EAN_CODI', // sem peso
+    'MAT_CODI, MAT_DESC, MAT_REFE, MAT_SITU, EAN_CODI, MAT_PESO AS MAT_PSLI, MAT_PESOBR AS MAT_PSBR, GRU_CODI, SGR_CODI',
+    'MAT_CODI, MAT_DESC, MAT_REFE, MAT_SITU, EAN_CODI, MAT_PESO AS MAT_PSLI, GRU_CODI, SGR_CODI',
+    'MAT_CODI, MAT_DESC, MAT_REFE, MAT_SITU, EAN_CODI, GRU_CODI, SGR_CODI',
+    'MAT_CODI, MAT_DESC, MAT_REFE, MAT_SITU, EAN_CODI, GRU_CODI',
+    'MAT_CODI, MAT_DESC, MAT_REFE, MAT_SITU, EAN_CODI', // sem peso e sem grupo
   ];
   let rows = null, ultimoErro = null;
   for (const sel of tentativas) {
@@ -77,14 +78,16 @@ async function syncMaterial(cd, cli) {
   if (rows.length) {
     await dbQuery(
       `INSERT INTO cd_material (cd_codigo, mat_codi, mat_desc, mat_refe, mat_situ, ean_codi,
-                                peso_liquido_kg, peso_bruto_kg, sincronizado_em)
+                                peso_liquido_kg, peso_bruto_kg, gru_codi, sgr_codi, sincronizado_em)
        SELECT $1, * FROM UNNEST($2::text[], $3::text[], $4::text[], $5::text[], $6::text[],
-                                $7::numeric[], $8::numeric[], $9::timestamptz[])
+                                $7::numeric[], $8::numeric[], $9::text[], $10::text[], $11::timestamptz[])
        ON CONFLICT (cd_codigo, mat_codi) DO UPDATE SET
          mat_desc=EXCLUDED.mat_desc, mat_refe=EXCLUDED.mat_refe,
          mat_situ=EXCLUDED.mat_situ, ean_codi=EXCLUDED.ean_codi,
          peso_liquido_kg=COALESCE(EXCLUDED.peso_liquido_kg, cd_material.peso_liquido_kg),
          peso_bruto_kg=COALESCE(EXCLUDED.peso_bruto_kg, cd_material.peso_bruto_kg),
+         gru_codi=COALESCE(EXCLUDED.gru_codi, cd_material.gru_codi),
+         sgr_codi=COALESCE(EXCLUDED.sgr_codi, cd_material.sgr_codi),
          sincronizado_em=NOW()`,
       [
         cd.codigo,
@@ -95,12 +98,72 @@ async function syncMaterial(cd, cli) {
         rows.map(x => String(x.EAN_CODI || '').trim() || null),
         rows.map(x => 'MAT_PSLI' in x && x.MAT_PSLI != null ? Number(x.MAT_PSLI) : null),
         rows.map(x => 'MAT_PSBR' in x && x.MAT_PSBR != null ? Number(x.MAT_PSBR) : null),
+        rows.map(x => 'GRU_CODI' in x && x.GRU_CODI != null ? String(x.GRU_CODI).trim() || null : null),
+        rows.map(x => 'SGR_CODI' in x && x.SGR_CODI != null ? String(x.SGR_CODI).trim() || null : null),
         rows.map(() => new Date().toISOString()),
       ]
     );
   }
   await setEstado(`cd_${cd.codigo}_material_ultima_sync`, new Date().toISOString());
   return { tabela: 'material', linhas: rows.length, ms: Date.now() - t0 };
+}
+
+// ── 0c) cd_grupo + cd_subgrupo (TBGRUPO + TBSUBGRUPO do UltraSyst) ─────
+
+async function syncGrupos(cd, cli) {
+  const t0 = Date.now();
+  const rows = await paginarQuery(cli,
+    `SELECT GRU_CODI, GRU_DESC, GRU_GIRO, GRU_STSUP FROM TBGRUPO WITH (NOLOCK)`,
+    'GRU_CODI'
+  );
+  await dbQuery(`DELETE FROM cd_grupo WHERE cd_codigo = $1`, [cd.codigo]);
+  if (rows.length) {
+    await dbQuery(
+      `INSERT INTO cd_grupo (cd_codigo, gru_codi, gru_desc, gru_giro, gru_stsup)
+       SELECT $1, * FROM UNNEST($2::text[], $3::text[], $4::numeric[], $5::text[])`,
+      [
+        cd.codigo,
+        rows.map(x => String(x.GRU_CODI || '').trim()),
+        rows.map(x => String(x.GRU_DESC || '').trim() || null),
+        rows.map(x => x.GRU_GIRO != null ? Number(x.GRU_GIRO) : null),
+        rows.map(x => String(x.GRU_STSUP || '').trim() || null),
+      ]
+    );
+  }
+  await setEstado(`cd_${cd.codigo}_grupo_ultima_sync`, new Date().toISOString());
+  return { tabela: 'grupo', linhas: rows.length, ms: Date.now() - t0 };
+}
+
+async function syncSubgrupos(cd, cli) {
+  const t0 = Date.now();
+  const rows = await paginarQuery(cli,
+    `SELECT SGR_CODI, GRU_CODI, SGR_DESC, SGR_GIRO, SGR_STSUP FROM TBSUBGRUPO WITH (NOLOCK)`,
+    'GRU_CODI, SGR_CODI'
+  );
+  await dbQuery(`DELETE FROM cd_subgrupo WHERE cd_codigo = $1`, [cd.codigo]);
+  if (rows.length) {
+    // Dedup
+    const seen = new Set();
+    const uniq = rows.filter(x => {
+      const k = `${String(x.GRU_CODI||'').trim()}|${String(x.SGR_CODI||'').trim()}`;
+      if (seen.has(k)) return false;
+      seen.add(k); return true;
+    });
+    await dbQuery(
+      `INSERT INTO cd_subgrupo (cd_codigo, gru_codi, sgr_codi, sgr_desc, sgr_giro, sgr_stsup)
+       SELECT $1, * FROM UNNEST($2::text[], $3::text[], $4::text[], $5::numeric[], $6::text[])`,
+      [
+        cd.codigo,
+        uniq.map(x => String(x.GRU_CODI || '').trim()),
+        uniq.map(x => String(x.SGR_CODI || '').trim()),
+        uniq.map(x => String(x.SGR_DESC || '').trim() || null),
+        uniq.map(x => x.SGR_GIRO != null ? Number(x.SGR_GIRO) : null),
+        uniq.map(x => String(x.SGR_STSUP || '').trim() || null),
+      ]
+    );
+  }
+  await setEstado(`cd_${cd.codigo}_subgrupo_ultima_sync`, new Date().toISOString());
+  return { tabela: 'subgrupo', linhas: rows.length, ms: Date.now() - t0 };
 }
 
 // ── 0b) cd_ean (codigos de barra por produto — tabela EAN do UltraSyst) ─
@@ -367,6 +430,8 @@ async function syncCd(cd) {
   const tarefas = [
     { nome: 'material',  fn: syncMaterial },
     { nome: 'ean',       fn: syncEan },
+    { nome: 'grupo',     fn: syncGrupos },
+    { nome: 'subgrupo',  fn: syncSubgrupos },
     { nome: 'estoque',   fn: syncEstoque },
     { nome: 'custoprod', fn: syncCustoProd },
     { nome: 'vendapro',  fn: syncVendaPro },
@@ -413,6 +478,8 @@ module.exports = {
   // exports individuais (testes/debug)
   syncMaterial,
   syncEan,
+  syncGrupos,
+  syncSubgrupos,
   syncEstoque,
   syncCustoProd,
   syncVendaPro,

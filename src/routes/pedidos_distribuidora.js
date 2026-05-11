@@ -122,6 +122,9 @@ router.get('/grade', adminOuCeo, async (req, res) => {
     // Filtro por sequência MCP_CODI (range inicial/final)
     const mcpDe  = req.query.mcp_de  ? parseInt(req.query.mcp_de)  : null;
     const mcpAte = req.query.mcp_ate ? parseInt(req.query.mcp_ate) : null;
+    // Filtros por grupo/subgrupo
+    const gruCodi = req.query.gru_codi ? String(req.query.gru_codi).trim() : null;
+    const sgrCodi = req.query.sgr_codi ? String(req.query.sgr_codi).trim() : null;
 
     // 1) Destinos (todos exceto o CD origem mesmo)
     const [origemRow] = await dbQuery(
@@ -162,6 +165,14 @@ router.get('/grade', adminOuCeo, async (req, res) => {
       params.push(mcpAte);
       where += ` AND uc.ultimo_mcp_codi_int <= $${params.length}`;
     }
+    if (gruCodi) {
+      params.push(gruCodi);
+      where += ` AND cd_m.gru_codi = $${params.length}`;
+    }
+    if (sgrCodi) {
+      params.push(sgrCodi);
+      where += ` AND cd_m.sgr_codi = $${params.length}`;
+    }
     params.push(limit);
     let orderBy = 'descricao';
     if (ordem === 'ultima_entrada') orderBy = 'ultima_entrada DESC NULLS LAST, descricao';
@@ -190,7 +201,11 @@ router.get('/grade', adminOuCeo, async (req, res) => {
              pe.qtd_embalagem,
              uc.ultima_entrada,
              uc.ultimo_mcp_codi_int AS ultimo_mcp_codi,
-             (pp.mat_codi IS NOT NULL) AS prioritario
+             (pp.mat_codi IS NOT NULL) AS prioritario,
+             cd_m.gru_codi,
+             cg.gru_desc,
+             cd_m.sgr_codi,
+             cs.sgr_desc
         FROM cd_material cd_m
         LEFT JOIN cd_estoque   cd_e ON cd_e.cd_codigo = cd_m.cd_codigo AND cd_e.pro_codi = cd_m.mat_codi
         LEFT JOIN cd_custoprod cd_c ON cd_c.cd_codigo = cd_m.cd_codigo AND cd_c.pro_codi = cd_m.mat_codi
@@ -198,6 +213,8 @@ router.get('/grade', adminOuCeo, async (req, res) => {
         LEFT JOIN ult_compra uc ON uc.cd_codigo = cd_m.cd_codigo AND uc.pro_codi = cd_m.mat_codi
         LEFT JOIN pedidos_distrib_prioridades pp
           ON pp.cd_origem_codigo = cd_m.cd_codigo AND pp.mat_codi = cd_m.mat_codi
+        LEFT JOIN cd_grupo    cg ON cg.cd_codigo = cd_m.cd_codigo AND cg.gru_codi = cd_m.gru_codi
+        LEFT JOIN cd_subgrupo cs ON cs.cd_codigo = cd_m.cd_codigo AND cs.gru_codi = cd_m.gru_codi AND cs.sgr_codi = cd_m.sgr_codi
        WHERE ${where}
        ORDER BY ${orderBy}
        LIMIT $${params.length}
@@ -514,6 +531,31 @@ router.delete('/qtd-tudo', adminOuCeo, async (req, res) => {
     if (!cdOrigem) return res.status(400).json({ erro: 'cd_origem obrigatorio' });
     const r = await dbQuery(`DELETE FROM pedidos_distrib_quantidades WHERE cd_origem_codigo = $1`, [cdOrigem]);
     res.json({ ok: true, removidos: r.length });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
+// GET /grupos?cd_origem= — lista de grupos+subgrupos do CD (pra dropdowns)
+router.get('/grupos', adminOuCeo, async (req, res) => {
+  try {
+    const cdOrigem = String(req.query.cd_origem || '').trim();
+    if (!cdOrigem) return res.status(400).json({ erro: 'cd_origem obrigatorio' });
+    const grupos = await dbQuery(
+      `SELECT g.gru_codi, g.gru_desc, COUNT(m.mat_codi)::int AS qtde_produtos
+         FROM cd_grupo g
+         LEFT JOIN cd_material m ON m.cd_codigo = g.cd_codigo AND m.gru_codi = g.gru_codi
+        WHERE g.cd_codigo = $1
+        GROUP BY g.gru_codi, g.gru_desc
+        ORDER BY g.gru_desc`, [cdOrigem]
+    );
+    const subgrupos = await dbQuery(
+      `SELECT s.gru_codi, s.sgr_codi, s.sgr_desc, COUNT(m.mat_codi)::int AS qtde_produtos
+         FROM cd_subgrupo s
+         LEFT JOIN cd_material m ON m.cd_codigo = s.cd_codigo AND m.gru_codi = s.gru_codi AND m.sgr_codi = s.sgr_codi
+        WHERE s.cd_codigo = $1
+        GROUP BY s.gru_codi, s.sgr_codi, s.sgr_desc
+        ORDER BY s.gru_codi, s.sgr_desc`, [cdOrigem]
+    );
+    res.json({ cd_origem: cdOrigem, grupos, subgrupos });
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
