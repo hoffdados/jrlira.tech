@@ -564,6 +564,43 @@ router.get('/sync-cd-status', adminOuCeo, async (req, res) => {
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
+// GET /descobrir-grupos?cd_origem= — descobre tabelas/colunas de grupo de produto no UltraSyst
+router.get('/descobrir-grupos', adminOuCeo, async (req, res) => {
+  try {
+    const cdOrigem = String(req.query.cd_origem || 'srv1-itautuba').trim();
+    const { clientePorCodigo } = require('../cds');
+    const cli = await clientePorCodigo(cdOrigem);
+
+    // Tabelas com nomes relacionados a grupo
+    const tables = await cli.listarTabelas();
+    const tabelasGrupo = (tables.tabelas || []).filter(t =>
+      /gru|sub|class|categ|departa|secao|seca|sect|familia|famil/i.test(t.TABLE_NAME)
+    );
+
+    // Colunas da MATERIAL relacionadas a grupo
+    const colsMaterial = await cli.colunas('MATERIAL');
+    const colsGrupoMaterial = (colsMaterial.colunas || []).filter(c =>
+      /gru|sub|class|categ|departa|secao|seca|sect|familia|famil/i.test(c.COLUMN_NAME)
+    );
+
+    // Pra cada tabela candidata, busca colunas
+    const detalhes = {};
+    for (const t of tabelasGrupo.slice(0, 20)) {
+      try {
+        const cols = await cli.colunas(t.TABLE_NAME);
+        detalhes[t.TABLE_NAME] = cols.colunas;
+      } catch (e) { detalhes[t.TABLE_NAME] = { erro: e.message }; }
+    }
+
+    res.json({
+      cd_origem: cdOrigem,
+      tabelas_grupo_candidatas: tabelasGrupo,
+      material_colunas_grupo: colsGrupoMaterial,
+      detalhes_tabelas: detalhes,
+    });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
 // GET /cd-colunas-material?cd_origem= — lista colunas da MATERIAL pra descobrir peso
 router.get('/cd-colunas-material', adminOuCeo, async (req, res) => {
   try {
