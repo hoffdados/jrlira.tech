@@ -351,6 +351,30 @@ router.post('/limpar-pre-cutoff', apenasAdmin, async (req, res) => {
   }
 });
 
+// GET /transito-resumo (token QS) — quantas notas em trânsito por loja/status
+router.get('/transito-resumo', autenticarComQS, async (req, res) => {
+  try {
+    const rows = await dbQuery(`
+      SELECT n.loja_id, l.nome AS loja_nome, n.status,
+             COUNT(*)::int AS total,
+             COALESCE(SUM(n.valor_total),0)::numeric(14,2) AS valor_total,
+             MIN(n.data_emissao) AS mais_antiga,
+             MAX(n.data_emissao) AS mais_recente
+        FROM notas_entrada n
+        LEFT JOIN lojas l ON l.id = n.loja_id
+       WHERE n.origem IN ('cd','transferencia_loja')
+         AND n.status NOT IN ('fechada','validada','arquivada','cancelada','finalizada_f')
+         AND COALESCE(n.mcp_status_cd, 'A') <> 'C'
+         AND n.chegou_no_erp_em IS NULL
+       GROUP BY n.loja_id, l.nome, n.status
+       ORDER BY n.loja_id, n.status
+    `);
+    const totalGeral = rows.reduce((s,r) => s + r.total, 0);
+    const valorGeral = rows.reduce((s,r) => s + parseFloat(r.valor_total), 0);
+    res.json({ total_geral: totalGeral, valor_geral: valorGeral, por_loja_status: rows });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
 // Diagnóstico (token via QS)
 router.get('/diagnosticar/:numero_nota', autenticarComQS, async (req, res) => {
   try {
