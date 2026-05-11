@@ -75,8 +75,7 @@ async function detectarStatusEco() {
 
   // Atualiza cache chegou_no_erp_em via compras_historico
   // Match pra transferências CD: c.numeronfe = n.cd_mov_codi (MCP_CODI)
-  // Match pra NF-e fornecedor: c.numeronfe = n.numero_nota (já tratado em outras rotas; aqui só CD)
-  // CNPJ do fornecedor: precisa bater (loja registra CNPJ do CD na compras_historico)
+  // Match pra NF-e fornecedor: c.numeronfe = n.numero_nota (CNPJ tem que bater também)
   await dbQuery(`
     UPDATE notas_entrada n
        SET chegou_no_erp_em = sub.data_entrada
@@ -94,14 +93,14 @@ async function detectarStatusEco() {
               REGEXP_REPLACE(c.numeronfe, '^0+', '') =
               REGEXP_REPLACE(COALESCE(n2.cd_mov_codi, n2.numero_nota), '^0+', ''))
            )
-         WHERE n2.origem IN ('cd','transferencia_loja')
-           AND n2.chegou_no_erp_em IS NULL
+         WHERE n2.chegou_no_erp_em IS NULL
          GROUP BY n2.id
       ) sub
      WHERE sub.id = n.id
   `);
 
   // Cenário A: notas EXISTENTES que chegaram no ERP, status nao fechado, e NAO canceladas no CD
+  // Inclui NF-e fornecedor E transferências CD
   const updatedA = await dbQuery(`
     UPDATE notas_entrada
        SET status = 'finalizada_f',
@@ -111,7 +110,7 @@ async function detectarStatusEco() {
            finalizada_f_motivo = 'chegou no ERP mas pulou cadastro/conferencia/auditoria do app'
      WHERE chegou_no_erp_em IS NOT NULL
        AND chegou_no_erp_em >= $1::date
-       AND origem IN ('cd','transferencia_loja')
+       AND origem IN ('nfe','cd','transferencia_loja')
        AND status NOT IN ('fechada','validada','arquivada','cancelada','finalizada_f')
        AND COALESCE(mcp_status_cd, 'A') <> 'C'
      RETURNING id, loja_id, numero_nota, fornecedor_cnpj
@@ -161,7 +160,7 @@ async function detectarStatusEco() {
        SET auditoria_eco_status = 'n_finalizadas_eco',
            auditoria_eco_em = NOW()
      WHERE status IN ('fechada','validada')
-       AND origem IN ('cd','transferencia_loja')
+       AND origem IN ('nfe','cd','transferencia_loja')
        AND chegou_no_erp_em IS NULL
        AND importado_em < NOW() - INTERVAL '24 hours'
        AND importado_em >= $1::date
@@ -177,8 +176,9 @@ async function detectarStatusEco() {
        SET auditoria_eco_status = 'transito_perdido',
            auditoria_eco_em = NOW()
      WHERE status IN ('em_transito','aguardando_estoque','em_conferencia','em_estoque',
-                      'em_validacao_cadastro','em_validacao_comercial','aguardando_auditoria')
-       AND origem IN ('cd','transferencia_loja')
+                      'em_validacao_cadastro','em_validacao_comercial','aguardando_auditoria',
+                      'importada')
+       AND origem IN ('nfe','cd','transferencia_loja')
        AND chegou_no_erp_em IS NULL
        AND data_emissao IS NOT NULL
        AND data_emissao < CURRENT_DATE - INTERVAL '30 days'
