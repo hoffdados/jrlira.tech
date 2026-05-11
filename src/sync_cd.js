@@ -53,10 +53,11 @@ async function paginarQuery(cli, sqlBase, orderBy, pageSize = 5000) {
 async function syncMaterial(cd, cli) {
   const t0 = Date.now();
   // Tenta combinações em ordem (com mais → com menos colunas de peso)
+  // Nome real descoberto via /columns/MATERIAL: MAT_PESO + MAT_PESOBR
   const tentativas = [
+    'MAT_CODI, MAT_DESC, MAT_REFE, MAT_SITU, EAN_CODI, MAT_PESO AS MAT_PSLI, MAT_PESOBR AS MAT_PSBR',
+    'MAT_CODI, MAT_DESC, MAT_REFE, MAT_SITU, EAN_CODI, MAT_PESO AS MAT_PSLI',
     'MAT_CODI, MAT_DESC, MAT_REFE, MAT_SITU, EAN_CODI, MAT_PSLI, MAT_PSBR',
-    'MAT_CODI, MAT_DESC, MAT_REFE, MAT_SITU, EAN_CODI, MAT_PSLI',
-    'MAT_CODI, MAT_DESC, MAT_REFE, MAT_SITU, EAN_CODI, MAT_PSBR',
     'MAT_CODI, MAT_DESC, MAT_REFE, MAT_SITU, EAN_CODI', // sem peso
   ];
   let rows = null, ultimoErro = null;
