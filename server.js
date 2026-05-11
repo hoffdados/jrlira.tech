@@ -2003,6 +2003,18 @@ async function initDB() {
       CREATE INDEX IF NOT EXISTS idx_cd_material_gru ON cd_material (cd_codigo, gru_codi);
       CREATE INDEX IF NOT EXISTS idx_cd_material_sgr ON cd_material (cd_codigo, sgr_codi);
     `);
+    // Cache de cli_codi do destino dentro do banco de cada CD origem (pra calcular trânsito CD→CD)
+    await runMigration(client, '20260511_cli_codi_cache', `
+      CREATE TABLE IF NOT EXISTS pedidos_distrib_cli_codi (
+        cd_origem_codigo VARCHAR(40) NOT NULL,
+        cnpj_destino VARCHAR(20) NOT NULL,
+        cli_codi VARCHAR(20),
+        cli_razs VARCHAR(120),
+        atualizado_em TIMESTAMPTZ DEFAULT NOW(),
+        PRIMARY KEY (cd_origem_codigo, cnpj_destino)
+      );
+    `);
+
     await runMigration(client, '20260511_cd_grupo', `
       CREATE TABLE IF NOT EXISTS cd_grupo (
         cd_codigo VARCHAR(40) NOT NULL,

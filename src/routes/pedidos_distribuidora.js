@@ -274,6 +274,37 @@ router.get('/grade', adminOuCeo, async (req, res) => {
       [cdDestinos.map(d => d.cd_codigo), eansNorm]
     ) : [];
 
+    // 5b1) Trânsito CD→CD destino: SAÍDAS do CD ORIGEM pra cada CD destino (via cli_codi cacheado)
+    // que ainda estão 'A' (aberta) ou 'F' fechada mas não chegou no destino.
+    // Aqui simplificamos: status='A' = ainda em trânsito.
+    const transitoCdDestinos = cdDestinos.length && eansNorm.length ? await dbQuery(
+      `WITH cli_codis AS (
+        SELECT cd_origem_codigo, cnpj_destino, cli_codi
+          FROM pedidos_distrib_cli_codi
+         WHERE cd_origem_codigo = $1
+       )
+       SELECT d.cd_codigo, NULLIF(LTRIM(ce.ean_codi,'0'),'') AS ean,
+              SUM(ic.mcp_quan) AS qtd_transito
+         FROM pedidos_distrib_destinos d
+         JOIN cli_codis cc ON cc.cnpj_destino = d.cnpj
+         JOIN cd_movcompra mc
+           ON mc.cd_codigo = cc.cd_origem_codigo
+          AND mc.mcp_tipomov = 'S'
+          AND mc.for_codi = cc.cli_codi
+          AND COALESCE(mc.mcp_status, 'A') = 'A'
+         JOIN cd_itemcompra ic
+           ON ic.cd_codigo = mc.cd_codigo
+          AND ic.mcp_codi = mc.mcp_codi
+          AND ic.mcp_tipomov = mc.mcp_tipomov
+         JOIN cd_ean ce
+           ON ce.cd_codigo = mc.cd_codigo
+          AND ce.mat_codi = ic.pro_codi
+        WHERE d.tipo='CD' AND d.cd_codigo = ANY($2::text[])
+          AND NULLIF(LTRIM(ce.ean_codi,'0'),'') = ANY($3::text[])
+        GROUP BY d.cd_codigo, ean`,
+      [cdOrigem, cdDestinos.map(d => d.cd_codigo), eansNorm]
+    ) : [];
+
     // 5b) "Vendas" dos CDs destino (consumo via transferências de saída — cd_movcompra/itemcompra)
     // Soma qtd × preço unitário das saídas dos últimos 90 dias por (cd_codigo, ean)
     const vendasCds = cdDestinos.length && eansNorm.length ? await dbQuery(
@@ -402,6 +433,10 @@ router.get('/grade', adminOuCeo, async (req, res) => {
     const vendasCdMap = new Map();
     for (const v of vendasCds) vendasCdMap.set(`${v.cd_codigo}|${v.ean}`, v);
 
+    // Trânsito CD destino (saídas do CD origem com mcp_status='A' pra cada CD destino)
+    const transitoCdMap = new Map();
+    for (const t of transitoCdDestinos) transitoCdMap.set(`${t.cd_codigo}|${t.ean}`, parseFloat(t.qtd_transito) || 0);
+
     // Sug_Editada
     const sugEditMap = new Map();
     for (const q of qtds) sugEditMap.set(`${q.mat_codi}|${q.destino_id}`, parseFloat(q.qtd));
@@ -443,11 +478,11 @@ router.get('/grade', adminOuCeo, async (req, res) => {
           // CDs destino controlam estoque na MESMA unidade do CD origem (CX) — não dividir por qtd_embalagem
           const e = estCdMap.get(`${d.cd_codigo}|${eanN}`);
           const v = vendasCdMap.get(`${d.cd_codigo}|${eanN}`);
+          const t = transitoCdMap.get(`${d.cd_codigo}|${eanN}`) || 0;
           slot.estoque_un = e?.est_quan ? parseFloat(e.est_quan) : 0;
-          slot.estoque_cx = Math.floor(slot.estoque_un); // já em CX
-          slot.transito_un = 0;
-          slot.transito_cx = 0;
-          // Sugestão também em CX direto (saídas do CD já estão em CX)
+          slot.estoque_cx = Math.floor(slot.estoque_un);
+          slot.transito_un = t;
+          slot.transito_cx = Math.floor(t);
           const qtd_28d = v ? parseFloat(v.qtd_28d) || 0 : 0;
           const media_dia = qtd_28d / 28;
           const sug_cx = Math.max(0, 35 * media_dia - slot.estoque_un - slot.transito_un);

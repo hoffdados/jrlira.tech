@@ -108,6 +108,44 @@ async function syncMaterial(cd, cli) {
   return { tabela: 'material', linhas: rows.length, ms: Date.now() - t0 };
 }
 
+// ── 0d) cli_codi cache (busca cli_codi de cada destino no banco do CD origem) ──
+// Pra calcular trânsito CD→CD (cd_movcompra do CD origem com for_codi=cli_codi do destino).
+
+async function syncCliCodisDestinos(cd, cli) {
+  const t0 = Date.now();
+  // Pega os CNPJs dos destinos (lojas + outros CDs)
+  const destinos = await dbQuery(
+    `SELECT DISTINCT cnpj FROM pedidos_distrib_destinos
+      WHERE ativo=TRUE AND cnpj IS NOT NULL AND cnpj <> ''
+        AND cnpj <> (SELECT cnpj FROM pedidos_distrib_destinos WHERE cd_codigo=$1 LIMIT 1)`,
+    [cd.codigo]
+  );
+  let achados = 0, naoAchados = 0;
+  for (const d of destinos) {
+    try {
+      const r = await cli.query(
+        `SELECT TOP 1 CLI_CODI, CLI_RAZS FROM CLIENTE WITH (NOLOCK)
+          WHERE REPLACE(REPLACE(REPLACE(CLI_CGC,'.',''),'/',''),'-','') = '${d.cnpj}'`
+      );
+      const row = r.rows?.[0];
+      if (row?.CLI_CODI) {
+        await dbQuery(
+          `INSERT INTO pedidos_distrib_cli_codi (cd_origem_codigo, cnpj_destino, cli_codi, cli_razs)
+           VALUES ($1,$2,$3,$4)
+           ON CONFLICT (cd_origem_codigo, cnpj_destino) DO UPDATE SET
+             cli_codi=EXCLUDED.cli_codi, cli_razs=EXCLUDED.cli_razs, atualizado_em=NOW()`,
+          [cd.codigo, d.cnpj, String(row.CLI_CODI).trim(), String(row.CLI_RAZS || '').trim() || null]
+        );
+        achados++;
+      } else {
+        naoAchados++;
+      }
+    } catch (e) { naoAchados++; }
+  }
+  await setEstado(`cd_${cd.codigo}_cli_codi_ultima_sync`, new Date().toISOString());
+  return { tabela: 'cli_codi', linhas: achados, nao_achados: naoAchados, ms: Date.now() - t0 };
+}
+
 // ── 0c) cd_grupo + cd_subgrupo (TBGRUPO + TBSUBGRUPO do UltraSyst) ─────
 
 async function syncGrupos(cd, cli) {
@@ -432,6 +470,7 @@ async function syncCd(cd) {
     { nome: 'ean',       fn: syncEan },
     { nome: 'grupo',     fn: syncGrupos },
     { nome: 'subgrupo',  fn: syncSubgrupos },
+    { nome: 'cli_codi',  fn: syncCliCodisDestinos },
     { nome: 'estoque',   fn: syncEstoque },
     { nome: 'custoprod', fn: syncCustoProd },
     { nome: 'vendapro',  fn: syncVendaPro },
