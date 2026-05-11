@@ -235,13 +235,36 @@ router.get('/grade', adminOuCeo, async (req, res) => {
     ) : [];
 
     // 5) Estoque dos CDs destino — match via cd_ean (cd_codigo, mat_codi, ean_codi)
-    // O EAN principal do origem (eansNorm) procura nos cd_ean dos destinos pra achar o mat_codi local.
     const estCds = cdDestinos.length && eansNorm.length ? await dbQuery(
       `SELECT ce.cd_codigo, NULLIF(LTRIM(ce.ean_codi,'0'),'') AS ean_codi, cde.est_quan
          FROM cd_ean ce
          LEFT JOIN cd_estoque cde ON cde.cd_codigo = ce.cd_codigo AND cde.pro_codi = ce.mat_codi
         WHERE ce.cd_codigo = ANY($1::text[])
           AND NULLIF(LTRIM(ce.ean_codi,'0'),'') = ANY($2::text[])`,
+      [cdDestinos.map(d => d.cd_codigo), eansNorm]
+    ) : [];
+
+    // 5b) "Vendas" dos CDs destino (consumo via transferências de saída — cd_movcompra/itemcompra)
+    // Soma qtd × preço unitário das saídas dos últimos 90 dias por (cd_codigo, ean)
+    const vendasCds = cdDestinos.length && eansNorm.length ? await dbQuery(
+      `SELECT mc.cd_codigo,
+              NULLIF(LTRIM(ce.ean_codi,'0'),'') AS ean,
+              SUM(CASE WHEN mc.mcp_dten >= CURRENT_DATE - INTERVAL '28 days'
+                       THEN ic.mcp_quan ELSE 0 END) AS qtd_28d,
+              MAX(mc.mcp_dten) AS ultima_saida
+         FROM cd_movcompra mc
+         JOIN cd_itemcompra ic
+           ON ic.cd_codigo = mc.cd_codigo
+          AND ic.mcp_codi = mc.mcp_codi
+          AND ic.mcp_tipomov = mc.mcp_tipomov
+         JOIN cd_ean ce
+           ON ce.cd_codigo = mc.cd_codigo
+          AND ce.mat_codi = ic.pro_codi
+        WHERE mc.cd_codigo = ANY($1::text[])
+          AND mc.mcp_tipomov = 'S'
+          AND mc.mcp_dten >= CURRENT_DATE - INTERVAL '90 days'
+          AND NULLIF(LTRIM(ce.ean_codi,'0'),'') = ANY($2::text[])
+        GROUP BY mc.cd_codigo, ean`,
       [cdDestinos.map(d => d.cd_codigo), eansNorm]
     ) : [];
 
@@ -345,6 +368,10 @@ router.get('/grade', adminOuCeo, async (req, res) => {
     const estCdMap = new Map();
     for (const e of estCds) estCdMap.set(`${e.cd_codigo}|${norm(e.ean_codi)}`, e);
 
+    // Vendas (consumo) dos CDs destino
+    const vendasCdMap = new Map();
+    for (const v of vendasCds) vendasCdMap.set(`${v.cd_codigo}|${v.ean}`, v);
+
     // Sug_Editada
     const sugEditMap = new Map();
     for (const q of qtds) sugEditMap.set(`${q.mat_codi}|${q.destino_id}`, parseFloat(q.qtd));
@@ -384,12 +411,17 @@ router.get('/grade', adminOuCeo, async (req, res) => {
           }
         } else if (d.tipo === 'CD' && d.cd_codigo) {
           const e = estCdMap.get(`${d.cd_codigo}|${eanN}`);
+          const v = vendasCdMap.get(`${d.cd_codigo}|${eanN}`);
           slot.estoque_un = e?.est_quan ? parseFloat(e.est_quan) : 0;
           slot.estoque_cx = qtdEmb > 0 ? Math.floor(slot.estoque_un / qtdEmb) : 0;
-          // Trânsito CD destino e sugestão CD: deferido (Task 5)
+          // Trânsito CD destino: deferido (Task 5 — replica fluxo notas ASA FRIOS)
           slot.transito_un = 0;
           slot.transito_cx = 0;
-          slot.sugestao_cx = 0;
+          // Sugestão baseada em transferências saídas do CD (consumo)
+          const qtd_28d = v ? parseFloat(v.qtd_28d) || 0 : 0;
+          const media_dia = qtd_28d / 28;
+          const sug_un = Math.max(0, 35 * media_dia - slot.estoque_un - slot.transito_un);
+          slot.sugestao_cx = qtdEmb > 0 ? Math.ceil(sug_un / qtdEmb) : 0;
         }
 
         slot.sug_editada = sugEditMap.get(`${p.mat_codi}|${d.id}`) || 0;
@@ -469,6 +501,29 @@ router.delete('/qtd-tudo', adminOuCeo, async (req, res) => {
     if (!cdOrigem) return res.status(400).json({ erro: 'cd_origem obrigatorio' });
     const r = await dbQuery(`DELETE FROM pedidos_distrib_quantidades WHERE cd_origem_codigo = $1`, [cdOrigem]);
     res.json({ ok: true, removidos: r.length });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
+// GET /sync-cd-status (token QS) — quantos produtos / EANs / estoque cada CD tem sincronizado
+router.get('/sync-cd-status', adminOuCeo, async (req, res) => {
+  try {
+    const stats = await dbQuery(`
+      SELECT 'cd_material' AS tabela, cd_codigo, COUNT(*)::int AS total
+        FROM cd_material GROUP BY cd_codigo
+      UNION ALL
+      SELECT 'cd_ean', cd_codigo, COUNT(*) FROM cd_ean GROUP BY cd_codigo
+      UNION ALL
+      SELECT 'cd_estoque', cd_codigo, COUNT(*) FROM cd_estoque GROUP BY cd_codigo
+      UNION ALL
+      SELECT 'cd_custoprod', cd_codigo, COUNT(*) FROM cd_custoprod GROUP BY cd_codigo
+      UNION ALL
+      SELECT 'cd_movcompra', cd_codigo, COUNT(*) FROM cd_movcompra GROUP BY cd_codigo
+      ORDER BY cd_codigo, tabela
+    `);
+    const ultimoSync = await dbQuery(
+      `SELECT chave, valor FROM _sync_state WHERE chave LIKE 'cd_%_ultima_sync' ORDER BY chave`
+    );
+    res.json({ contagens: stats, ultimas_syncs: ultimoSync });
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
