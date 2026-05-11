@@ -351,17 +351,28 @@ router.post('/limpar-pre-cutoff', apenasAdmin, async (req, res) => {
   }
 });
 
-// GET /transito-resumo (token QS) — quantas notas em trânsito por loja/status
+// GET /transito-resumo (token QS) — qtde + valor + peso (kg) por loja/status
 router.get('/transito-resumo', autenticarComQS, async (req, res) => {
   try {
     const rows = await dbQuery(`
+      WITH peso_por_nota AS (
+        SELECT i.nota_id,
+               SUM(i.quantidade * COALESCE(cm.peso_liquido_kg, cm.peso_bruto_kg, 0)) AS peso_kg
+          FROM itens_nota i
+          LEFT JOIN cd_material cm
+            ON cm.cd_codigo = 'srv1-itautuba'
+           AND cm.mat_codi = COALESCE(i.cd_pro_codi, i.codigo_principal_eco)
+         GROUP BY i.nota_id
+      )
       SELECT n.loja_id, l.nome AS loja_nome, n.status,
              COUNT(*)::int AS total,
              COALESCE(SUM(n.valor_total),0)::numeric(14,2) AS valor_total,
+             COALESCE(SUM(p.peso_kg),0)::numeric(14,3) AS peso_kg,
              MIN(n.data_emissao) AS mais_antiga,
              MAX(n.data_emissao) AS mais_recente
         FROM notas_entrada n
         LEFT JOIN lojas l ON l.id = n.loja_id
+        LEFT JOIN peso_por_nota p ON p.nota_id = n.id
        WHERE n.origem IN ('cd','transferencia_loja')
          AND n.status NOT IN ('fechada','validada','arquivada','cancelada','finalizada_f')
          AND COALESCE(n.mcp_status_cd, 'A') <> 'C'
@@ -371,7 +382,45 @@ router.get('/transito-resumo', autenticarComQS, async (req, res) => {
     `);
     const totalGeral = rows.reduce((s,r) => s + r.total, 0);
     const valorGeral = rows.reduce((s,r) => s + parseFloat(r.valor_total), 0);
-    res.json({ total_geral: totalGeral, valor_geral: valorGeral, por_loja_status: rows });
+    const pesoGeral  = rows.reduce((s,r) => s + parseFloat(r.peso_kg),  0);
+    res.json({ total_geral: totalGeral, valor_geral: valorGeral, peso_geral_kg: pesoGeral, por_loja_status: rows });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
+// GET /sla-cd (token QS) — tempos médios entre eventos das transferências CD
+// Eventos: data_emissao (CD) → importado_em → recebida_em → liberada_em → fechado_em
+router.get('/sla-cd', autenticarComQS, async (req, res) => {
+  try {
+    const dias = parseInt(req.query.dias) || 90;
+    // Quebra por loja
+    const porLoja = await dbQuery(`
+      SELECT n.loja_id, l.nome AS loja_nome,
+             COUNT(*)::int AS total_fechadas,
+             AVG(EXTRACT(EPOCH FROM (n.recebida_em  - n.importado_em)) / 86400)::numeric(10,2) AS sla_emissao_recebida_d,
+             AVG(EXTRACT(EPOCH FROM (n.liberada_em  - n.recebida_em )) / 86400)::numeric(10,2) AS sla_recebida_liberada_d,
+             AVG(EXTRACT(EPOCH FROM (n.fechado_em   - n.liberada_em )) / 86400)::numeric(10,2) AS sla_liberada_fechada_d,
+             AVG(EXTRACT(EPOCH FROM (n.fechado_em   - n.importado_em)) / 86400)::numeric(10,2) AS sla_total_d
+        FROM notas_entrada n
+        LEFT JOIN lojas l ON l.id = n.loja_id
+       WHERE n.origem = 'cd'
+         AND n.fechado_em IS NOT NULL
+         AND n.fechado_em >= NOW() - ($1::int || ' days')::interval
+       GROUP BY n.loja_id, l.nome
+       ORDER BY n.loja_id
+    `, [dias]);
+    // Quebra geral (todas lojas)
+    const [geral] = await dbQuery(`
+      SELECT COUNT(*)::int AS total,
+             AVG(EXTRACT(EPOCH FROM (n.recebida_em  - n.importado_em)) / 86400)::numeric(10,2) AS sla_emissao_recebida_d,
+             AVG(EXTRACT(EPOCH FROM (n.liberada_em  - n.recebida_em )) / 86400)::numeric(10,2) AS sla_recebida_liberada_d,
+             AVG(EXTRACT(EPOCH FROM (n.fechado_em   - n.liberada_em )) / 86400)::numeric(10,2) AS sla_liberada_fechada_d,
+             AVG(EXTRACT(EPOCH FROM (n.fechado_em   - n.importado_em)) / 86400)::numeric(10,2) AS sla_total_d
+        FROM notas_entrada n
+       WHERE n.origem = 'cd'
+         AND n.fechado_em IS NOT NULL
+         AND n.fechado_em >= NOW() - ($1::int || ' days')::interval
+    `, [dias]);
+    res.json({ dias_janela: dias, geral, por_loja: porLoja });
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 

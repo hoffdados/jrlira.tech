@@ -1991,6 +1991,11 @@ async function initDB() {
       ALTER TABLE cd_material ADD PRIMARY KEY (cd_codigo, mat_codi);
       CREATE INDEX IF NOT EXISTS idx_cd_material_ean ON cd_material (ean_codi);
     `);
+    await runMigration(client, '20260511_cd_material_peso', `
+      ALTER TABLE cd_material
+        ADD COLUMN IF NOT EXISTS peso_liquido_kg NUMERIC(12,4),
+        ADD COLUMN IF NOT EXISTS peso_bruto_kg   NUMERIC(12,4);
+    `);
     await runMigration(client, '20260510_cd_estoque_cd_codigo', `
       ALTER TABLE cd_estoque ADD COLUMN IF NOT EXISTS cd_codigo VARCHAR(40);
       UPDATE cd_estoque SET cd_codigo = 'srv1-itautuba' WHERE cd_codigo IS NULL;

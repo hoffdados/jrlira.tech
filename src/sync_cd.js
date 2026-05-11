@@ -53,17 +53,20 @@ async function paginarQuery(cli, sqlBase, orderBy, pageSize = 5000) {
 async function syncMaterial(cd, cli) {
   const t0 = Date.now();
   const rows = await paginarQuery(cli,
-    `SELECT MAT_CODI, MAT_DESC, MAT_REFE, MAT_SITU, EAN_CODI
+    `SELECT MAT_CODI, MAT_DESC, MAT_REFE, MAT_SITU, EAN_CODI, MAT_PSLI, MAT_PSBR
        FROM MATERIAL WITH (NOLOCK)`,
     'MAT_CODI'
   );
   if (rows.length) {
     await dbQuery(
-      `INSERT INTO cd_material (cd_codigo, mat_codi, mat_desc, mat_refe, mat_situ, ean_codi, sincronizado_em)
-       SELECT $1, * FROM UNNEST($2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::timestamptz[])
+      `INSERT INTO cd_material (cd_codigo, mat_codi, mat_desc, mat_refe, mat_situ, ean_codi,
+                                peso_liquido_kg, peso_bruto_kg, sincronizado_em)
+       SELECT $1, * FROM UNNEST($2::text[], $3::text[], $4::text[], $5::text[], $6::text[],
+                                $7::numeric[], $8::numeric[], $9::timestamptz[])
        ON CONFLICT (cd_codigo, mat_codi) DO UPDATE SET
          mat_desc=EXCLUDED.mat_desc, mat_refe=EXCLUDED.mat_refe,
          mat_situ=EXCLUDED.mat_situ, ean_codi=EXCLUDED.ean_codi,
+         peso_liquido_kg=EXCLUDED.peso_liquido_kg, peso_bruto_kg=EXCLUDED.peso_bruto_kg,
          sincronizado_em=NOW()`,
       [
         cd.codigo,
@@ -72,6 +75,8 @@ async function syncMaterial(cd, cli) {
         rows.map(x => String(x.MAT_REFE || '').trim() || null),
         rows.map(x => String(x.MAT_SITU || '').trim() || null),
         rows.map(x => String(x.EAN_CODI || '').trim() || null),
+        rows.map(x => x.MAT_PSLI != null ? Number(x.MAT_PSLI) : null),
+        rows.map(x => x.MAT_PSBR != null ? Number(x.MAT_PSBR) : null),
         rows.map(() => new Date().toISOString()),
       ]
     );
