@@ -29,10 +29,22 @@ router.get('/lojas', apenasAdmin, async (req, res) => {
   }
 });
 
-// POST /api/ultrasyst/sync — admin dispara sync manual
+// POST /api/ultrasyst/sync — admin dispara sync manual (novas + re-sync de abertas + match)
 router.post('/sync', apenasAdmin, async (req, res) => {
   try {
-    const stats = await sync.syncTransferenciasCD();
+    const novas    = await sync.syncTransferenciasCD();
+    const ressync  = await sync.ressincronizarTransferenciasAbertas();
+    const matched  = await sync.matchTransferenciasRecebidas();
+    res.json({ ok: true, novas, ressync, matched });
+  } catch (e) {
+    res.status(500).json({ ok: false, erro: e.message });
+  }
+});
+
+// POST /api/ultrasyst/ressync-abertas — re-sincroniza notas em em_transito/recebida do CD
+router.post('/ressync-abertas', apenasAdmin, async (req, res) => {
+  try {
+    const stats = await sync.ressincronizarTransferenciasAbertas();
     res.json({ ok: true, stats });
   } catch (e) {
     res.status(500).json({ ok: false, erro: e.message });
