@@ -125,7 +125,7 @@ async function syncCliCodisDestinos(cd, cli) {
     try {
       const r = await cli.query(
         `SELECT TOP 1 CLI_CODI, CLI_RAZS FROM CLIENTE WITH (NOLOCK)
-          WHERE REPLACE(REPLACE(REPLACE(CLI_CGC,'.',''),'/',''),'-','') = '${d.cnpj}'`
+          WHERE REPLACE(REPLACE(REPLACE(CLI_CPF,'.',''),'/',''),'-','') = '${d.cnpj}'`
       );
       const row = r.rows?.[0];
       if (row?.CLI_CODI) {

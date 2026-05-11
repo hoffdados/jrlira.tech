@@ -3,7 +3,7 @@
 // Modelo:
 // - 6 LOJAS (SUPERASA) recebem; 5 CDs (ASA BRANCA, ASA FRIOS, CASA BRANCA) emitem e podem receber entre si.
 // - Operador escolhe o CD ORIGEM (de onde sai a mercadoria) + destinos (lojas e/ou outros CDs).
-// - CLI_CODI de cada destino é descoberto via relay do CD origem (CLIENTE WHERE CLI_CGC = cnpj).
+// - CLI_CODI de cada destino é descoberto via relay do CD origem (CLIENTE WHERE CLI_CPF = cnpj).
 // - Backend gera 2 CSVs (P_PEDIDOS.csv + P_PEDIDOS_ITENS.csv) no formato oficial.
 // - Operador baixa e cola na pasta de importação do UltraSyst do CD origem.
 
@@ -84,7 +84,7 @@ router.get('/cli-codi-lookup', adminOuCeo, async (req, res) => {
     for (const d of destinos) {
       try {
         const r = await cli.query(
-          `SELECT TOP 1 CLI_CODI, CLI_RAZS, CLI_CGC FROM CLIENTE WITH (NOLOCK) WHERE REPLACE(REPLACE(REPLACE(CLI_CGC,'.',''),'/',''),'-','') = '${d.cnpj}'`
+          `SELECT TOP 1 CLI_CODI, CLI_RAZS, CLI_CPF FROM CLIENTE WITH (NOLOCK) WHERE REPLACE(REPLACE(REPLACE(CLI_CPF,'.',''),'/',''),'-','') = '${d.cnpj}'`
         );
         const row = r.rows?.[0];
         result.push({
@@ -264,14 +264,29 @@ router.get('/grade', adminOuCeo, async (req, res) => {
       [lojaIds, eansList]
     ) : [];
 
-    // 5) Estoque dos CDs destino — match via cd_ean (cd_codigo, mat_codi, ean_codi)
-    const estCds = cdDestinos.length && eansNorm.length ? await dbQuery(
+    // 5) Estoque dos CDs destino — match via cd_ean (CD destino) com EANs do CD origem
+    // Expande pra TODOS os EANs do produto no CD origem (não só o principal)
+    // já que UltraSyst aceita múltiplos EANs por produto.
+    const eansExpandidosCdOrigem = eansNorm.length ? await dbQuery(
+      `SELECT NULLIF(LTRIM(ce.ean_codi,'0'),'') AS ean_codi
+         FROM cd_ean ce
+         JOIN cd_material m
+           ON m.cd_codigo = ce.cd_codigo AND m.mat_codi = ce.mat_codi
+         JOIN cd_ean ce2
+           ON ce2.cd_codigo = ce.cd_codigo AND ce2.mat_codi = ce.mat_codi
+        WHERE ce.cd_codigo = $1
+          AND NULLIF(LTRIM(ce2.ean_codi,'0'),'') = ANY($2::text[])`,
+      [cdOrigem, eansNorm]
+    ) : [];
+    const eansAmpliados = [...new Set([...eansNorm, ...eansExpandidosCdOrigem.map(x => x.ean_codi).filter(Boolean)])];
+
+    const estCds = cdDestinos.length && eansAmpliados.length ? await dbQuery(
       `SELECT ce.cd_codigo, NULLIF(LTRIM(ce.ean_codi,'0'),'') AS ean_codi, cde.est_quan
          FROM cd_ean ce
          LEFT JOIN cd_estoque cde ON cde.cd_codigo = ce.cd_codigo AND cde.pro_codi = ce.mat_codi
         WHERE ce.cd_codigo = ANY($1::text[])
           AND NULLIF(LTRIM(ce.ean_codi,'0'),'') = ANY($2::text[])`,
-      [cdDestinos.map(d => d.cd_codigo), eansNorm]
+      [cdDestinos.map(d => d.cd_codigo), eansAmpliados]
     ) : [];
 
     // 5b1) Trânsito CD→CD destino: SAÍDAS do CD ORIGEM pra cada CD destino (via cli_codi cacheado)
@@ -569,6 +584,57 @@ router.delete('/qtd-tudo', adminOuCeo, async (req, res) => {
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
+// GET /debug-ean-cross?cd_origem=&mat_codi= — mostra EANs de UM produto em TODOS os CDs
+router.get('/debug-ean-cross', adminOuCeo, async (req, res) => {
+  try {
+    const cdOrigem = String(req.query.cd_origem || 'srv1-itautuba').trim();
+    const matCodi  = String(req.query.mat_codi  || '').trim();
+    if (!matCodi) return res.status(400).json({ erro: 'mat_codi obrigatorio' });
+
+    // Produto no CD origem
+    const [prod] = await dbQuery(
+      `SELECT m.mat_codi, m.mat_desc, m.ean_codi AS ean_material, pe.ean_principal_cd
+         FROM cd_material m
+         LEFT JOIN produtos_embalagem pe ON pe.mat_codi = m.mat_codi
+        WHERE m.cd_codigo = $1 AND m.mat_codi = $2`, [cdOrigem, matCodi]);
+    if (!prod) return res.status(404).json({ erro: 'produto nao existe nesse CD' });
+
+    // Todos EANs do produto no cd_ean do CD origem
+    const eansOrigem = await dbQuery(
+      `SELECT ean_codi, ean_nota, ordem FROM cd_ean
+        WHERE cd_codigo = $1 AND mat_codi = $2 ORDER BY ordem`, [cdOrigem, matCodi]);
+
+    // Pra cada outro CD, tenta achar o produto via QUALQUER EAN
+    const todosEans = [...new Set([
+      prod.ean_principal_cd,
+      prod.ean_material,
+      ...eansOrigem.map(x => x.ean_codi)
+    ].filter(Boolean).map(e => String(e).replace(/^0+/, '') || e))];
+
+    const outrosCds = await dbQuery(
+      `SELECT DISTINCT cd_codigo FROM cd_ean WHERE cd_codigo <> $1`, [cdOrigem]);
+    const matchPorCd = {};
+    for (const cd of outrosCds) {
+      const r = await dbQuery(
+        `SELECT ce.mat_codi, ce.ean_codi, ce.ean_nota,
+                cm.mat_desc, ce_e.est_quan
+           FROM cd_ean ce
+           LEFT JOIN cd_material cm ON cm.cd_codigo = ce.cd_codigo AND cm.mat_codi = ce.mat_codi
+           LEFT JOIN cd_estoque  ce_e ON ce_e.cd_codigo = ce.cd_codigo AND ce_e.pro_codi = ce.mat_codi
+          WHERE ce.cd_codigo = $1 AND NULLIF(LTRIM(ce.ean_codi,'0'),'') = ANY($2::text[])`,
+        [cd.cd_codigo, todosEans]);
+      matchPorCd[cd.cd_codigo] = r;
+    }
+
+    res.json({
+      produto_no_cd_origem: prod,
+      eans_origem_cd_ean: eansOrigem,
+      eans_normalizados_buscados: todosEans,
+      match_em_outros_cds: matchPorCd,
+    });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
 // GET /debug-cliente?cd_origem=&cnpj= — tenta achar cliente no UltraSyst com varias estrategias
 router.get('/debug-cliente', adminOuCeo, async (req, res) => {
   try {
@@ -578,14 +644,14 @@ router.get('/debug-cliente', adminOuCeo, async (req, res) => {
     const cli = await clientePorCodigo(cdOrigem);
 
     // 1) Sample de 5 clientes pra ver formato real
-    const sample = await cli.query(`SELECT TOP 5 CLI_CODI, CLI_RAZS, CLI_CGC FROM CLIENTE WITH (NOLOCK)`);
+    const sample = await cli.query(`SELECT TOP 5 CLI_CODI, CLI_RAZS, CLI_CPF FROM CLIENTE WITH (NOLOCK)`);
 
     // 2) Tenta varias estrategias
     const tentativas = [
-      { nome: 'REPLACE pontuacao', sql: `SELECT TOP 5 CLI_CODI, CLI_RAZS, CLI_CGC FROM CLIENTE WITH (NOLOCK) WHERE REPLACE(REPLACE(REPLACE(CLI_CGC,'.',''),'/',''),'-','') = '${cnpj}'` },
-      { nome: 'TRIM + REPLACE',     sql: `SELECT TOP 5 CLI_CODI, CLI_RAZS, CLI_CGC FROM CLIENTE WITH (NOLOCK) WHERE REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(CLI_CGC)),'.',''),'/',''),'-','') = '${cnpj}'` },
-      { nome: 'LIKE %cnpj%',         sql: `SELECT TOP 5 CLI_CODI, CLI_RAZS, CLI_CGC FROM CLIENTE WITH (NOLOCK) WHERE CLI_CGC LIKE '%${cnpj}%'` },
-      { nome: 'LIKE primeiros 8',    sql: `SELECT TOP 5 CLI_CODI, CLI_RAZS, CLI_CGC FROM CLIENTE WITH (NOLOCK) WHERE CLI_CGC LIKE '%${cnpj.slice(0,8)}%'` },
+      { nome: 'REPLACE pontuacao', sql: `SELECT TOP 5 CLI_CODI, CLI_RAZS, CLI_CPF FROM CLIENTE WITH (NOLOCK) WHERE REPLACE(REPLACE(REPLACE(CLI_CPF,'.',''),'/',''),'-','') = '${cnpj}'` },
+      { nome: 'TRIM + REPLACE',     sql: `SELECT TOP 5 CLI_CODI, CLI_RAZS, CLI_CPF FROM CLIENTE WITH (NOLOCK) WHERE REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(CLI_CPF)),'.',''),'/',''),'-','') = '${cnpj}'` },
+      { nome: 'LIKE %cnpj%',         sql: `SELECT TOP 5 CLI_CODI, CLI_RAZS, CLI_CPF FROM CLIENTE WITH (NOLOCK) WHERE CLI_CPF LIKE '%${cnpj}%'` },
+      { nome: 'LIKE primeiros 8',    sql: `SELECT TOP 5 CLI_CODI, CLI_RAZS, CLI_CPF FROM CLIENTE WITH (NOLOCK) WHERE CLI_CPF LIKE '%${cnpj.slice(0,8)}%'` },
     ];
     const resultados = [];
     for (const t of tentativas) {
@@ -1067,7 +1133,7 @@ router.post('/', adminOuCeo, async (req, res) => {
       try {
         const r = await cli.query(
           `SELECT TOP 1 CLI_CODI FROM CLIENTE WITH (NOLOCK)
-            WHERE REPLACE(REPLACE(REPLACE(CLI_CGC,'.',''),'/',''),'-','') = '${d.cnpj}'`
+            WHERE REPLACE(REPLACE(REPLACE(CLI_CPF,'.',''),'/',''),'-','') = '${d.cnpj}'`
         );
         const cliCodi = r.rows?.[0]?.CLI_CODI;
         if (!cliCodi) {
