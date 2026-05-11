@@ -305,8 +305,7 @@ router.get('/grade', adminOuCeo, async (req, res) => {
       [cdOrigem, cdDestinos.map(d => d.cd_codigo), eansNorm]
     ) : [];
 
-    // 5b) "Vendas" dos CDs destino (consumo via transferências de saída — cd_movcompra/itemcompra)
-    // Soma qtd × preço unitário das saídas dos últimos 90 dias por (cd_codigo, ean)
+    // 5b) "Vendas" dos CDs destino (consumo) — APENAS vendas atacado, EXCLUINDO transferências internas (NOP_CODI='031')
     const vendasCds = cdDestinos.length && eansNorm.length ? await dbQuery(
       `SELECT mc.cd_codigo,
               NULLIF(LTRIM(ce.ean_codi,'0'),'') AS ean,
@@ -323,6 +322,7 @@ router.get('/grade', adminOuCeo, async (req, res) => {
           AND ce.mat_codi = ic.pro_codi
         WHERE mc.cd_codigo = ANY($1::text[])
           AND mc.mcp_tipomov = 'S'
+          AND COALESCE(NULLIF(LTRIM(mc.nop_codi,'0'),''), '') <> '31'
           AND mc.mcp_dten >= CURRENT_DATE - INTERVAL '90 days'
           AND NULLIF(LTRIM(ce.ean_codi,'0'),'') = ANY($2::text[])
         GROUP BY mc.cd_codigo, ean`,
