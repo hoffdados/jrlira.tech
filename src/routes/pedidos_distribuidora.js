@@ -635,7 +635,7 @@ router.get('/debug-ean-cross', adminOuCeo, async (req, res) => {
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
-// GET /debug-cliente?cd_origem=&cnpj= — tenta achar cliente no UltraSyst com varias estrategias
+// GET /debug-cliente?cd_origem=&cnpj= — descobre colunas + tenta achar cliente
 router.get('/debug-cliente', adminOuCeo, async (req, res) => {
   try {
     const cdOrigem = String(req.query.cd_origem || 'srv1-itautuba').trim();
@@ -643,15 +643,21 @@ router.get('/debug-cliente', adminOuCeo, async (req, res) => {
     const { clientePorCodigo } = require('../cds');
     const cli = await clientePorCodigo(cdOrigem);
 
-    // 1) Sample de 5 clientes pra ver formato real
-    const sample = await cli.query(`SELECT TOP 5 CLI_CODI, CLI_RAZS, CLI_CPF FROM CLIENTE WITH (NOLOCK)`);
+    // 1) Lista TODAS colunas da CLIENTE
+    const cols = await cli.colunas('CLIENTE');
+    // Filtra colunas potencialmente úteis (CLI_CODI/nome/cpf/cnpj)
+    const colsRelevantes = (cols.colunas || []).filter(c =>
+      /CODI|CPF|CGC|NOME|RAZS|RAZ|CNPJ|DESC/i.test(c.COLUMN_NAME)
+    );
 
-    // 2) Tenta varias estrategias
+    // 2) Sample de 3 clientes (todas as colunas) pra ver formato real
+    const sample = await cli.query(`SELECT TOP 3 * FROM CLIENTE WITH (NOLOCK)`);
+
+    // 3) Tenta varias estrategias com CLI_CPF
     const tentativas = [
-      { nome: 'REPLACE pontuacao', sql: `SELECT TOP 5 CLI_CODI, CLI_RAZS, CLI_CPF FROM CLIENTE WITH (NOLOCK) WHERE REPLACE(REPLACE(REPLACE(CLI_CPF,'.',''),'/',''),'-','') = '${cnpj}'` },
-      { nome: 'TRIM + REPLACE',     sql: `SELECT TOP 5 CLI_CODI, CLI_RAZS, CLI_CPF FROM CLIENTE WITH (NOLOCK) WHERE REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(CLI_CPF)),'.',''),'/',''),'-','') = '${cnpj}'` },
-      { nome: 'LIKE %cnpj%',         sql: `SELECT TOP 5 CLI_CODI, CLI_RAZS, CLI_CPF FROM CLIENTE WITH (NOLOCK) WHERE CLI_CPF LIKE '%${cnpj}%'` },
-      { nome: 'LIKE primeiros 8',    sql: `SELECT TOP 5 CLI_CODI, CLI_RAZS, CLI_CPF FROM CLIENTE WITH (NOLOCK) WHERE CLI_CPF LIKE '%${cnpj.slice(0,8)}%'` },
+      { nome: 'CLI_CPF LTRIM zeros', sql: `SELECT TOP 5 CLI_CODI, CLI_CPF FROM CLIENTE WITH (NOLOCK) WHERE LTRIM(REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(CLI_CPF)),'.',''),'/',''),'-',''), '0') = LTRIM('${cnpj}', '0')` },
+      { nome: 'CLI_CPF LIKE %cnpj%', sql: `SELECT TOP 5 CLI_CODI, CLI_CPF FROM CLIENTE WITH (NOLOCK) WHERE CLI_CPF LIKE '%${cnpj}%'` },
+      { nome: 'CLI_CPF LIKE primeiros 8', sql: `SELECT TOP 5 CLI_CODI, CLI_CPF FROM CLIENTE WITH (NOLOCK) WHERE CLI_CPF LIKE '%${cnpj.slice(0,8)}%'` },
     ];
     const resultados = [];
     for (const t of tentativas) {
@@ -660,7 +666,13 @@ router.get('/debug-cliente', adminOuCeo, async (req, res) => {
         resultados.push({ ...t, total: r.rows?.length || 0, rows: r.rows?.slice(0,3) });
       } catch (e) { resultados.push({ ...t, erro: e.message }); }
     }
-    res.json({ cd_origem: cdOrigem, cnpj_procurado: cnpj, sample_clientes: sample.rows, tentativas: resultados });
+    res.json({
+      cd_origem: cdOrigem,
+      cnpj_procurado: cnpj,
+      colunas_relevantes: colsRelevantes,
+      sample_clientes: sample.rows,
+      tentativas: resultados,
+    });
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
