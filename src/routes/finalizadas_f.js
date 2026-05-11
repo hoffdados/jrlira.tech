@@ -23,8 +23,8 @@ const jwt = require('jsonwebtoken');
 const apenasAdmin = [autenticar, exigirPerfil('admin')];
 
 // Histórico anterior a esta data é considerado "lixo" (notas legadas, sem rastreabilidade no app).
-// Detector só processa notas que entraram no ERP a partir desta data.
-const DATA_CORTE_ECO = '2026-05-10';
+// Detector só processa notas que entraram no ERP a partir desta data (inclusive).
+const DATA_CORTE_ECO = '2026-05-09';
 
 function autenticarComQS(req, res, next) {
   let token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
