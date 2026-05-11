@@ -51,21 +51,24 @@ function autenticarComQS(req, res, next) {
 //      → mantém status original, marca auditoria_eco_status='n_finalizadas_eco'
 async function detectarStatusEco() {
   // Atualiza cache mcp_status_cd das notas com origem=cd via JOIN com cd_movcompra do CD origem
-  // (subquery: encontra cd_codigo cujo CNPJ bate com fornecedor_cnpj da nota, e busca mcp_status)
+  // CD origem = pedidos_distrib_destinos onde CNPJ bate com fornecedor_cnpj da nota
+  // Match no cd_movcompra: mcp_codi = cd_mov_codi (NÃO mcp_nnotafis, que vem vazio)
   await dbQuery(`
     UPDATE notas_entrada n
        SET mcp_status_cd = sub.mcp_status
       FROM (
-        SELECT n2.id, mc.mcp_status
+        SELECT DISTINCT ON (n2.id) n2.id, mc.mcp_status
           FROM notas_entrada n2
           JOIN pedidos_distrib_destinos d
             ON d.tipo='CD' AND d.cd_codigo IS NOT NULL
            AND COALESCE(NULLIF(d.cnpj,''),'') = COALESCE(NULLIF(n2.fornecedor_cnpj,''),'')
           JOIN cd_movcompra mc
             ON mc.cd_codigo = d.cd_codigo
-           AND mc.mcp_nnotafis = n2.numero_nota
+           AND REGEXP_REPLACE(COALESCE(mc.mcp_codi,''), '^0+', '') =
+               REGEXP_REPLACE(COALESCE(n2.cd_mov_codi, n2.numero_nota, ''), '^0+', '')
          WHERE n2.origem IN ('cd','transferencia_loja')
            AND (n2.mcp_status_cd IS NULL OR n2.mcp_status_cd <> mc.mcp_status)
+         ORDER BY n2.id, mc.mcp_dten DESC
       ) sub
      WHERE sub.id = n.id
   `);
