@@ -504,9 +504,17 @@ router.delete('/qtd-tudo', adminOuCeo, async (req, res) => {
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
-// GET /sync-cd-status (token QS) — quantos produtos / EANs / estoque cada CD tem sincronizado
+// GET /sync-cd-status (admin) — diagnóstico do sync_cd
 router.get('/sync-cd-status', adminOuCeo, async (req, res) => {
   try {
+    const { listarCds } = require('../cds');
+    const cds = await listarCds(false); // todos (ativos e inativos)
+    const cdsResumo = cds.map(c => ({
+      codigo: c.codigo, nome: c.nome, ativo: c.ativo,
+      tem_url: !!c.url, tem_token: !!c.token,
+      banco: c.banco, emp_codi: c.emp_codi, loc_codi: c.loc_codi,
+    }));
+
     const stats = await dbQuery(`
       SELECT 'cd_material' AS tabela, cd_codigo, COUNT(*)::int AS total
         FROM cd_material GROUP BY cd_codigo
@@ -523,8 +531,20 @@ router.get('/sync-cd-status', adminOuCeo, async (req, res) => {
     const ultimoSync = await dbQuery(
       `SELECT chave, valor FROM _sync_state WHERE chave LIKE 'cd_%_ultima_sync' ORDER BY chave`
     );
-    res.json({ contagens: stats, ultimas_syncs: ultimoSync });
+    res.json({ cds_cadastrados: cdsResumo, contagens: stats, ultimas_syncs: ultimoSync });
   } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
+// POST /sync-cd-now (admin) — força sync_cd imediato (todos CDs ativos)
+router.post('/sync-cd-now', adminOuCeo, async (req, res) => {
+  try {
+    const { syncCdAll } = require('../sync_cd');
+    const r = await syncCdAll();
+    res.json({ ok: true, resultados: r });
+  } catch (e) {
+    console.error('[sync-cd-now]', e.message);
+    res.status(500).json({ erro: e.message });
+  }
 });
 
 // Trace — executa a MESMA logica do /grade limitada a 1 produto e retorna estados intermediarios
