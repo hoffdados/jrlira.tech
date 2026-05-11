@@ -269,17 +269,35 @@ router.get('/grade', adminOuCeo, async (req, res) => {
       [cdOrigem, matCodis]
     );
 
-    // 8) Ranking — soma qtd_vendida × preço admin do produto (todas lojas, 90d)
-    const rankingRows = eansList.length ? await dbQuery(
-      `SELECT NULLIF(LTRIM(codigobarra,'0'),'') AS codbarra,
-              SUM(qtd_vendida) AS qtd_total
-         FROM vendas_historico
-        WHERE NULLIF(LTRIM(codigobarra,'0'),'') = ANY($1::text[])
-          AND COALESCE(tipo_saida,'venda') = 'venda'
-          AND data_venda >= CURRENT_DATE - INTERVAL '90 days'
-        GROUP BY codbarra`,
-      [eansList]
-    ) : [];
+    // 8) Ranking GLOBAL — soma qtd_vendida × preço_admin de TODOS os produtos do CD (todas lojas, 90d)
+    // Não limita aos 500 da página — varre todo o catálogo do CD pra ranquear corretamente.
+    const rankingGlobal = await dbQuery(`
+      WITH produtos_cd AS (
+        SELECT cd_m.mat_codi,
+               COALESCE(NULLIF(pe.ean_principal_cd,''), NULLIF(cd_m.ean_codi,'')) AS ean,
+               cd_c.pro_prad AS preco_admin
+          FROM cd_material cd_m
+          LEFT JOIN cd_custoprod cd_c ON cd_c.cd_codigo=cd_m.cd_codigo AND cd_c.pro_codi=cd_m.mat_codi
+          LEFT JOIN produtos_embalagem pe ON pe.mat_codi=cd_m.mat_codi
+         WHERE cd_m.cd_codigo = $1
+           AND (cd_m.mat_situ='A' OR cd_m.mat_situ IS NULL)
+           AND COALESCE(NULLIF(pe.ean_principal_cd,''), NULLIF(cd_m.ean_codi,'')) IS NOT NULL
+      ),
+      vendas_90d AS (
+        SELECT NULLIF(LTRIM(codigobarra,'0'),'') AS ean,
+               SUM(qtd_vendida) AS qtd
+          FROM vendas_historico
+         WHERE data_venda >= CURRENT_DATE - INTERVAL '90 days'
+           AND COALESCE(tipo_saida,'venda')='venda'
+         GROUP BY ean
+      )
+      SELECT pc.mat_codi,
+             COALESCE(v.qtd, 0) * COALESCE(pc.preco_admin, 0) AS valor_vendido
+        FROM produtos_cd pc
+        LEFT JOIN vendas_90d v ON v.ean = pc.ean
+       WHERE COALESCE(v.qtd, 0) > 0
+       ORDER BY valor_vendido DESC
+    `, [cdOrigem]);
 
     // ── Consolida tudo no JSON por produto ──
     const norm = e => String(e || '').replace(/^0+/, '') || e;
@@ -331,33 +349,14 @@ router.get('/grade', adminOuCeo, async (req, res) => {
     const sugEditMap = new Map();
     for (const q of qtds) sugEditMap.set(`${q.mat_codi}|${q.destino_id}`, parseFloat(q.qtd));
 
-    // Ranking — soma TOTAL de qtd vendida por ean principal (somando todos codbarras vinculados)
-    // Pra cada produto, agrega pelas lojas/codbarras
-    const qtdPorPrincipal = new Map(); // ean_principal → qtd_total
-    for (const r of rankingRows) {
-      // r.codbarra é um codigobarra qualquer; precisa achar o principal
-      // Procura nos estLojas: qual codbarra/principal aponta pra esse codbarra
-      const cb = r.codbarra;
-      // Tenta direto: cb É o principal (caso simples)
-      let principal = cb;
-      // Sobrepõe se cb aparece como codbarra de alguma linha que tem principal diferente
-      for (const er of estLojas) {
-        if (er.codbarra === cb && er.principal && er.principal !== cb) { principal = er.principal; break; }
-      }
-      qtdPorPrincipal.set(principal, (qtdPorPrincipal.get(principal) || 0) + parseFloat(r.qtd_total));
-    }
-    const totaisRanking = [...qtdPorPrincipal.entries()]
-      .map(([ean, qtd]) => {
-        const p = eanIdx.get(ean);
-        const preco = p?.preco_admin ? parseFloat(p.preco_admin) : 0;
-        return { ean, valor: qtd * preco };
-      })
-      .sort((a, b) => b.valor - a.valor);
-    const rankMap = new Map(totaisRanking.map((r, i) => [r.ean, i + 1]));
+    // Ranking GLOBAL — já vem ordenado da SQL (mat_codi → posição)
+    // Inclui TODOS os produtos do CD com vendas, não só os 500 da página
+    const rankMap = new Map();
+    rankingGlobal.forEach((r, i) => rankMap.set(r.mat_codi, i + 1));
 
     for (const p of produtos) {
       const eanN = norm(p.ean_codi);
-      p.ranking = rankMap.get(eanN) || null;
+      p.ranking = rankMap.get(p.mat_codi) || null;
       const qtdEmb = parseInt(p.qtd_embalagem) || 1;
 
       for (const d of destinos) {
