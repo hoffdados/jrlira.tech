@@ -123,10 +123,13 @@ async function syncCliCodisDestinos(cd, cli) {
   let achados = 0, naoAchados = 0;
   for (const d of destinos) {
     try {
+      // CLI_CPF: char(14), pode ter ou não zeros à esquerda. LTRIM(x, char) só existe em
+      // SQL Server 2022+ — usar LIKE com substring final (mais robusto e funciona em qualquer versão).
+      // CLI_RAZS não existe nessa tabela — coluna real é CLI_NOME (razão social/nome).
+      const cnpjLimpo = String(d.cnpj).replace(/\D/g, '');
       const r = await cli.query(
-        `SELECT TOP 1 CLI_CODI, CLI_RAZS FROM CLIENTE WITH (NOLOCK)
-          WHERE LTRIM(REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(CLI_CPF)),'.',''),'/',''),'-',''), '0')
-              = LTRIM('${d.cnpj}', '0')`
+        `SELECT TOP 1 CLI_CODI, CLI_NOME AS CLI_RAZS FROM CLIENTE WITH (NOLOCK)
+          WHERE REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(CLI_CPF)),'.',''),'/',''),'-','') LIKE '%${cnpjLimpo}'`
       );
       const row = r.rows?.[0];
       if (row?.CLI_CODI) {

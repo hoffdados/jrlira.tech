@@ -84,7 +84,7 @@ router.get('/cli-codi-lookup', adminOuCeo, async (req, res) => {
     for (const d of destinos) {
       try {
         const r = await cli.query(
-          `SELECT TOP 1 CLI_CODI, CLI_RAZS, CLI_CPF FROM CLIENTE WITH (NOLOCK) WHERE LTRIM(REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(CLI_CPF)),'.',''),'/',''),'-',''), '0') = LTRIM('${d.cnpj}', '0')`
+          `SELECT TOP 1 CLI_CODI, CLI_NOME AS CLI_RAZS, CLI_CPF FROM CLIENTE WITH (NOLOCK) WHERE REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(CLI_CPF)),'.',''),'/',''),'-','') LIKE '%${String(d.cnpj).replace(/\\D/g,'')}'`
         );
         const row = r.rows?.[0];
         result.push({
@@ -1145,7 +1145,7 @@ router.post('/', adminOuCeo, async (req, res) => {
       try {
         const r = await cli.query(
           `SELECT TOP 1 CLI_CODI FROM CLIENTE WITH (NOLOCK)
-            WHERE LTRIM(REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(CLI_CPF)),'.',''),'/',''),'-',''), '0') = LTRIM('${d.cnpj}', '0')`
+            WHERE REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(CLI_CPF)),'.',''),'/',''),'-','') LIKE '%${String(d.cnpj).replace(/\\D/g,'')}'`
         );
         const cliCodi = r.rows?.[0]?.CLI_CODI;
         if (!cliCodi) {
