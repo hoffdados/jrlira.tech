@@ -29,7 +29,7 @@ router.get('/', autenticar, async (req, res) => {
     if (incluirSem && !cdCodigo) return res.status(400).json({ erro: 'cd_codigo obrigatorio com incluir_sem_cadastro' });
 
     if (incluirSem) {
-      const where = [`cm.cd_codigo = $1`];
+      const where = [`cm.cd_codigo = $1`, `cm.mat_situ = 'A'`];
       const params = [cdCodigo];
       if (busca) {
         params.push(`%${busca}%`);

@@ -66,7 +66,7 @@ async function syncMaterial(cd, cli) {
   for (const sel of tentativas) {
     try {
       rows = await paginarQuery(cli,
-        `SELECT ${sel} FROM MATERIAL WITH (NOLOCK)`,
+        `SELECT ${sel} FROM MATERIAL WITH (NOLOCK) WHERE MAT_SITU = 'A'`,
         'MAT_CODI'
       );
       break;

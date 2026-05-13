@@ -2636,6 +2636,11 @@ async function initDB() {
         FOR EACH ROW EXECUTE FUNCTION trim_zeros_cd_ean();
     `);
 
+    // Limpa materiais inativos (mat_situ <> 'A') dos CDs — só ativos sobem.
+    await runMigration(client, '20260513_cd_material_only_active', `
+      DELETE FROM cd_material WHERE mat_situ IS DISTINCT FROM 'A';
+    `);
+
     // cd_produtos_embalagem — qtd_embalagem e EANs (principal + secundário) por CD.
     // Alimentada por upload Excel — não tocada pelo sync_cd.
     await runMigration(client, '20260513_cd_produtos_embalagem', `
