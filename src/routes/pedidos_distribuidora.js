@@ -191,6 +191,7 @@ router.get('/grade', adminOuCeo, async (req, res) => {
       )
       SELECT cd_m.mat_codi,
              COALESCE(
+               NULLIF(cpe_o.ean_principal,''),
                NULLIF(pe.ean_principal_cd,''),
                NULLIF(cd_m.ean_codi,''),
                (SELECT NULLIF(LTRIM(ean_codi,'0'),'') FROM cd_ean
@@ -201,7 +202,10 @@ router.get('/grade', adminOuCeo, async (req, res) => {
              cd_m.mat_refe AS referencia,
              cd_e.est_quan AS est_dist,
              cd_c.pro_prad AS preco_admin,
-             pe.qtd_embalagem,
+             COALESCE(cpe_o.qtd_embalagem, pe.qtd_embalagem) AS qtd_embalagem,
+             cpe_o.peso_unidade_kg,
+             cpe_o.peso_variavel,
+             cpe_o.ean_secundario,
              uc.ultima_entrada,
              uc.ultimo_mcp_codi_int AS ultimo_mcp_codi,
              (pp.mat_codi IS NOT NULL) AS prioritario,
@@ -213,6 +217,8 @@ router.get('/grade', adminOuCeo, async (req, res) => {
         LEFT JOIN cd_estoque   cd_e ON cd_e.cd_codigo = cd_m.cd_codigo AND cd_e.pro_codi = cd_m.mat_codi
         LEFT JOIN cd_custoprod cd_c ON cd_c.cd_codigo = cd_m.cd_codigo AND cd_c.pro_codi = cd_m.mat_codi
         LEFT JOIN produtos_embalagem pe ON pe.mat_codi = cd_m.mat_codi
+        LEFT JOIN cd_produtos_embalagem cpe_o
+               ON cpe_o.cd_codigo = cd_m.cd_codigo AND cpe_o.mat_codi = cd_m.mat_codi
         LEFT JOIN ult_compra uc ON uc.cd_codigo = cd_m.cd_codigo AND uc.pro_codi = cd_m.mat_codi
         LEFT JOIN pedidos_distrib_prioridades pp
           ON pp.cd_origem_codigo = cd_m.cd_codigo AND pp.mat_codi = cd_m.mat_codi
@@ -1234,15 +1240,19 @@ router.get('/painel-cd-saidas', autenticar, async (req, res) => {
          GROUP BY n.loja_id`, paramsLocal);
     }
 
-    // Em trânsito: TODAS (sem filtro de mês — sempre mostra o que está pendente)
-    // Recebidas: apenas as que chegaram no mês selecionado
+    // Em trânsito: status='em_transito' (sem filtro de mês)
+    // Em tratamento: já saiu do trânsito mas ainda não validou (sem filtro de mês)
+    // Recebidas no mês: validada no mês selecionado
+    // Em trânsito + Em tratamento = T da grade /pedidos-distribuidora (tudo que ainda não chegou no ERP)
     const trans = await agregaStatus(`n.status = 'em_transito'`, [cdOrigem]);
+    const trat = await agregaStatus(
+      `n.status IN ('recebida','em_conferencia','conferida','auditagem','aguardando_admin_validade','aguardando_devolucao')`,
+      [cdOrigem]);
     const receb = await agregaStatus(
-      `n.status IN ('recebida','em_conferencia','conferida','validada','auditagem')
+      `n.status = 'validada'
        AND TO_CHAR(COALESCE(n.data_recebimento, n.data_emissao),'YYYY-MM') = $2`,
       [cdOrigem, mes]);
 
-    // Agrega totais gerais
     function agregar(rows) {
       let qtd = 0, valor = 0, peso = 0;
       for (const r of rows) {
@@ -1258,9 +1268,10 @@ router.get('/painel-cd-saidas', autenticar, async (req, res) => {
       mes,
       totais: {
         em_transito: agregar(trans),
+        em_tratamento: agregar(trat),
         recebidas_mes: agregar(receb),
       },
-      por_loja: { em_transito: trans, recebidas_mes: receb },
+      por_loja: { em_transito: trans, em_tratamento: trat, recebidas_mes: receb },
     });
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
@@ -1278,11 +1289,13 @@ router.get('/painel-cd-saidas-detalhe', autenticar, async (req, res) => {
 
     let condStatus, params;
     if (tipo === 'em_transito') {
-      // Em trânsito não filtra por mês — mostra TODAS pendentes
       condStatus = `n.status = 'em_transito'`;
       params = [cdOrigem, lojaId];
+    } else if (tipo === 'em_tratamento') {
+      condStatus = `n.status IN ('recebida','em_conferencia','conferida','auditagem','aguardando_admin_validade','aguardando_devolucao')`;
+      params = [cdOrigem, lojaId];
     } else {
-      condStatus = `n.status IN ('recebida','em_conferencia','conferida','validada','auditagem')
+      condStatus = `n.status = 'validada'
                     AND TO_CHAR(COALESCE(n.data_recebimento, n.data_emissao),'YYYY-MM') = $3`;
       params = [cdOrigem, lojaId, mes];
     }
