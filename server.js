@@ -47,6 +47,10 @@ app.use('/api/dashboard', require('./src/routes/dashboard'));
 app.use('/api/precos-otimizados', require('./src/routes/precos_otimizados'));
 app.use('/api/admin/cds', require('./src/routes/cds'));
 app.use('/api/pedidos-distribuidora', require('./src/routes/pedidos_distribuidora'));
+app.use('/api/produto-canonico', require('./src/routes/produto_canonico'));
+app.use('/api/auditoria-ean', require('./src/routes/auditoria_ean_canonico'));
+app.use('/api/de-para-eans', require('./src/routes/de_para_eans'));
+app.use('/api/notas-avaria', require('./src/routes/notas_avaria'));
 app.use('/api/finalizadas-f', require('./src/routes/finalizadas_f'));
 
 // ── PÁGINAS ───────────────────────────────────────────────────────
@@ -79,6 +83,17 @@ app.get('/precos-otimizados-pendentes', (req, res) => res.sendFile(path.join(__d
 app.get('/precos-otimizados-status', (req, res) => res.sendFile(path.join(__dirname, 'public/precos-otimizados-status.html')));
 app.get('/admin-cds', (req, res) => res.sendFile(path.join(__dirname, 'public/admin-cds.html')));
 app.get('/pedidos-distribuidora', (req, res) => res.sendFile(path.join(__dirname, 'public/pedidos-distribuidora.html')));
+app.get('/produto-canonico', (req, res) => res.sendFile(path.join(__dirname, 'public/produto-canonico.html')));
+app.get('/notas-avaria-reprocessar', (req, res) => res.sendFile(path.join(__dirname, 'public/notas-avaria-reprocessar.html')));
+app.get('/notas-avaria-cobrancas', (req, res) => res.sendFile(path.join(__dirname, 'public/notas-avaria-cobrancas.html')));
+// Telas CD destino — parametrizadas (mesma página, ?cd= no URL)
+app.get('/notas-cd-asafrio', (req, res) => res.sendFile(path.join(__dirname, 'public/notas-cd-destino.html')));
+app.get('/notas-cd-asasantarem', (req, res) => res.sendFile(path.join(__dirname, 'public/notas-cd-destino.html')));
+app.get('/notas-cd-itautuba', (req, res) => res.sendFile(path.join(__dirname, 'public/notas-cd-destino.html')));
+app.get('/notas-cd-nprogresso', (req, res) => res.sendFile(path.join(__dirname, 'public/notas-cd-destino.html')));
+app.get('/painel-cd-saidas', (req, res) => res.sendFile(path.join(__dirname, 'public/painel-cd-saidas.html')));
+app.get('/painel-cd-cd', (req, res) => res.sendFile(path.join(__dirname, 'public/painel-cd-cd.html')));
+app.get('/de-para-eans', (req, res) => res.sendFile(path.join(__dirname, 'public/de-para-eans.html')));
 app.get('/auditoria-finalizada-f', (req, res) => res.sendFile(path.join(__dirname, 'public/auditoria-finalizada-f.html')));
 app.get('/acordo-extrato', (req, res) => res.sendFile(path.join(__dirname, 'public/acordo-extrato.html')));
 app.get('/auditagem-divergencias', (req, res) => res.sendFile(path.join(__dirname, 'public/auditagem-divergencias.html')));
@@ -2132,6 +2147,262 @@ async function initDB() {
       CREATE INDEX IF NOT EXISTS idx_cd_ean_mat    ON cd_ean (cd_codigo, mat_codi);
     `);
 
+    // produto_canonico: produto "mestre" cross-CD. Necessário porque mat_codi e EAN são independentes
+    // entre os 4 CDs (mesmo produto físico pode ter mat_codi e até EAN_CODI diferentes em cada UltraSyst).
+    // Auto-match conservador: cria canônico só quando EAN exato + descrição muito similar (Levenshtein < 5).
+    // Casos sem match vão pra fila de validação manual em /produto-canonico.
+    await runMigration(client, '20260511_produto_canonico', `
+      CREATE TABLE IF NOT EXISTS produto_canonico (
+        id SERIAL PRIMARY KEY,
+        descricao_canonica TEXT NOT NULL,
+        ean_canonico VARCHAR(20),
+        criado_em TIMESTAMPTZ DEFAULT NOW(),
+        criado_por VARCHAR(120),
+        auto_validado BOOLEAN DEFAULT FALSE,
+        validado_em TIMESTAMPTZ,
+        validado_por VARCHAR(120),
+        conflito BOOLEAN DEFAULT FALSE,
+        descartado BOOLEAN DEFAULT FALSE
+      );
+      CREATE INDEX IF NOT EXISTS idx_produto_canonico_ean ON produto_canonico (ean_canonico);
+    `);
+    await runMigration(client, '20260511_produto_canonico_match', `
+      CREATE TABLE IF NOT EXISTS produto_canonico_match (
+        produto_canonico_id INTEGER NOT NULL REFERENCES produto_canonico(id) ON DELETE CASCADE,
+        cd_codigo VARCHAR(40) NOT NULL,
+        mat_codi VARCHAR(20) NOT NULL,
+        mat_desc TEXT,
+        ean_codi VARCHAR(20),
+        vinculado_em TIMESTAMPTZ DEFAULT NOW(),
+        vinculado_por VARCHAR(120),
+        origem_match VARCHAR(20) DEFAULT 'auto',
+        PRIMARY KEY (cd_codigo, mat_codi)
+      );
+      CREATE INDEX IF NOT EXISTS idx_pcm_canonico ON produto_canonico_match (produto_canonico_id);
+      CREATE INDEX IF NOT EXISTS idx_pcm_ean ON produto_canonico_match (ean_codi);
+    `);
+
+    // Notas de avaria: identifica notas auto-emitidas (loja emite pra própria loja como perda)
+    // pra que comprador classifique como avaria/devolução/outro e selecione fornecedor a cobrar.
+    await runMigration(client, '20260511_notas_tipo_operacao', `
+      ALTER TABLE notas_entrada
+        ADD COLUMN IF NOT EXISTS auto_emitida BOOLEAN DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS tipo_operacao VARCHAR(30),
+        ADD COLUMN IF NOT EXISTS cnpj_emitente VARCHAR(20),
+        ADD COLUMN IF NOT EXISTS tipo_operacao_definido_em TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS tipo_operacao_definido_por VARCHAR(120);
+      CREATE INDEX IF NOT EXISTS idx_notas_avaria_pendente
+        ON notas_entrada (loja_id, auto_emitida)
+        WHERE auto_emitida = TRUE AND tipo_operacao IS NULL;
+    `);
+    await runMigration(client, '20260511_itens_nota_fornecedor_avaria', `
+      ALTER TABLE itens_nota
+        ADD COLUMN IF NOT EXISTS fornecedor_avaria_cnpj VARCHAR(20),
+        ADD COLUMN IF NOT EXISTS fornecedor_avaria_nome TEXT,
+        ADD COLUMN IF NOT EXISTS cobranca_avaria_id INTEGER,
+        ADD COLUMN IF NOT EXISTS cobranca_avaria_status VARCHAR(20);
+      CREATE INDEX IF NOT EXISTS idx_itens_avaria_forn
+        ON itens_nota (fornecedor_avaria_cnpj)
+        WHERE fornecedor_avaria_cnpj IS NOT NULL;
+    `);
+    await runMigration(client, '20260511_itens_nota_cfop', `
+      ALTER TABLE itens_nota ADD COLUMN IF NOT EXISTS cfop VARCHAR(10);
+      CREATE INDEX IF NOT EXISTS idx_itens_cfop ON itens_nota (cfop) WHERE cfop IS NOT NULL;
+    `);
+    await runMigration(client, '20260511_notas_natureza_op', `
+      ALTER TABLE notas_entrada ADD COLUMN IF NOT EXISTS natureza_op TEXT;
+    `);
+    // cd_fornecedor: tabela FORNECEDOR do UltraSyst (sync periódico)
+    await runMigration(client, '20260511_cd_fornecedor', `
+      CREATE TABLE IF NOT EXISTS cd_fornecedor (
+        cd_codigo VARCHAR(40) NOT NULL,
+        for_codi VARCHAR(20) NOT NULL,
+        for_cgc VARCHAR(20),
+        for_nome TEXT,
+        for_fantasia TEXT,
+        for_email TEXT,
+        for_telefone TEXT,
+        sincronizado_em TIMESTAMPTZ DEFAULT NOW(),
+        PRIMARY KEY (cd_codigo, for_codi)
+      );
+      CREATE INDEX IF NOT EXISTS idx_cd_fornecedor_cgc ON cd_fornecedor (for_cgc) WHERE for_cgc IS NOT NULL;
+    `);
+    // Adiciona for_codi em cd_material pra vincular produto → fornecedor preferencial do CD
+    await runMigration(client, '20260511_cd_material_for_codi', `
+      ALTER TABLE cd_material ADD COLUMN IF NOT EXISTS for_codi VARCHAR(20);
+      CREATE INDEX IF NOT EXISTS idx_cd_material_for ON cd_material (for_codi) WHERE for_codi IS NOT NULL;
+    `);
+    // devolucoes_compra_historico.observacao: campo do XML "Informações Adicionais" — tem refs tipo
+    // "DEVOLUÇÃO PARCIAL REF. NOTA FISCAL 881995" pra cruzar com a NF de entrada original
+    await runMigration(client, '20260512_devolucoes_compra_observacao', `
+      ALTER TABLE devolucoes_compra_historico ADD COLUMN IF NOT EXISTS observacao TEXT;
+    `);
+    // usuario: quem emitiu a devolução. Compradores emitem pós-entrega (cobrar fornecedor);
+    // cadastro/gerente emite no ato da entrega (já tratada)
+    await runMigration(client, '20260512_devolucoes_compra_usuario', `
+      ALTER TABLE devolucoes_compra_historico ADD COLUMN IF NOT EXISTS usuario VARCHAR(50);
+    `);
+    // Tabela de classificação de usuários por cargo (manual)
+    await runMigration(client, '20260512_usuarios_ecocentauro_cargo', `
+      CREATE TABLE IF NOT EXISTS usuarios_ecocentauro (
+        usuario VARCHAR(50) PRIMARY KEY,
+        nome TEXT,
+        cargo VARCHAR(30) NOT NULL,
+        observacao TEXT,
+        atualizado_em TIMESTAMPTZ DEFAULT NOW(),
+        atualizado_por VARCHAR(120)
+      );
+      CREATE INDEX IF NOT EXISTS idx_usuarios_eco_cargo ON usuarios_ecocentauro (cargo);
+    `);
+    // Seed inicial: compradores conhecidos
+    await runMigration(client, '20260512_seed_compradores_ecocentauro', `
+      INSERT INTO usuarios_ecocentauro (usuario, cargo, atualizado_por) VALUES
+        ('JOSIVALDO', 'comprador', 'seed'),
+        ('SABRINA',   'comprador', 'seed'),
+        ('ALZERINA',  'comprador', 'seed'),
+        ('ELDRIANE',  'comprador', 'seed'),
+        ('SUELEN',    'comprador', 'seed')
+      ON CONFLICT (usuario) DO NOTHING;
+    `);
+    // Atualiza trigger UPSERT pra incluir observacao + usuario
+    await runMigration(client, '20260512_trg_dch_upsert_v2',
+      `CREATE OR REPLACE FUNCTION dch_upsert() RETURNS TRIGGER AS $trg$
+       BEGIN
+         IF EXISTS (
+           SELECT 1 FROM devolucoes_compra_historico
+            WHERE loja_id = NEW.loja_id AND devolucao_codigo = NEW.devolucao_codigo
+         ) THEN
+           UPDATE devolucoes_compra_historico
+              SET fornecedor_codigo = NEW.fornecedor_codigo,
+                  fornecedor_cnpj   = NEW.fornecedor_cnpj,
+                  fornecedor_nome   = NEW.fornecedor_nome,
+                  natureza_codigo   = NEW.natureza_codigo,
+                  data_devolucao    = NEW.data_devolucao,
+                  data_nfe          = NEW.data_nfe,
+                  chave_nfe         = NEW.chave_nfe,
+                  numero_nfe        = NEW.numero_nfe,
+                  serie_nfe         = NEW.serie_nfe,
+                  valor_total       = NEW.valor_total,
+                  chave_nfe_compra_original = NEW.chave_nfe_compra_original,
+                  observacao        = NEW.observacao,
+                  usuario           = NEW.usuario,
+                  sincronizado_em   = NOW()
+            WHERE loja_id = NEW.loja_id AND devolucao_codigo = NEW.devolucao_codigo;
+           RETURN NULL;
+         END IF;
+         RETURN NEW;
+       END;
+       $trg$ LANGUAGE plpgsql;`);
+
+    // avaria_eventos: 1 linha por avaria/devolução detectada automaticamente
+    await runMigration(client, '20260511_avaria_eventos', `
+      CREATE TABLE IF NOT EXISTS avaria_eventos (
+        id SERIAL PRIMARY KEY,
+        loja_id INTEGER NOT NULL,
+        tipo VARCHAR(20) NOT NULL,
+        fonte VARCHAR(30) NOT NULL,
+        fonte_id INTEGER,
+        codigobarra VARCHAR(30) NOT NULL,
+        descricao_produto TEXT,
+        data_evento DATE NOT NULL,
+        qtd NUMERIC(14,3) NOT NULL DEFAULT 0,
+        valor_unitario NUMERIC(14,4),
+        valor_total NUMERIC(14,2),
+        fornecedor_cnpj_sugerido VARCHAR(20),
+        fornecedor_nome_sugerido TEXT,
+        fonte_sugestao VARCHAR(30),
+        fornecedor_cnpj_definido VARCHAR(20),
+        fornecedor_nome_definido TEXT,
+        preco_cobranca NUMERIC(14,4),
+        preco_origem VARCHAR(30),
+        status VARCHAR(30) NOT NULL DEFAULT 'pendente',
+        avaria_cobranca_id INTEGER,
+        classificado_em TIMESTAMPTZ,
+        classificado_por VARCHAR(150),
+        observacao TEXT,
+        criado_em TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE (fonte, loja_id, codigobarra, data_evento, tipo)
+      );
+      CREATE INDEX IF NOT EXISTS idx_avaria_eventos_pendentes
+        ON avaria_eventos (loja_id, status, data_evento DESC)
+        WHERE status = 'pendente';
+      CREATE INDEX IF NOT EXISTS idx_avaria_eventos_fornecedor
+        ON avaria_eventos (fornecedor_cnpj_definido, status);
+    `);
+    // Cobrança consolidada por (nota, fornecedor) — pra avarias agrupa N itens
+    await runMigration(client, '20260511_avarias_cobrancas', `
+      CREATE TABLE IF NOT EXISTS avarias_cobrancas (
+        id SERIAL PRIMARY KEY,
+        nota_id INTEGER NOT NULL REFERENCES notas_entrada(id) ON DELETE CASCADE,
+        loja_id INTEGER NOT NULL,
+        fornecedor_cnpj VARCHAR(20) NOT NULL,
+        fornecedor_nome TEXT,
+        valor_total NUMERIC(14,2) NOT NULL DEFAULT 0,
+        qtd_itens INTEGER NOT NULL DEFAULT 0,
+        status VARCHAR(20) NOT NULL DEFAULT 'pendente',
+        criado_em TIMESTAMPTZ DEFAULT NOW(),
+        criado_por VARCHAR(150),
+        cobrado_em TIMESTAMPTZ,
+        cobrado_por VARCHAR(150),
+        cancelado_em TIMESTAMPTZ,
+        cancelado_por VARCHAR(150),
+        observacao TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_avarias_cobrancas_status
+        ON avarias_cobrancas (loja_id, status, criado_em DESC);
+      CREATE INDEX IF NOT EXISTS idx_avarias_cobrancas_fornecedor
+        ON avarias_cobrancas (fornecedor_cnpj, status);
+      CREATE UNIQUE INDEX IF NOT EXISTS uniq_avarias_cobrancas_nota_forn
+        ON avarias_cobrancas (nota_id, fornecedor_cnpj);
+    `);
+    // Backfill: marca como auto_emitida toda nota onde fornecedor_cnpj bate com CNPJ da loja
+    await runMigration(client, '20260511_notas_backfill_auto_emitida', `
+      UPDATE notas_entrada n
+         SET auto_emitida = TRUE,
+             cnpj_emitente = REGEXP_REPLACE(COALESCE(n.fornecedor_cnpj,''),'\\D','','g')
+       FROM lojas l
+       WHERE n.loja_id = l.id
+         AND l.cnpj IS NOT NULL
+         AND REGEXP_REPLACE(COALESCE(n.fornecedor_cnpj,''),'\\D','','g')
+           = REGEXP_REPLACE(COALESCE(l.cnpj,''),'\\D','','g');
+    `);
+
+    // CAPA + MOVIITEM: tabelas de venda/atacado/rota do UltraSyst.
+    // Filtro CAP_TIPO='3' (venda externa). CAP_DEVOL='S' indica devolução (qtd negativa).
+    // Fonte real do consumo dos CDs (TBMOVCOMPRA registra só transferências internas NOP=31).
+    await runMigration(client, '20260511_cd_capa', `
+      CREATE TABLE IF NOT EXISTS cd_capa (
+        cd_codigo VARCHAR(40) NOT NULL,
+        cap_sequ VARCHAR(20) NOT NULL,
+        cap_dtem TIMESTAMPTZ,
+        cap_dtpd TIMESTAMPTZ,
+        cap_dtab TIMESTAMPTZ,
+        cap_tipo VARCHAR(2),
+        cap_devol CHAR(1),
+        cap_stvd VARCHAR(2),
+        cap_stencer VARCHAR(2),
+        ven_codi VARCHAR(20),
+        cli_codi VARCHAR(20),
+        sincronizado_em TIMESTAMPTZ DEFAULT NOW(),
+        PRIMARY KEY (cd_codigo, cap_sequ)
+      );
+      CREATE INDEX IF NOT EXISTS idx_cd_capa_dtem ON cd_capa (cd_codigo, cap_dtem DESC);
+      CREATE INDEX IF NOT EXISTS idx_cd_capa_tipo ON cd_capa (cd_codigo, cap_tipo);
+    `);
+    await runMigration(client, '20260511_cd_moviitem', `
+      CREATE TABLE IF NOT EXISTS cd_moviitem (
+        cd_codigo VARCHAR(40) NOT NULL,
+        cap_sequ VARCHAR(20) NOT NULL,
+        seq INTEGER NOT NULL,
+        pro_codi VARCHAR(20),
+        ite_quan NUMERIC(14,4),
+        ite_valo NUMERIC(14,4),
+        sincronizado_em TIMESTAMPTZ DEFAULT NOW(),
+        PRIMARY KEY (cd_codigo, cap_sequ, seq)
+      );
+      CREATE INDEX IF NOT EXISTS idx_cd_moviitem_pro ON cd_moviitem (cd_codigo, pro_codi);
+    `);
+
     // Marcação de produto prioritário pelo CEO/Admin (1 flag por produto, global ao CD origem)
     await runMigration(client, '20260511_pedidos_distrib_prioridades', `
       CREATE TABLE IF NOT EXISTS pedidos_distrib_prioridades (
@@ -2172,6 +2443,166 @@ async function initDB() {
     // loja_id_destino pode virar NULL pra pedidos entre CDs
     await runMigration(client, '20260510_pedidos_distrib_hist_loja_nullable',
       `ALTER TABLE pedidos_distrib_historico ALTER COLUMN loja_id_destino DROP NOT NULL`);
+
+    // Cache do ranking global (Melhora Pedido CD #2): evita varrer vendas_historico+cd_material em cada /grade
+    await runMigration(client, '20260512_pedidos_distrib_ranking_cache', `
+      CREATE TABLE IF NOT EXISTS pedidos_distrib_ranking_cache (
+        cd_codigo VARCHAR(40) NOT NULL,
+        mat_codi VARCHAR(20) NOT NULL,
+        posicao INTEGER NOT NULL,
+        valor_vendido NUMERIC(14,2) NOT NULL,
+        atualizado_em TIMESTAMPTZ DEFAULT NOW(),
+        PRIMARY KEY (cd_codigo, mat_codi)
+      );
+      CREATE INDEX IF NOT EXISTS idx_ranking_cd_pos
+        ON pedidos_distrib_ranking_cache (cd_codigo, posicao);
+    `);
+    // Índices pra acelerar /grade (Melhora Pedido CD #3)
+    await runMigration(client, '20260512_idx_vh_codbarra_norm', `
+      CREATE INDEX IF NOT EXISTS idx_vh_codbarra_norm
+        ON vendas_historico ((NULLIF(LTRIM(codigobarra,'0'),'')), data_venda DESC)
+        WHERE codigobarra IS NOT NULL;
+    `);
+    await runMigration(client, '20260512_idx_cd_ean_norm', `
+      CREATE INDEX IF NOT EXISTS idx_cd_ean_norm
+        ON cd_ean (cd_codigo, (NULLIF(LTRIM(ean_codi,'0'),'')))
+        WHERE ean_codi IS NOT NULL;
+    `);
+    // Índice composto pra match exato com query do /grade (loja_id + codbarra_norm)
+    await runMigration(client, '20260513_idx_vh_loja_codbarra', `
+      CREATE INDEX IF NOT EXISTS idx_vh_loja_codbarra_norm
+        ON vendas_historico (loja_id, (NULLIF(LTRIM(codigobarra,'0'),'')), data_venda DESC)
+        WHERE codigobarra IS NOT NULL;
+    `);
+    // Índice pra cd_capa filtro de data (vendasCdsCanonico)
+    await runMigration(client, '20260513_idx_cd_capa_dtem', `
+      CREATE INDEX IF NOT EXISTS idx_cd_capa_dtem_tipo
+        ON cd_capa (cd_codigo, cap_tipo, cap_dtem DESC)
+        WHERE cap_tipo = '3';
+    `);
+    // Índice pra cd_moviitem (mais comum: cd_codigo, cap_sequ)
+    await runMigration(client, '20260513_idx_cd_moviitem', `
+      CREATE INDEX IF NOT EXISTS idx_cd_moviitem_cd_sequ
+        ON cd_moviitem (cd_codigo, cap_sequ);
+    `);
+    // Caches diários de vendas (Melhora Pedido CD #2 ampliada).
+    // Idea: vendas 28d/90d muda pouco entre dias — pré-calcula 1×/dia em background.
+    await runMigration(client, '20260513_vendas_loja_cache', `
+      CREATE TABLE IF NOT EXISTS vendas_loja_cache (
+        loja_id INTEGER NOT NULL,
+        codbarra_norm VARCHAR(20) NOT NULL,
+        qtd_28d NUMERIC(14,3) NOT NULL DEFAULT 0,
+        qtd_90d NUMERIC(14,3) NOT NULL DEFAULT 0,
+        ultima_venda DATE,
+        atualizado_em TIMESTAMPTZ DEFAULT NOW(),
+        PRIMARY KEY (loja_id, codbarra_norm)
+      );
+    `);
+    await runMigration(client, '20260513_vendas_cd_cache', `
+      CREATE TABLE IF NOT EXISTS vendas_cd_cache (
+        cd_codigo VARCHAR(40) NOT NULL,
+        ean_norm VARCHAR(20) NOT NULL,
+        qtd_90d NUMERIC(14,3) NOT NULL DEFAULT 0,
+        ultima_saida DATE,
+        atualizado_em TIMESTAMPTZ DEFAULT NOW(),
+        PRIMARY KEY (cd_codigo, ean_norm)
+      );
+    `);
+    await runMigration(client, '20260513_vendas_cd_canonico_cache', `
+      CREATE TABLE IF NOT EXISTS vendas_cd_canonico_cache (
+        cd_codigo VARCHAR(40) NOT NULL,
+        mat_codi VARCHAR(20) NOT NULL,
+        qtd_90d NUMERIC(14,3) NOT NULL DEFAULT 0,
+        ultima_saida DATE,
+        atualizado_em TIMESTAMPTZ DEFAULT NOW(),
+        PRIMARY KEY (cd_codigo, mat_codi)
+      );
+    `);
+
+    // Cobrança consolidada não usa nota_id (1 por loja+fornecedor, não por nota)
+    await runMigration(client, '20260513_avarias_cobrancas_nota_id_nullable', `
+      ALTER TABLE avarias_cobrancas ALTER COLUMN nota_id DROP NOT NULL;
+    `);
+
+    // Link bidirecional avarias_cobrancas ↔ cr_debitos pra integrar com Contas a Receber
+    await runMigration(client, '20260513_avarias_cobrancas_cr_debito_id', `
+      ALTER TABLE avarias_cobrancas
+        ADD COLUMN IF NOT EXISTS cr_debito_id INTEGER REFERENCES cr_debitos(id);
+    `);
+
+    // De-para EANs: marca pares (CD origem, mat_codi) que NÃO precisam estar em outro CD.
+    // Ex: ARROZ no ITB é exclusivo do ITB → AsaFrio nunca precisa ter (sai da fila).
+    await runMigration(client, '20260513_produto_canonico_exclusivo', `
+      CREATE TABLE IF NOT EXISTS produto_canonico_exclusivo (
+        id SERIAL PRIMARY KEY,
+        cd_origem_codigo VARCHAR(40) NOT NULL,
+        mat_codi_origem VARCHAR(20) NOT NULL,
+        cd_destino_codigo VARCHAR(40) NOT NULL,
+        motivo TEXT,
+        marcado_por VARCHAR(80),
+        criado_em TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE (cd_origem_codigo, mat_codi_origem, cd_destino_codigo)
+      );
+    `);
+
+    // Log de erros do sync_transferencias_multi pra investigação posterior
+    await runMigration(client, '20260512_sync_transf_multi_erros', `
+      CREATE TABLE IF NOT EXISTS sync_transf_multi_erros (
+        id SERIAL PRIMARY KEY,
+        cd_codigo VARCHAR(40) NOT NULL,
+        mcp_codi VARCHAR(20),
+        for_codi VARCHAR(20),
+        erro TEXT,
+        criado_em TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_sync_transf_erros ON sync_transf_multi_erros (cd_codigo, criado_em DESC);
+    `);
+
+    // Trânsito multi-CD: identifica de qual CD veio a nota e (se for entre CDs) qual CD recebeu.
+    // Aditivo. NÃO altera o fluxo atual ITB→6 lojas (origem_cd_codigo continua NULL pra essas).
+    await runMigration(client, '20260512_notas_origem_cd_codigo', `
+      ALTER TABLE notas_entrada
+        ADD COLUMN IF NOT EXISTS origem_cd_codigo VARCHAR(40),
+        ADD COLUMN IF NOT EXISTS cd_destino_codigo VARCHAR(40);
+      CREATE INDEX IF NOT EXISTS idx_notas_origem_cd
+        ON notas_entrada (origem_cd_codigo) WHERE origem_cd_codigo IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_notas_destino_cd
+        ON notas_entrada (cd_destino_codigo) WHERE cd_destino_codigo IS NOT NULL;
+    `);
+    // Adiciona unique index composto (origem_cd_codigo, cd_mov_codi) pra suportar mesmo MCP_CODI em CDs diferentes.
+    await runMigration(client, '20260512_uniq_notas_cd_mov_por_origem', `
+      CREATE UNIQUE INDEX IF NOT EXISTS uniq_notas_cd_mov_origem
+        ON notas_entrada (origem_cd_codigo, cd_mov_codi)
+        WHERE origem_cd_codigo IS NOT NULL AND cd_mov_codi IS NOT NULL;
+    `);
+    // Torna o uniq legado condicional (só quando origem_cd_codigo IS NULL = sync_ultrasyst ITB)
+    // Senão o uniq global bloqueia mesmo MCP_CODI vindo de outros CDs.
+    await runMigration(client, '20260512_uniq_notas_cd_mov_legado_only', `
+      DROP INDEX IF EXISTS uniq_notas_cd_mov;
+      CREATE UNIQUE INDEX IF NOT EXISTS uniq_notas_cd_mov
+        ON notas_entrada (cd_mov_codi)
+        WHERE cd_mov_codi IS NOT NULL AND origem_cd_codigo IS NULL;
+    `);
+    // Permite loja_id NULL quando destino é outro CD (quase nunca acontecia antes)
+    await runMigration(client, '20260512_notas_loja_id_nullable', `
+      ALTER TABLE notas_entrada ALTER COLUMN loja_id DROP NOT NULL;
+    `);
+    // Backfill: notas legadas do CD ITB (origem='cd', fornecedor=CD_CNPJ) tinham origem_cd_codigo=NULL.
+    // Popula com 'srv1-itautuba' pra que apareçam quando filtrar por CD origem nas telas novas.
+    await runMigration(client, '20260513_backfill_origem_cd_itb', `
+      UPDATE notas_entrada
+         SET origem_cd_codigo = 'srv1-itautuba'
+       WHERE origem = 'cd'
+         AND origem_cd_codigo IS NULL
+         AND fornecedor_cnpj = '17764296000209';
+    `);
+
+    // Colunas pra registrar cancelamento detectado no CD origem
+    await runMigration(client, '20260512_notas_cancelada', `
+      ALTER TABLE notas_entrada
+        ADD COLUMN IF NOT EXISTS cancelada_em TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS cancelada_motivo TEXT;
+    `);
 
     console.log('[DB] Tabelas inicializadas');
   } finally {
@@ -2441,15 +2872,94 @@ initDB().then(() => {
     // Sync das tabelas espelho do CD (estoque/custos/preços/compras) — 15min.
     // Pré-requisito do otimizador de preços e relatórios futuros.
     const { syncCdAll } = require('./src/sync_cd');
+    const { rodarAutoMatch } = require('./src/produto_canonico');
     const rodarSyncCd = async () => {
       try {
         const r = await syncCdAll();
         const resumo = r.map(x => `${x.tabela}=${x.linhas ?? '?'}/${x.ms ?? '?'}ms`).join(' ');
         console.log('[sync_cd]', resumo);
+        // Após sync, roda auto-match cross-CD (cria canônicos pra EANs que cruzam em 2+ CDs)
+        try {
+          const s = await rodarAutoMatch();
+          if (s.canonicos_criados || s.conflitos) {
+            console.log(`[produto-canonico auto-match] ${s.canonicos_criados} criados, ${s.matches_criados} vínculos, ${s.conflitos} conflitos`);
+          }
+        } catch (e) { console.error('[produto-canonico auto-match] falha:', e.message); }
       } catch (e) { console.error('[sync_cd] falha:', e.message); }
     };
     setTimeout(rodarSyncCd, 3 * 60 * 1000);
     setInterval(rodarSyncCd, 15 * 60 * 1000);
+
+    // Detector de avarias + devoluções pós-entrega (24h)
+    const { detectarAvarias } = require('./src/avaria_detector');
+    const rodarDetectorAvarias = async () => {
+      try {
+        const s = await detectarAvarias();
+        if (s.avarias_novas || s.devolucoes_novas) {
+          console.log(`[avaria-detector] ${s.avarias_novas} avarias, ${s.devolucoes_novas} devoluções novas`);
+        }
+      } catch (e) { console.error('[avaria-detector]', e.message); }
+    };
+    setTimeout(rodarDetectorAvarias, 5 * 60 * 1000); // primeiro disparo 5min após startup
+
+    // Cache do ranking global (Melhora Pedido CD #2) — atualiza 1×/h
+    const { atualizarRankingCacheAll } = require('./src/ranking_cache');
+    const rodarRankingCache = async () => {
+      try {
+        const r = await atualizarRankingCacheAll();
+        console.log('[ranking_cache]', JSON.stringify(r));
+      } catch (e) { console.error('[ranking_cache]', e.message); }
+    };
+    setTimeout(rodarRankingCache, 90 * 1000); // primeiro disparo 90s após startup
+    setInterval(rodarRankingCache, 60 * 60 * 1000); // 1h
+
+    // Caches diários de vendas 28d/90d (loja, CD por EAN, CD canônico) — 1×/dia 3h da manhã.
+    // Vendas do dia não movem médias de 90d significativamente; estoque e trânsito ficam real-time.
+    const { atualizarTodosCaches } = require('./src/vendas_cache');
+    const rodarVendasCache = async () => {
+      try {
+        const r = await atualizarTodosCaches();
+        console.log('[vendas_cache]', JSON.stringify(r));
+      } catch (e) { console.error('[vendas_cache]', e.message); }
+    };
+    setTimeout(rodarVendasCache, 3 * 60 * 1000); // primeiro disparo 3min após startup
+    setInterval(rodarVendasCache, 24 * 60 * 60 * 1000); // 1×/dia
+
+    // Sync de transferências dos OUTROS CDs (NP, AsaFrio, AsaSantarem)
+    // LOCK pra impedir concorrência: se ainda tá rodando, próximo tick pula.
+    // Reagenda só DEPOIS de terminar (evita workers paralelos sobre mesma data).
+    const { syncTransferenciasMultiCompleto, matchTransferenciasMultiRecebidas, matchTransferenciasCdCdRecebidas, ressincronizarTransferenciasMultiAbertas } = require('./src/sync_transferencias_multi');
+    let syncTransfMultiRodando = false;
+    const rodarSyncTransfMulti = async () => {
+      if (syncTransfMultiRodando) {
+        console.log('[sync_transf_multi] anterior ainda rodando — pulando');
+        return;
+      }
+      syncTransfMultiRodando = true;
+      try {
+        const r = await syncTransferenciasMultiCompleto({ maxLoopsPorCd: 20 });
+        const totalImp = r.reduce((s, x) => s + (x.importadas || 0), 0);
+        const totalErros = r.reduce((s, x) => s + (x.erros || 0), 0);
+        if (totalImp > 0 || totalErros > 0) console.log('[sync_transf_multi_completo]', JSON.stringify(r));
+        // Match: marca como 'recebida' as notas que já entraram no Ecocentauro da loja
+        const m = await matchTransferenciasMultiRecebidas();
+        if (m.recebidas > 0) console.log(`[match_transf_multi] ${m.recebidas} marcadas recebida em ${m.ms}ms`);
+        // Match CD→CD: cruza saídas CD A com entradas CD B via UltraSyst
+        const mCdCd = await matchTransferenciasCdCdRecebidas();
+        if (mCdCd.recebidas > 0 || mCdCd.erros?.length) {
+          console.log(`[match_cd_cd] ${mCdCd.recebidas} CD→CD recebidas, erros=${mCdCd.erros?.length||0} em ${mCdCd.ms}ms`);
+        }
+        // Ressincroniza status no CD origem (detecta canceladas)
+        const rs = await ressincronizarTransferenciasMultiAbertas();
+        if (rs.canceladas > 0 || rs.erros > 0) console.log(`[ressync_transf_multi] verif=${rs.verificadas} cancel=${rs.canceladas} erros=${rs.erros} em ${rs.ms}ms`);
+      } catch (e) { console.error('[sync_transf_multi]', e.message); }
+      finally {
+        syncTransfMultiRodando = false;
+        setTimeout(rodarSyncTransfMulti, 10 * 60 * 1000);
+      }
+    };
+    setTimeout(rodarSyncTransfMulti, 4 * 60 * 1000);
+    setInterval(rodarDetectorAvarias, 24 * 60 * 60 * 1000); // diário
 
     // Auto-validação dos lotes de preços otimizados — 5min.
     // Detecta quando produtos_externo.prsugerido (loja) === preco_otimizado (lote)
@@ -2554,13 +3064,29 @@ initDB().then(() => {
           (SELECT COUNT(*) FROM embalagens_fornecedor WHERE status = 'pendente_validacao')::int AS sugestao_nfe,
           (SELECT COUNT(*) FROM produtos_embalagem WHERE ativo_no_cd = TRUE AND status <> 'validado')::int AS pendentes_validacao
       `);
+      const canon = await dbQuery(`
+        SELECT
+          (SELECT COUNT(*) FROM produto_canonico WHERE conflito=TRUE AND descartado=FALSE)::int AS conflitos,
+          (SELECT COUNT(*) FROM produto_canonico WHERE auto_validado=TRUE AND validado_em IS NULL AND descartado=FALSE)::int AS aguardando_revisao
+      `);
+      const totalCanonConflitos = canon[0]?.conflitos || 0;
+      const totalCanonRevisao = canon[0]?.aguardando_revisao || 0;
+      const avariaRow = await dbQuery(`
+        SELECT
+          (SELECT COUNT(*) FROM notas_entrada WHERE auto_emitida=TRUE AND tipo_operacao IS NULL)::int AS pendentes_classificacao,
+          (SELECT COUNT(*) FROM avarias_cobrancas WHERE status='pendente')::int AS cobrancas_pendentes,
+          (SELECT COALESCE(SUM(valor_total),0) FROM avarias_cobrancas WHERE status='pendente')::numeric(14,2) AS valor_pendente
+      `);
+      const totalAvariaClassif = avariaRow[0]?.pendentes_classificacao || 0;
+      const totalAvariaCob = avariaRow[0]?.cobrancas_pendentes || 0;
+      const valorAvariaPend = avariaRow[0]?.valor_pendente || 0;
       const totalDiv = divs[0]?.qtd || 0;
       const totalVal = vals[0]?.qtd || 0;
       const totalDev = devs[0]?.qtd || 0;
       const totalEmbNfe = embs[0]?.sugestao_nfe || 0;
       const totalEmbPend = embs[0]?.pendentes_validacao || 0;
       const atrasosSync = await verificarSlaSync();
-      if (!stats.length && !totalDiv && !totalVal && !totalDev && !totalEmbNfe && !totalEmbPend && !atrasosSync.length) { console.log('[alertas] nenhum pendente'); return; }
+      if (!stats.length && !totalDiv && !totalVal && !totalDev && !totalEmbNfe && !totalEmbPend && !totalCanonConflitos && !totalCanonRevisao && !totalAvariaClassif && !totalAvariaCob && !atrasosSync.length) { console.log('[alertas] nenhum pendente'); return; }
       const total = stats.reduce((s, a) => s + a.qtd, 0);
       const linhas = stats.map(a => `• ${a.qtd} ${a.tipo.replace(/_/g, ' ')}`).join('\n');
       const linhaDivs = totalDiv
@@ -2578,10 +3104,22 @@ initDB().then(() => {
       const linhaEmbPend = totalEmbPend
         ? `\n• ${totalEmbPend} embalagem(ns) CD ativa(s) sem qtd validada`
         : '';
+      const linhaCanonConflito = totalCanonConflitos
+        ? `\n• ${totalCanonConflitos} produto(s) canônico(s) em conflito — /produto-canonico`
+        : '';
+      const linhaCanonRevisao = totalCanonRevisao
+        ? `\n• ${totalCanonRevisao} canônico(s) aguardando revisão — /produto-canonico`
+        : '';
+      const linhaAvariaClassif = totalAvariaClassif
+        ? `\n• ${totalAvariaClassif} nota(s) de avaria pendente(s) de classificação — /notas-avaria-reprocessar`
+        : '';
+      const linhaAvariaCob = totalAvariaCob
+        ? `\n• ${totalAvariaCob} avaria(s) a cobrar — R$ ${Number(valorAvariaPend).toLocaleString('pt-BR',{minimumFractionDigits:2})} — /notas-avaria-cobrancas`
+        : '';
       const linhaSync = atrasosSync.length
         ? `\n\n⚠️ *SYNC ATRASADO:*\n${atrasosSync.map(a => '• ' + a).join('\n')}`
         : '';
-      const corpo = `${total} pendência(s):\n${linhas}${linhaDivs}${linhaVals}${linhaDevs}${linhaEmbNfe}${linhaEmbPend}${linhaSync}`.replace(/\*/g, '');
+      const corpo = `${total} pendência(s):\n${linhas}${linhaDivs}${linhaVals}${linhaDevs}${linhaEmbNfe}${linhaEmbPend}${linhaCanonConflito}${linhaCanonRevisao}${linhaAvariaClassif}${linhaAvariaCob}${linhaSync}`.replace(/\*/g, '');
       // Notifica todos os admins via in-app
       const { criarNotificacao } = require('./src/routes/notificacoes');
       const adminsRows = await dbQuery(`SELECT id FROM rh_usuarios WHERE perfil='admin' AND ativo=TRUE`);

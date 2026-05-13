@@ -1,5 +1,44 @@
 // Helpers compartilhados — incluir antes do JS da página: <script src="/shared.js"></script>
 
+// ── PWA: injeta manifest + meta theme-color e registra service worker ──
+// Faz isso em runtime pra não precisar editar 50 HTMLs. Idempotente (não duplica tags).
+(function setupPWA() {
+  if (typeof document === 'undefined') return;
+  function injetar() {
+    const head = document.head;
+    if (!head) return;
+    if (!head.querySelector('link[rel="manifest"]')) {
+      const l = document.createElement('link');
+      l.rel = 'manifest'; l.href = '/manifest.json';
+      head.appendChild(l);
+    }
+    if (!head.querySelector('meta[name="theme-color"]')) {
+      const m = document.createElement('meta');
+      m.name = 'theme-color'; m.content = '#0f172a';
+      head.appendChild(m);
+    }
+    if (!head.querySelector('link[rel="apple-touch-icon"]')) {
+      const a = document.createElement('link');
+      a.rel = 'apple-touch-icon'; a.href = '/icons/icon.svg';
+      head.appendChild(a);
+    }
+    if (!head.querySelector('meta[name="mobile-web-app-capable"]')) {
+      const c = document.createElement('meta');
+      c.name = 'mobile-web-app-capable'; c.content = 'yes';
+      head.appendChild(c);
+    }
+  }
+  if (document.head) injetar(); else document.addEventListener('DOMContentLoaded', injetar);
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js')
+        .catch(err => console.warn('[PWA] SW falhou:', err.message));
+    });
+  }
+})();
+
+
 const LOJAS = {
   1: 'ECONOMICO',
   2: 'BR',

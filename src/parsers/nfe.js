@@ -50,15 +50,18 @@ async function parseRoot(buf) {
 
 // Versão completa (notas.js): header + itens com impostos
 async function parseNFe(buf) {
-  const { inf, ide, emit, chave } = await parseRoot(buf);
+  const { inf, ide, emit, dest, chave } = await parseRoot(buf);
   const tot = inf.total?.ICMSTot || {};
 
   const header = {
     chave_nfe: chave,
     numero_nota: String(ide.nNF || ''),
     serie: String(ide.serie || ''),
+    natureza_op: String(ide.natOp || ''),
     fornecedor_nome: String(emit.xNome || emit.xFant || ''),
     fornecedor_cnpj: String(emit.CNPJ || emit.CPF || ''),
+    dest_cnpj: String(dest?.CNPJ || dest?.CPF || ''),
+    dest_nome: String(dest?.xNome || ''),
     data_emissao: String(ide.dhEmi || ide.dEmi || '').substring(0, 10) || null,
     valor_total: n(tot.vNF),
     tot_vprod: n(tot.vProd),
@@ -160,8 +163,10 @@ async function parseNFe(buf) {
 
     const cProdRaw = prod.cProd;
     const cprodFornecedor = cProdRaw ? String(cProdRaw).trim() : null;
+    const cfop = String(prod.CFOP || '').trim() || null;
     return {
       numero_item: parseInt(det.$?.nItem || idx + 1) || idx + 1,
+      cfop,
       ean_nota: ean,
       ean_trib: eanTrib,
       cprod_fornecedor: cprodFornecedor,

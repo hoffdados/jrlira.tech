@@ -38,19 +38,25 @@ function n(v) { return parseFloat(v) || 0; }
 async function importarNotaParseada(client, header, itens, loja_id, importado_por) {
   await client.query('BEGIN');
 
+  // auto_emitida será decidida APÓS inserir os itens, baseado no CFOP (5927 = avaria).
+  // CNPJ emitente continua sendo salvo pra referência.
+  const emitCnpjN = (header.fornecedor_cnpj || '').replace(/\D/g, '');
+
   const ins = await client.query(`
     INSERT INTO notas_entrada
       (chave_nfe, numero_nota, serie, fornecedor_nome, fornecedor_cnpj, data_emissao,
        valor_total, importado_por, loja_id,
        tot_vprod, tot_vbc, tot_vicms, tot_vbcst, tot_vst, tot_vfcp_st,
-       tot_vipi, tot_vdesc, tot_vfrete, tot_vseg, tot_voutro)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+       tot_vipi, tot_vdesc, tot_vfrete, tot_vseg, tot_voutro,
+       cnpj_emitente, natureza_op)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
     ON CONFLICT (chave_nfe) DO NOTHING
     RETURNING id
   `, [header.chave_nfe, header.numero_nota, header.serie, header.fornecedor_nome,
       header.fornecedor_cnpj, header.data_emissao, header.valor_total, importado_por, loja_id,
       header.tot_vprod, header.tot_vbc, header.tot_vicms, header.tot_vbcst, header.tot_vst, header.tot_vfcp_st,
-      header.tot_vipi, header.tot_vdesc, header.tot_vfrete, header.tot_vseg, header.tot_voutro]);
+      header.tot_vipi, header.tot_vdesc, header.tot_vfrete, header.tot_vseg, header.tot_voutro,
+      emitCnpjN || null, header.natureza_op || null]);
 
   if (!ins.rows.length) {
     await client.query('ROLLBACK');
@@ -75,7 +81,7 @@ async function importarNotaParseada(client, header, itens, loja_id, importado_po
   if (itens.length) {
     const cols = {
       nota_id: [], numero_item: [], ean_nota: [], ean_trib: [], ean_validado: [], ean_fonte: [],
-      cprod_fornecedor: [],
+      cprod_fornecedor: [], cfop: [],
       descricao_nota: [], quantidade: [], preco_unitario_nota: [], preco_total_nota: [],
       custo_fabrica: [], status_preco: [], produto_novo: [],
       vprod: [], vdesc_item: [], vfrete_item: [], vseg_item: [], voutro_item: [],
@@ -150,6 +156,7 @@ async function importarNotaParseada(client, header, itens, loja_id, importado_po
       cols.ean_validado.push(ean_matched || it.ean_nota || it.ean_trib);
       cols.ean_fonte.push(ean_fonte);
       cols.cprod_fornecedor.push(it.cprod_fornecedor || null);
+      cols.cfop.push(it.cfop || null);
       cols.descricao_nota.push(it.descricao_nota);
       cols.quantidade.push(it.quantidade);
       cols.preco_unitario_nota.push(it.preco_unitario_nota);
@@ -181,29 +188,37 @@ async function importarNotaParseada(client, header, itens, loja_id, importado_po
 
     await client.query(`
       INSERT INTO itens_nota
-        (nota_id, numero_item, ean_nota, ean_trib, ean_validado, ean_fonte, cprod_fornecedor, descricao_nota,
+        (nota_id, numero_item, ean_nota, ean_trib, ean_validado, ean_fonte, cprod_fornecedor, cfop, descricao_nota,
          quantidade, preco_unitario_nota, preco_total_nota, custo_fabrica, status_preco, produto_novo,
          vprod, vdesc_item, vfrete_item, vseg_item, voutro_item,
          vicms_bc, vicms, vst_bc, vst, vfcp_st, vipi_bc, vipi,
          qtd_comercial, un_comercial, qtd_tributavel, un_tributavel,
          qtd_por_caixa_nfe, qtd_por_caixa_confianca, preco_unitario_caixa, qtd_em_unidades)
       SELECT * FROM UNNEST(
-        $1::int[], $2::int[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::text[],
-        $9::numeric[], $10::numeric[], $11::numeric[], $12::numeric[], $13::text[], $14::bool[],
-        $15::numeric[], $16::numeric[], $17::numeric[], $18::numeric[], $19::numeric[],
-        $20::numeric[], $21::numeric[], $22::numeric[], $23::numeric[], $24::numeric[], $25::numeric[], $26::numeric[],
-        $27::numeric[], $28::text[], $29::numeric[], $30::text[],
-        $31::int[], $32::text[], $33::numeric[], $34::numeric[]
+        $1::int[], $2::int[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::text[], $9::text[],
+        $10::numeric[], $11::numeric[], $12::numeric[], $13::numeric[], $14::text[], $15::bool[],
+        $16::numeric[], $17::numeric[], $18::numeric[], $19::numeric[], $20::numeric[],
+        $21::numeric[], $22::numeric[], $23::numeric[], $24::numeric[], $25::numeric[], $26::numeric[], $27::numeric[],
+        $28::numeric[], $29::text[], $30::numeric[], $31::text[],
+        $32::int[], $33::text[], $34::numeric[], $35::numeric[]
       )
     `, [
       cols.nota_id, cols.numero_item, cols.ean_nota, cols.ean_trib, cols.ean_validado, cols.ean_fonte,
-      cols.cprod_fornecedor, cols.descricao_nota, cols.quantidade, cols.preco_unitario_nota, cols.preco_total_nota,
+      cols.cprod_fornecedor, cols.cfop, cols.descricao_nota, cols.quantidade, cols.preco_unitario_nota, cols.preco_total_nota,
       cols.custo_fabrica, cols.status_preco, cols.produto_novo,
       cols.vprod, cols.vdesc_item, cols.vfrete_item, cols.vseg_item, cols.voutro_item,
       cols.vicms_bc, cols.vicms, cols.vst_bc, cols.vst, cols.vfcp_st, cols.vipi_bc, cols.vipi,
       cols.qtd_comercial, cols.un_comercial, cols.qtd_tributavel, cols.un_tributavel,
       cols.qtd_por_caixa_nfe, cols.qtd_por_caixa_confianca, cols.preco_unitario_caixa, cols.qtd_em_unidades
     ]);
+
+    // Detecta avaria por CFOP: qualquer item com CFOP 5927/6927/1927/2927/3927 marca a nota como auto_emitida pendente
+    const CFOPS_AVARIA = new Set(['5927','6927','1927','2927','3927']);
+    const temAvaria = itens.some(it => it.cfop && CFOPS_AVARIA.has(String(it.cfop).trim()));
+    if (temAvaria) {
+      await client.query(
+        `UPDATE notas_entrada SET auto_emitida = TRUE WHERE id = $1 AND auto_emitida = FALSE`, [nota_id]);
+    }
 
     const fornCnpj = (header.fornecedor_cnpj || '').replace(/\D/g, '') || null;
     const fornNome = header.fornecedor_nome || null;
@@ -780,6 +795,18 @@ router.get('/', autenticar, async (req, res) => {
       if (ids.length) conds.push(`n.loja_id = ANY(ARRAY[${ids.join(',')}]::int[])`);
     }
 
+    // Filtros multi-CD: destinos que NÃO são lojas
+    // cd_destino_codigo=srv2-asafrio → mostra só notas onde o CD é destino
+    if (req.query.cd_destino_codigo) {
+      params.push(String(req.query.cd_destino_codigo).trim());
+      conds.push(`n.cd_destino_codigo = $${params.length}`);
+    }
+    // origem_cd_codigo=srv2-asafrio → mostra só notas enviadas POR esse CD
+    if (req.query.origem_cd_codigo) {
+      params.push(String(req.query.origem_cd_codigo).trim());
+      conds.push(`n.origem_cd_codigo = $${params.length}`);
+    }
+
     if (req.query.status) {
       params.push(req.query.status);
       conds.push(`n.status = $${params.length}`);
@@ -1165,6 +1192,8 @@ router.patch('/:id/marcar-recebida', autenticar, async (req, res) => {
 });
 
 // PATCH /api/notas/:id/liberar-estoque-transf — cadastro libera para estoque conferir (transferência)
+// ANTES de mudar pra em_conferencia, re-sincroniza itens do UltraSyst origem pra pegar
+// edições/cancelamentos feitos no CD após a importação inicial.
 router.patch('/:id/liberar-estoque-transf', autenticar, async (req, res) => {
   try {
     const [nota] = await query('SELECT status, origem FROM notas_entrada WHERE id=$1', [req.params.id]);
@@ -1173,12 +1202,40 @@ router.patch('/:id/liberar-estoque-transf', autenticar, async (req, res) => {
       return res.status(400).json({ erro: 'Fluxo apenas para transferências' });
     }
     if (nota.status !== 'recebida') return res.status(400).json({ erro: `Status atual ${nota.status} não permite liberar` });
+
+    // Re-sync itens do CD ANTES da conferência (resolve casos de edição/cancelamento no CD)
+    let resync = null;
+    try {
+      const { resyncItensNotaCd } = require('../resync_itens_nota_cd');
+      resync = await resyncItensNotaCd(Number(req.params.id));
+      if (resync?.cancelada) {
+        return res.status(409).json({
+          erro: 'Nota foi CANCELADA no CD após importação. Não pode ser conferida.',
+          motivo: resync.motivo,
+          cancelada: true,
+        });
+      }
+    } catch (e) {
+      console.error('[liberar-estoque-transf resync]', e.message);
+      // Não bloqueia se resync falhar — apenas loga e segue (offline-tolerant)
+    }
+
     await query(
       `UPDATE notas_entrada SET status='em_conferencia', liberada_em=NOW(), liberada_por=$2 WHERE id=$1`,
       [req.params.id, _quemSou(req)]
     );
-    res.json({ ok: true });
+    res.json({ ok: true, resync });
   } catch (err) { res.status(500).json({ erro: err.message }); }
+});
+
+// POST /api/notas/:id/resync-cd — força re-sync manual dos itens (admin/estoque)
+// Útil se loja já está em conferência e precisa re-sincronizar manualmente.
+router.post('/:id/resync-cd', autenticar, async (req, res) => {
+  try {
+    const { resyncItensNotaCd } = require('../resync_itens_nota_cd');
+    const r = await resyncItensNotaCd(Number(req.params.id));
+    res.json(r);
+  } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
 // PATCH /api/notas/:id/finalizar-conferencia-transf — estoque finaliza

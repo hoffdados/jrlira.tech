@@ -107,6 +107,16 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 1
         </select>
       </div>
       <div>
+        <label>CD origem</label>
+        <select id="fCdOrigem" onchange="carregarNotas()">
+          <option value="">Todos os CDs</option>
+          <option value="srv1-itautuba">Asa Branca ITB</option>
+          <option value="srv1-nprogresso">N. Progresso</option>
+          <option value="srv2-asafrio">Asa Frios</option>
+          <option value="srv2-asasantarem">Asa Santarém</option>
+        </select>
+      </div>
+      <div>
         <label>Status</label>
         <select id="fStatus" onchange="carregarNotas()">
           <option value="pendentes" selected>Pendentes (sem validadas)</option>
@@ -214,6 +224,15 @@ if (LOJAS_PERMITIDAS) {
   if (LOJAS_PERMITIDAS.length === 1) sel.value = String(LOJAS_PERMITIDAS[0]);
 }
 
+// Pré-seleciona CD origem via ?cd=X no URL
+(function() {
+  const urlCd = new URLSearchParams(location.search).get('cd');
+  if (urlCd) {
+    const sel = document.getElementById('fCdOrigem');
+    if (sel) sel.value = urlCd;
+  }
+})();
+
 let notaAtualId = null;
 
 async function fetchApi(url, method = 'GET', body = null) {
@@ -252,13 +271,17 @@ async function carregarNotas() {
     const origem = document.getElementById('fOrigem').value;
     const status = document.getElementById('fStatus').value;
     const loja = document.getElementById('fLoja').value;
+    const cdOrigem = document.getElementById('fCdOrigem').value;
     const params = new URLSearchParams();
     if (origem) params.set('origem', origem);
+    if (cdOrigem) params.set('origem_cd_codigo', cdOrigem);
     // 'pendentes' e 'todas-incl-validadas' = filtros fake — não vão como status
     if (status && status !== 'pendentes' && status !== 'todas-incl-validadas') params.set('status', status);
     if (status === 'todas-incl-validadas') params.set('incluir_validadas_cd', '1');
     const notas = await fetchApi('/api/notas?' + params.toString());
-    let filtradas = loja ? notas.filter(n => String(n.loja_id) === loja) : notas;
+    // Esconde transferências CD→CD (destino sem loja) — essas vão pra tela específica
+    let filtradas = notas.filter(n => n.loja_id != null);
+    if (loja) filtradas = filtradas.filter(n => String(n.loja_id) === loja);
     // Restricao de loja por perfil (front-side, double-check do backend)
     if (LOJAS_PERMITIDAS) {
       filtradas = filtradas.filter(n => LOJAS_PERMITIDAS.includes(Number(n.loja_id)));

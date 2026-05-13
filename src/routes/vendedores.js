@@ -547,11 +547,34 @@ router.post('/pedido/:id/enviar', autVendedor, async (req, res) => {
     if (!itens.length) return res.status(400).json({ erro: 'Adicione ao menos um item antes de enviar' });
     if (p.condicao_pagamento == null) return res.status(400).json({ erro: 'Informe a condição de pagamento' });
 
-    const numero_pedido = await gerarNumeroPedido(p.loja_id, p.loja_cnpj);
-    await dbQuery(
-      `UPDATE pedidos SET status='aguardando_validacao', numero_pedido=$1, enviado_em=NOW() WHERE id=$2`,
-      [numero_pedido, p.id]
-    );
+    // Serializa geração de numero_pedido por loja_id pra evitar race condition (2 vendedores enviarem ao mesmo tempo)
+    const { pool } = require('../db');
+    const client = await pool.connect();
+    let numero_pedido;
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock($1)', [p.loja_id]);
+      // Sequência dentro do lock — usa MAX(seq)+1 do prefixo (cnpj+data) pra evitar
+      // colisão quando há gap (pedido deletado/cancelado). COUNT+1 colide quando MAX > COUNT.
+      const cnpjLimpo = (p.loja_cnpj || '').replace(/\D/g, '').padEnd(14, '0');
+      const hoje = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      const prefixo = `${cnpjLimpo}${hoje}`;
+      const { rows: seqRows } = await client.query(
+        `SELECT COALESCE(MAX(NULLIF(REGEXP_REPLACE(SUBSTRING(numero_pedido FROM 23 FOR 4),'\\D','','g'),'')::int), 0) + 1 AS prox
+           FROM pedidos WHERE numero_pedido LIKE $1 || '%'`,
+        [prefixo]);
+      const seq = String(seqRows[0].prox).padStart(4, '0');
+      numero_pedido = `${prefixo}${seq}`;
+      await client.query(
+        `UPDATE pedidos SET status='aguardando_validacao', numero_pedido=$1, enviado_em=NOW() WHERE id=$2`,
+        [numero_pedido, p.id]);
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw e;
+    } finally {
+      client.release();
+    }
     res.json({ ok: true, numero_pedido });
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
@@ -566,12 +589,14 @@ async function recalcTotal(pedido_id) {
 async function gerarNumeroPedido(loja_id, cnpj) {
   const cnpjLimpo = (cnpj || '').replace(/\D/g, '').padEnd(14, '0');
   const hoje = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const prefixo = `${cnpjLimpo}${hoje}`;
   const seqRows = await dbQuery(
-    `SELECT COUNT(*)+1 AS prox FROM pedidos WHERE loja_id=$1 AND DATE(enviado_em)=CURRENT_DATE`,
-    [loja_id]
+    `SELECT COALESCE(MAX(NULLIF(REGEXP_REPLACE(SUBSTRING(numero_pedido FROM 23 FOR 4),'\\D','','g'),'')::int), 0) + 1 AS prox
+       FROM pedidos WHERE numero_pedido LIKE $1 || '%'`,
+    [prefixo]
   );
   const seq = String(seqRows[0].prox).padStart(4, '0');
-  return `${cnpjLimpo}${hoje}${seq}`;
+  return `${prefixo}${seq}`;
 }
 
 module.exports = router;

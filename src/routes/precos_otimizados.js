@@ -289,7 +289,15 @@ router.post('/enviar-lote', adminOuCeo, async (req, res) => {
 router.get('/pendentes', autenticar, async (req, res) => {
   try {
     const lojaUsr = req.usuario.loja_id;
-    const lojaId = lojaUsr || (req.query.loja_id ? parseInt(req.query.loja_id) : null);
+    const lojasUsr = Array.isArray(req.usuario.lojas) ? req.usuario.lojas.map(Number) : [];
+    const lojaQuery = req.query.loja_id ? parseInt(req.query.loja_id) : null;
+    const perfilUsr = req.usuario.perfil;
+    let lojaId = lojaUsr || lojaQuery;
+    // Cadastro multi-loja: aceita loja_id da query SE estiver nas lojas dele
+    if (!lojaId && lojasUsr.length === 1) lojaId = lojasUsr[0];
+    if (lojaQuery && perfilUsr === 'cadastro' && lojasUsr.length && !lojasUsr.includes(lojaQuery)) {
+      return res.status(403).json({ erro: 'loja fora do escopo do usuário' });
+    }
     if (!lojaId) return res.status(400).json({ erro: 'loja_id obrigatório' });
 
     const lotes = await dbQuery(`
@@ -361,7 +369,14 @@ router.get('/status', adminOuCeo, async (req, res) => {
 router.post('/aplicar-manual', autenticar, async (req, res) => {
   try {
     const lojaUsr = req.usuario.loja_id;
-    const lojaId = lojaUsr || (req.body?.loja_id ? parseInt(req.body.loja_id) : null);
+    const lojasUsr = Array.isArray(req.usuario.lojas) ? req.usuario.lojas.map(Number) : [];
+    const lojaBody = req.body?.loja_id ? parseInt(req.body.loja_id) : null;
+    const perfilUsr = req.usuario.perfil;
+    let lojaId = lojaUsr || lojaBody;
+    if (!lojaId && lojasUsr.length === 1) lojaId = lojasUsr[0];
+    if (lojaBody && perfilUsr === 'cadastro' && lojasUsr.length && !lojasUsr.includes(lojaBody)) {
+      return res.status(403).json({ erro: 'loja fora do escopo do usuário' });
+    }
     if (!lojaId) return res.status(400).json({ erro: 'loja_id obrigatório' });
     const loteId = parseInt(req.body?.lote_id);
     if (!loteId) return res.status(400).json({ erro: 'lote_id obrigatório' });

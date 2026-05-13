@@ -56,13 +56,52 @@ router.get('/:id', compradorOuAdmin, async (req, res) => {
   try {
     const [a] = await dbQuery(`
       SELECT a.*, l.nome AS loja_nome, l.cnpj AS loja_cnpj,
-             f.razao_social AS forn_razao, f.fantasia AS forn_fantasia
+             f.razao_social AS forn_razao, f.fantasia AS forn_fantasia,
+             ver.estoque_atual AS ver_estoque_atual,
+             ver.estoque_pos_recebimento AS ver_estoque_pos_receb,
+             ver.qtd_em_risco AS ver_qtd_em_risco,
+             ver.qtd_consumivel_ate_vencer AS ver_qtd_consumivel,
+             ver.vendas_media_dia AS ver_vendas_media_dia,
+             ver.validade AS ver_validade,
+             ver.criado_em AS ver_criado_em
       FROM acordos_comerciais a
       JOIN lojas l ON l.id = a.loja_id
       LEFT JOIN fornecedores f ON f.id = a.fornecedor_id
+      LEFT JOIN validades_em_risco ver ON ver.id = a.alerta_id
       WHERE a.id = $1
     `, [req.params.id]);
     if (!a) return res.status(404).json({ erro: 'Acordo não encontrado' });
+
+    // Vendas após a data do alerta (coleta de validade) pra esse EAN na loja
+    let vendas_pos_coleta = 0;
+    if (a.ver_criado_em && a.barcode) {
+      const [vp] = await dbQuery(`
+        SELECT COALESCE(SUM(qtd_vendida),0)::numeric(14,3) AS qtd
+          FROM vendas_historico
+         WHERE loja_id = $1
+           AND NULLIF(LTRIM(codigobarra,'0'),'') = NULLIF(LTRIM($2,'0'),'')
+           AND data_venda >= $3::date
+           AND COALESCE(tipo_saida,'venda') = 'venda'`,
+        [a.loja_id, a.barcode, a.ver_criado_em]);
+      vendas_pos_coleta = parseFloat(vp.qtd || 0);
+    }
+
+    // Estimativa de sobra: estoque atual − (qtd_consumivel_ate_vencer estimado)
+    const estoque = parseFloat(a.ver_estoque_atual || a.ver_estoque_pos_receb || 0);
+    const consumivel = parseFloat(a.ver_qtd_consumivel || 0);
+    const sobra_estimada = Math.max(0, estoque - consumivel);
+
+    const validade_info = {
+      data_coleta: a.ver_criado_em,
+      validade: a.ver_validade,
+      estoque_atual: estoque,
+      vendas_media_dia: parseFloat(a.ver_vendas_media_dia || 0),
+      qtd_em_risco: parseFloat(a.ver_qtd_em_risco || 0),
+      qtd_consumivel_ate_vencer: consumivel,
+      vendas_pos_coleta,
+      sobra_estimada,
+      vai_sobrar: sobra_estimada > 0,
+    };
 
     let vendedores = [];
     if (a.fornecedor_id) {
@@ -79,7 +118,7 @@ router.get('/:id', compradorOuAdmin, async (req, res) => {
         [a.fornecedor_cnpj]
       );
     }
-    res.json({ ...a, vendedores });
+    res.json({ ...a, vendedores, validade_info });
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 

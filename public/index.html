@@ -115,6 +115,7 @@ const GRUPOS = [
     { href: '/auditoria-pedidos', icon: 'shield-check', title: 'Auditoria de Pedidos', desc: 'Liberar acima da sugestão', perfis: ['admin','auditor'], badge: 'auditoria_pedidos' },
     { href: '/notas-comprador', icon: 'file-check', title: 'NF-e Fornecedor', desc: 'Importar XMLs e vincular', perfis: ['admin','comprador'] },
     { href: '/contas-receber', icon: 'receipt', title: 'Contas a Receber', desc: 'Devoluções e bonificações', perfis: ['admin','comprador'] },
+    { href: '/notas-avaria-reprocessar', icon: 'shield-alert', title: 'Notas de Avaria', desc: 'Classificar pendências', perfis: ['admin','comprador','cadastro'] },
   ]},
   { id: 'notas', titulo: 'Notas de Entrada · cadastro → estoque → auditoria', classe: 'notas', cards: [
     { href: '/dashboard-notas', icon: 'layout-dashboard', title: 'Dashboard NF-e', desc: 'Visão geral por loja e status', perfis: ['admin','comprador','auditor'] },
@@ -129,9 +130,17 @@ const GRUPOS = [
     { href: '/notas-auditoria', icon: 'clipboard-check', title: 'Auditoria', desc: 'Fechamento de notas', perfis: ['admin','auditor'], badge: 'notas_auditoria' },
   ]},
   { id: 'transferencias', titulo: 'Transferências CD / Lojas', classe: 'transferencias', cards: [
-    { href: '/notas-transferencias-cadastro', icon: 'truck', title: 'Cadastro', desc: 'Transferências CD/lojas', perfis: ['admin','cadastro','comprador'] },
-    { href: '/notas-distribuidora', icon: 'package-plus', title: 'Distribuidora', desc: 'Conferência de transferências', perfis: ['admin','estoque'] },
-    { href: '/notas-cd', icon: 'route', title: 'Acompanhar CD', desc: 'Transferências CD/lojas', perfis: ['admin','comprador'] },
+    { href: '/notas-transferencias-cadastro?cd=srv1-itautuba', icon: 'truck', title: 'Cadastro · Asa Branca ITB', desc: 'Liberar conferência', perfis: ['admin','cadastro','comprador'] },
+    { href: '/notas-transferencias-cadastro?cd=srv2-asafrio', icon: 'snowflake', title: 'Cadastro · Asa Frios', desc: 'Liberar conferência', perfis: ['admin','cadastro','comprador'] },
+    { href: '/notas-transferencias-cadastro?cd=srv2-asasantarem', icon: 'snowflake', title: 'Cadastro · Asa Frios STM', desc: 'Liberar conferência', perfis: ['admin','cadastro','comprador'] },
+    { href: '/notas-transferencias-cadastro?cd=srv1-nprogresso', icon: 'warehouse', title: 'Cadastro · N. Progresso', desc: 'Liberar conferência', perfis: ['admin','cadastro','comprador'] },
+    { href: '/notas-distribuidora?cd=srv1-itautuba', icon: 'package-plus', title: 'Estoque · Asa Branca ITB', desc: 'Receber e conferir', perfis: ['admin','estoque'] },
+    { href: '/notas-distribuidora?cd=srv2-asafrio', icon: 'package-plus', title: 'Estoque · Asa Frios', desc: 'Receber e conferir', perfis: ['admin','estoque'] },
+    { href: '/notas-distribuidora?cd=srv2-asasantarem', icon: 'package-plus', title: 'Estoque · Asa Frios STM', desc: 'Receber e conferir', perfis: ['admin','estoque'] },
+    { href: '/notas-distribuidora?cd=srv1-nprogresso', icon: 'package-plus', title: 'Estoque · N. Progresso', desc: 'Receber e conferir', perfis: ['admin','estoque'] },
+    { href: '/notas-cd', icon: 'route', title: 'Acompanhar CD', desc: 'Visão comprador', perfis: ['admin','comprador'] },
+    { href: '/painel-cd-saidas', icon: 'layout-dashboard', title: 'Painel CD — Saídas', desc: 'Em trânsito × recebidas no mês', perfis: ['admin','comprador','ceo'] },
+    { href: '/painel-cd-cd', icon: 'git-compare-arrows', title: 'Painel CD → CD', desc: 'Cross-check entre CDs (SLA 10d)', perfis: ['admin','comprador','ceo'] },
   ]},
   { id: 'auditoria', titulo: 'Auditoria & Qualidade', classe: 'auditoria', cards: [
     { href: '/auditagem-divergencias', icon: 'alert-triangle', title: 'Divergências CD', desc: 'Faltas/sobras na conferência', perfis: ['admin','auditor'], badge: 'divergencias_cd' },
@@ -146,6 +155,8 @@ const GRUPOS = [
     { href: '/precos-otimizados-status', icon: 'list-checks', title: 'Otimizados — Status', desc: 'Aplicação por loja', perfis: ['admin','ceo'] },
     { href: '/precos-otimizados-pendentes', icon: 'tag', title: 'Otimizados — Pendentes', desc: 'Aplicar no ERP', perfis: ['admin','cadastro','ceo'] },
     { href: '/pedidos-distribuidora', icon: 'truck', title: 'Pedidos Distribuidora', desc: 'Transferência interna', perfis: ['admin','ceo'] },
+    { href: '/produto-canonico', icon: 'link', title: 'Produto Canônico', desc: 'Match cross-CD', perfis: ['admin','ceo'] },
+    { href: '/notas-avaria-cobrancas', icon: 'receipt', title: 'Débitos por Fornecedor', desc: 'Avaria + Devolução + Acordo', perfis: ['admin','ceo'] },
   ]},
   { id: 'admin', titulo: 'Cadastros / Admin', classe: 'admin', cards: [
     { href: '/produtos-embalagem', icon: 'box', title: 'Cadastro CD', desc: 'Quantidade por embalagem', perfis: ['admin'] },

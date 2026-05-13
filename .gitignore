@@ -13,3 +13,7 @@ pentaho/att/*/*.bak
 pentaho/att/*/*.bak2
 pentaho/att/*/dc_*.txt
 pentaho/att/*/*joao-paulo*
+pentaho/att/*/*.zip
+
+# scratch
+.tmp*.txt

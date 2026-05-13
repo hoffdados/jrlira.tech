@@ -84,12 +84,29 @@ const token = () => localStorage.getItem('jrlira_token');
 document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
 const perfil = localStorage.getItem('jrlira_perfil');
 let lojaId = parseInt(localStorage.getItem('jrlira_loja_id') || '0');
+const lojasUsuario = (() => { try { const v = JSON.parse(localStorage.getItem('jrlira_lojas') || '[]'); return Array.isArray(v) ? v.map(Number).filter(Boolean) : []; } catch { return []; } })();
 
-// Admin/CEO: mostra seletor de loja (não tem loja_id no JWT). Cadastro: usa a loja do JWT.
+// Admin/CEO/cadastro multi-loja: mostra seletor (JWT pode não ter loja_id se for multi).
+// Se cadastro tem 1 loja só, usa direto. Se tem várias, deixa escolher entre elas.
+const NOMES_LOJAS = {
+  1: 'L1 — SuperAsa Economico (ITB)',
+  2: 'L2 — SuperAsa BR (ITB)',
+  3: 'L3 — SuperAsa João Pessoa (ITB)',
+  4: 'L4 — SuperAsa Floresta (ITB)',
+  5: 'L5 — SuperAsa São José (ITB)',
+  6: 'L6 — SuperAsa Santarém (STM)',
+};
 if (perfil === 'admin' || perfil === 'ceo') {
   document.getElementById('filtroAdmin').style.display = 'block';
-  if (!lojaId) lojaId = 6;  // default pra STM (mais provável de ter pendência)
+  if (!lojaId) lojaId = 6;
   document.getElementById('selLoja').value = String(lojaId);
+} else if (perfil === 'cadastro' && !lojaId && lojasUsuario.length) {
+  // Cadastro multi-loja: monta seletor só com as lojas dele
+  document.getElementById('filtroAdmin').style.display = 'block';
+  const sel = document.getElementById('selLoja');
+  sel.innerHTML = lojasUsuario.map(id => `<option value="${id}">${NOMES_LOJAS[id] || ('L' + id)}</option>`).join('');
+  lojaId = lojasUsuario[0];
+  sel.value = String(lojaId);
 }
 
 function trocarLoja() {
@@ -113,8 +130,8 @@ async function carregar() {
   const wrap = document.getElementById('conteudo');
   wrap.innerHTML = '<div class="empty">Carregando…</div>';
   try {
-    // Admin sempre passa loja_id explícito (JWT não tem). Cadastro usa o do JWT.
-    const url = (perfil === 'admin' || perfil === 'ceo') && lojaId
+    // Admin/CEO sempre passa loja_id explícito. Cadastro: usa do JWT se monoloja, senão do seletor.
+    const url = lojaId
       ? `/api/precos-otimizados/pendentes?loja_id=${lojaId}`
       : '/api/precos-otimizados/pendentes';
     const data = await fetchApi(url);

@@ -86,7 +86,9 @@ tbody tr.com-pendencia.todas-pendentes{box-shadow:inset 4px 0 0 #f87171}
     <div class="sync-info">
       <span>Última sync CD: <b id="syncTexto">—</b></span>
       <button class="btn-ghost" id="btnSync" onclick="syncAgora()" style="margin-left:8px">🔄 Atualizar agora</button>
+      <button class="btn-ghost" id="btnRascunho" onclick="salvarRascunho()" style="margin-left:8px;background:#0c2912;color:#86efac;border-color:#14532d">💾 Salvar rascunho</button>
       <button class="btn-primary" id="btnEnviar" onclick="abrirEnviarLote()" style="margin-left:8px;background:#7c3aed">📤 Enviar lote pra cadastros</button>
+      <span id="rascunhoStatus" style="margin-left:10px;font-size:11px;color:#64748b"></span>
     </div>
     <div class="filtros">
       <input id="fBusca" placeholder="🔎 descrição / código / EAN…" oninput="render()" style="min-width:220px">
@@ -382,6 +384,42 @@ async function salvarPv(input) {
     input.classList.remove('saving');
     alert('Falha ao salvar: ' + e.message);
     input.value = originalNum != null ? originalNum.toFixed(2) : '';
+  }
+}
+
+// Protege contra fechar a aba com edição em foco — força blur (que salva)
+window.addEventListener('beforeunload', (e) => {
+  if (document.activeElement && document.activeElement.classList?.contains('input-pv')) {
+    document.activeElement.blur(); // dispara salvarPv()
+  }
+});
+
+async function salvarRascunho() {
+  const btn = document.getElementById('btnRascunho');
+  const status = document.getElementById('rascunhoStatus');
+  btn.disabled = true;
+  status.textContent = 'salvando…';
+  status.style.color = '#fbbf24';
+  // Força flush dos inputs em foco (caso o user digite e clique direto no botão)
+  if (document.activeElement && document.activeElement.classList?.contains('input-pv')) {
+    document.activeElement.blur();
+  }
+  // Aguarda micro-tempo pra os blur dispararem os PUTs pendentes
+  await new Promise(r => setTimeout(r, 300));
+  try {
+    // Conta quantos preços "editando" estão no DOM (= rascunho ativo)
+    const editando = document.querySelectorAll('.input-pv.editando').length;
+    const agora = new Date().toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
+    btn.disabled = false;
+    status.style.color = '#86efac';
+    status.textContent = editando > 0
+      ? `✓ ${editando} preço(s) em rascunho — salvo às ${agora}`
+      : `✓ Salvo às ${agora}`;
+    setTimeout(() => { status.textContent = ''; }, 8000);
+  } catch (e) {
+    btn.disabled = false;
+    status.style.color = '#f87171';
+    status.textContent = 'Erro: ' + e.message;
   }
 }
 
