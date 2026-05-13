@@ -130,6 +130,7 @@ table.grade tbody tr.prioritario:hover{background:#27220e}
 <nav>
   <a href="/" class="brand">JR Lira Tech</a>
   <span style="color:#64748b;font-size:11px">› Pedidos do CD</span>
+  <a href="/produto-canonico" class="btn-nav" style="background:#475569">Match Cross-CD</a>
   <span style="margin-left:auto;color:#475569;font-size:11px" id="nomeUsuario"></span>
   <a href="/" class="btn-nav">Voltar</a>
 </nav>
@@ -312,8 +313,12 @@ function onBuscaChange() {
   buscaTimeout = setTimeout(recarregarGrade, 350);
 }
 
+let gradeAbortCtrl = null;
 async function recarregarGrade() {
   if (!cdOrigemAtual) return;
+  // Cancela request anterior se ainda rodando (evita 2 chamadas paralelas)
+  if (gradeAbortCtrl) gradeAbortCtrl.abort();
+  gradeAbortCtrl = new AbortController();
   const busca = document.getElementById('busca').value.trim();
   const soPedir = document.getElementById('soPedir').checked;
   const limit = document.getElementById('limit').value;
@@ -329,13 +334,18 @@ async function recarregarGrade() {
   if (sgr)    url += `&sgr_codi=${encodeURIComponent(sgr)}`;
   document.getElementById('gradeBody').innerHTML = '<tr><td>Carregando...</td></tr>';
   try {
-    const r = await api(url);
+    const resp = await apiFetch(url, { signal: gradeAbortCtrl.signal });
+    if (!resp.ok) throw new Error('Erro ' + resp.status);
+    const r = await resp.json();
     destinosAtuais = r.destinos;
     produtosAtuais = r.produtos;
     renderHead();
     renderBody();
     atualizarSummary();
-  } catch (e) { showMsg(e.message, 'err'); }
+  } catch (e) {
+    if (e.name === 'AbortError') return; // request cancelada, ignora
+    showMsg(e.message, 'err');
+  }
 }
 
 function siglaDestino(d) {
@@ -418,14 +428,14 @@ function renderBody() {
     const HOJE = new Date();
     for (const d of lojas) {
       const v = p.vendas[d.loja_id] || {};
-      const m = v.media_28d != null ? Number(v.media_28d).toFixed(1) : '';
+      const m = v.media_dia != null ? Number(v.media_dia).toFixed(1) : '';
       const pr = v.preco_atual ? fmtBRL(v.preco_atual) : '';
       const ult = fmtData(v.ultima_venda);
       let staleCls = '';
       if (v.ultima_venda) {
         const diasSemVenda = Math.floor((HOJE - new Date(v.ultima_venda)) / 86400000);
         if (diasSemVenda > 10) staleCls = ' stale';
-      } else if (v.media_28d != null) {
+      } else if (v.media_dia != null) {
         // tem cadastro na loja mas sem venda recente — considera stale
         staleCls = ' stale';
       }

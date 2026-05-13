@@ -169,9 +169,14 @@ function showMsg(txt, tipo = 'ok') {
   setTimeout(() => el.style.display = 'none', 5000);
 }
 
+// Pré-filtro por CD origem via ?cd=X no URL (botão da home → estoque entra direto filtrado)
+const CD_ORIGEM_URL = new URLSearchParams(location.search).get('cd') || null;
+
 async function carregarNotas() {
   try {
-    const notas = await fetchApi('/api/notas?origem=cd,transferencia_loja');
+    let url = '/api/notas?origem=cd,transferencia_loja';
+    if (CD_ORIGEM_URL) url += '&origem_cd_codigo=' + encodeURIComponent(CD_ORIGEM_URL);
+    const notas = await fetchApi(url);
     // NF-e: em_conferencia (rodadas). Transferências: em_transito (marcar recebida) ou em_conferencia (conferir)
     const pendentes = notas.filter(n => {
       const isTransf = n.origem === 'cd' || n.origem === 'transferencia_loja';

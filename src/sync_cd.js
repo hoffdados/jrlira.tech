@@ -55,6 +55,7 @@ async function syncMaterial(cd, cli) {
   // Tenta combinações em ordem (com mais → com menos colunas de peso)
   // Nome real descoberto via /columns/MATERIAL: MAT_PESO + MAT_PESOBR
   const tentativas = [
+    'MAT_CODI, MAT_DESC, MAT_REFE, MAT_SITU, EAN_CODI, MAT_PESO AS MAT_PSLI, MAT_PESOBR AS MAT_PSBR, GRU_CODI, SGR_CODI, FOR_CODI',
     'MAT_CODI, MAT_DESC, MAT_REFE, MAT_SITU, EAN_CODI, MAT_PESO AS MAT_PSLI, MAT_PESOBR AS MAT_PSBR, GRU_CODI, SGR_CODI',
     'MAT_CODI, MAT_DESC, MAT_REFE, MAT_SITU, EAN_CODI, MAT_PESO AS MAT_PSLI, GRU_CODI, SGR_CODI',
     'MAT_CODI, MAT_DESC, MAT_REFE, MAT_SITU, EAN_CODI, GRU_CODI, SGR_CODI',
@@ -78,9 +79,9 @@ async function syncMaterial(cd, cli) {
   if (rows.length) {
     await dbQuery(
       `INSERT INTO cd_material (cd_codigo, mat_codi, mat_desc, mat_refe, mat_situ, ean_codi,
-                                peso_liquido_kg, peso_bruto_kg, gru_codi, sgr_codi, sincronizado_em)
+                                peso_liquido_kg, peso_bruto_kg, gru_codi, sgr_codi, for_codi, sincronizado_em)
        SELECT $1, * FROM UNNEST($2::text[], $3::text[], $4::text[], $5::text[], $6::text[],
-                                $7::numeric[], $8::numeric[], $9::text[], $10::text[], $11::timestamptz[])
+                                $7::numeric[], $8::numeric[], $9::text[], $10::text[], $11::text[], $12::timestamptz[])
        ON CONFLICT (cd_codigo, mat_codi) DO UPDATE SET
          mat_desc=EXCLUDED.mat_desc, mat_refe=EXCLUDED.mat_refe,
          mat_situ=EXCLUDED.mat_situ, ean_codi=EXCLUDED.ean_codi,
@@ -88,6 +89,7 @@ async function syncMaterial(cd, cli) {
          peso_bruto_kg=COALESCE(EXCLUDED.peso_bruto_kg, cd_material.peso_bruto_kg),
          gru_codi=COALESCE(EXCLUDED.gru_codi, cd_material.gru_codi),
          sgr_codi=COALESCE(EXCLUDED.sgr_codi, cd_material.sgr_codi),
+         for_codi=COALESCE(EXCLUDED.for_codi, cd_material.for_codi),
          sincronizado_em=NOW()`,
       [
         cd.codigo,
@@ -100,6 +102,7 @@ async function syncMaterial(cd, cli) {
         rows.map(x => 'MAT_PSBR' in x && x.MAT_PSBR != null ? Number(x.MAT_PSBR) : null),
         rows.map(x => 'GRU_CODI' in x && x.GRU_CODI != null ? String(x.GRU_CODI).trim() || null : null),
         rows.map(x => 'SGR_CODI' in x && x.SGR_CODI != null ? String(x.SGR_CODI).trim() || null : null),
+        rows.map(x => 'FOR_CODI' in x && x.FOR_CODI != null ? String(x.FOR_CODI).trim() || null : null),
         rows.map(() => new Date().toISOString()),
       ]
     );
@@ -464,6 +467,155 @@ async function syncCompras(cd, cli) {
   return { tabela: 'compras', linhas: movs.length, itens: itens.length, ms: Date.now() - t0 };
 }
 
+// ── 5) cd_capa + cd_moviitem (vendas/atacado/rota — CAP_TIPO='3') ────
+// Fonte real do consumo dos CDs. TBMOVCOMPRA registra só transferências internas (NOP=31).
+// CAPA = cabeçalho do pedido. MOVIITEM = itens. CAP_DEVOL='S' inverte sinal da quantidade.
+
+async function syncCapa(cd, cli) {
+  const t0 = Date.now();
+  const ultimo = await getEstado(`cd_${cd.codigo}_capa_ultimo_dtem`) || `${DATA_INICIAL}T00:00:00`;
+  const desde = new Date(new Date(ultimo).getTime() - 86400000).toISOString().slice(0, 10);
+  const capas = await paginarQuery(cli,
+    `SELECT CAP_SEQU, CAP_DTEM, CAP_DTPD, CAP_DTAB, CAP_TIPO, CAP_DEVOL, CAP_STVD,
+            CAP_STENCER, VEN_CODI, CLI_CODI
+       FROM CAPA WITH (NOLOCK)
+      WHERE EMP_CODI = '${cd.emp_codi}' AND LOC_CODI = '${cd.loc_codi}'
+        AND CAP_TIPO = '3'
+        AND CAP_DTEM >= '${desde}'`,
+    'CAP_SEQU'
+  );
+  const capaMap = new Map();
+  for (const c of capas) {
+    const k = String(c.CAP_SEQU).trim();
+    capaMap.set(k, c);
+  }
+  const capasUnicas = [...capaMap.values()];
+  let novoMax = ultimo;
+  for (const c of capasUnicas) if (c.CAP_DTEM && c.CAP_DTEM > novoMax) novoMax = c.CAP_DTEM;
+
+  if (capasUnicas.length) {
+    await dbQuery(
+      `INSERT INTO cd_capa (cd_codigo, cap_sequ, cap_dtem, cap_dtpd, cap_dtab, cap_tipo,
+                            cap_devol, cap_stvd, cap_stencer, ven_codi, cli_codi, sincronizado_em)
+       SELECT $1, * FROM UNNEST($2::text[], $3::timestamptz[], $4::timestamptz[], $5::timestamptz[],
+                                $6::text[], $7::text[], $8::text[], $9::text[], $10::text[],
+                                $11::text[], $12::timestamptz[])
+       ON CONFLICT (cd_codigo, cap_sequ) DO UPDATE SET
+         cap_dtem=EXCLUDED.cap_dtem, cap_devol=EXCLUDED.cap_devol,
+         cap_stvd=EXCLUDED.cap_stvd, cap_stencer=EXCLUDED.cap_stencer,
+         sincronizado_em=NOW()`,
+      [
+        cd.codigo,
+        capasUnicas.map(c => String(c.CAP_SEQU || '').trim()),
+        capasUnicas.map(c => c.CAP_DTEM),
+        capasUnicas.map(c => c.CAP_DTPD),
+        capasUnicas.map(c => c.CAP_DTAB),
+        capasUnicas.map(c => String(c.CAP_TIPO || '').trim()),
+        capasUnicas.map(c => String(c.CAP_DEVOL || 'N').trim().charAt(0) || 'N'),
+        capasUnicas.map(c => String(c.CAP_STVD || '').trim()),
+        capasUnicas.map(c => String(c.CAP_STENCER || '').trim()),
+        capasUnicas.map(c => String(c.VEN_CODI || '').trim()),
+        capasUnicas.map(c => String(c.CLI_CODI || '').trim()),
+        capasUnicas.map(() => new Date().toISOString()),
+      ]
+    );
+  }
+
+  // Itens: pega MOVIITEM dos CAP_SEQU sincronizados nesta rodada (lotes de 500)
+  let totalItens = 0;
+  if (capasUnicas.length) {
+    const CHUNK = 500;
+    for (let i = 0; i < capasUnicas.length; i += CHUNK) {
+      const lote = capasUnicas.slice(i, i + CHUNK);
+      const codigos = lote.map(c => `'${String(c.CAP_SEQU).trim()}'`).join(',');
+      const itens = await paginarQuery(cli,
+        `SELECT CAP_SEQU, PRO_CODI, ITE_QUAN, ITE_VALO,
+                ROW_NUMBER() OVER (PARTITION BY CAP_SEQU ORDER BY PRO_CODI) AS SEQ
+           FROM MOVIITEM WITH (NOLOCK)
+          WHERE EMP_CODI = '${cd.emp_codi}' AND LOC_CODI = '${cd.loc_codi}'
+            AND CAP_SEQU IN (${codigos})`,
+        'CAP_SEQU, PRO_CODI'
+      );
+      const itMap = new Map();
+      for (const it of itens) {
+        const k = `${String(it.CAP_SEQU).trim()}|${parseInt(it.SEQ) || 0}`;
+        itMap.set(k, it);
+      }
+      const itensUnicos = [...itMap.values()];
+      if (itensUnicos.length) {
+        // Apaga itens antigos desses CAP_SEQU (snapshot por pedido) antes de reinserir
+        await dbQuery(
+          `DELETE FROM cd_moviitem WHERE cd_codigo=$1 AND cap_sequ = ANY($2::text[])`,
+          [cd.codigo, lote.map(c => String(c.CAP_SEQU).trim())]
+        );
+        await dbQuery(
+          `INSERT INTO cd_moviitem (cd_codigo, cap_sequ, seq, pro_codi, ite_quan, ite_valo, sincronizado_em)
+           SELECT $1, * FROM UNNEST($2::text[], $3::int[], $4::text[], $5::numeric[], $6::numeric[], $7::timestamptz[])`,
+          [
+            cd.codigo,
+            itensUnicos.map(it => String(it.CAP_SEQU || '').trim()),
+            itensUnicos.map(it => parseInt(it.SEQ) || 0),
+            itensUnicos.map(it => String(it.PRO_CODI || '').trim()),
+            itensUnicos.map(it => it.ITE_QUAN ?? null),
+            itensUnicos.map(it => it.ITE_VALO ?? null),
+            itensUnicos.map(() => new Date().toISOString()),
+          ]
+        );
+      }
+      totalItens += itensUnicos.length;
+    }
+  }
+
+  await setEstado(`cd_${cd.codigo}_capa_ultimo_dtem`, novoMax);
+  await setEstado(`cd_${cd.codigo}_capa_ultima_sync`, new Date().toISOString());
+  return { tabela: 'capa', linhas: capasUnicas.length, itens: totalItens, ms: Date.now() - t0 };
+}
+
+// ── 6) cd_fornecedor (snapshot — tabela FORNECEDOR do UltraSyst) ─────
+async function syncFornecedoresCd(cd, cli) {
+  const t0 = Date.now();
+  // Tenta colunas em ordem (cgc/cnpj e nome/razao podem variar)
+  const tentativas = [
+    'FOR_CODI, FOR_CGC, FOR_NOME, FOR_FANT, FOR_EMAI, FOR_FONE',
+    'FOR_CODI, FOR_CGC, FOR_NOME, FOR_FANT, FOR_EMAI',
+    'FOR_CODI, FOR_CGC, FOR_NOME, FOR_FANT',
+    'FOR_CODI, FOR_CGC, FOR_NOME',
+    'FOR_CODI, FOR_NOME',
+  ];
+  let rows = null, ultimoErro = null;
+  for (const sel of tentativas) {
+    try {
+      rows = await paginarQuery(cli,
+        `SELECT ${sel} FROM FORNECEDOR WITH (NOLOCK)`,
+        'FOR_CODI'
+      );
+      break;
+    } catch (e) {
+      ultimoErro = e;
+      if (!/Invalid column name/i.test(e.message)) throw e;
+    }
+  }
+  if (!rows) throw ultimoErro || new Error('Falha em todas as tentativas de SELECT FORNECEDOR');
+  await dbQuery(`DELETE FROM cd_fornecedor WHERE cd_codigo = $1`, [cd.codigo]);
+  if (rows.length) {
+    await dbQuery(
+      `INSERT INTO cd_fornecedor (cd_codigo, for_codi, for_cgc, for_nome, for_fantasia, for_email, for_telefone)
+       SELECT $1, * FROM UNNEST($2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[])`,
+      [
+        cd.codigo,
+        rows.map(x => String(x.FOR_CODI || '').trim()),
+        rows.map(x => (x.FOR_CGC ? String(x.FOR_CGC).replace(/\D/g,'').trim() || null : null)),
+        rows.map(x => String(x.FOR_NOME || '').trim() || null),
+        rows.map(x => 'FOR_FANT' in x ? String(x.FOR_FANT || '').trim() || null : null),
+        rows.map(x => 'FOR_EMAI' in x ? String(x.FOR_EMAI || '').trim() || null : null),
+        rows.map(x => 'FOR_FONE' in x ? String(x.FOR_FONE || '').trim() || null : null),
+      ]
+    );
+  }
+  await setEstado(`cd_${cd.codigo}_fornecedor_ultima_sync`, new Date().toISOString());
+  return { tabela: 'fornecedor', linhas: rows.length, ms: Date.now() - t0 };
+}
+
 // ── Master ────────────────────────────────────────────────────────────
 
 // Sync de UM CD
@@ -479,6 +631,8 @@ async function syncCd(cd) {
     { nome: 'custoprod', fn: syncCustoProd },
     { nome: 'vendapro',  fn: syncVendaPro },
     { nome: 'compras',   fn: syncCompras },
+    { nome: 'capa',      fn: syncCapa },
+    { nome: 'fornecedor', fn: syncFornecedoresCd },
   ];
   const resultados = [];
   for (const t of tarefas) {
@@ -527,4 +681,6 @@ module.exports = {
   syncCustoProd,
   syncVendaPro,
   syncCompras,
+  syncCapa,
+  syncFornecedoresCd,
 };

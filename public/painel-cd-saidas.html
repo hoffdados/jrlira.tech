@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Painel CD — Saídas pras Lojas</title>
+<link rel="stylesheet" href="/shared.css">
+<script src="/shared.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f172a;color:#e2e8f0;font-size:12px}
+nav{background:#1e293b;padding:10px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #334155}
+.brand{font-family:'Segoe UI Black',sans-serif;font-weight:900;font-size:16px;color:#fde047}
+.btn-nav{background:#0ea5e9;color:#fff;border:none;padding:5px 10px;border-radius:4px;font-size:11px;cursor:pointer;text-decoration:none}
+.main{padding:14px 20px;max-width:1500px;margin:0 auto}
+h1{font-size:18px;margin-bottom:12px}
+.toolbar{display:flex;gap:10px;align-items:center;margin-bottom:14px;padding:10px;background:#1e293b;border:1px solid #334155;border-radius:5px}
+label{font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.04em}
+select,input{background:#0f172a;border:1px solid #334155;color:#e2e8f0;padding:6px 10px;font-size:12px;border-radius:4px}
+.cards{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:14px}
+.card{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:14px}
+.card.transito{border-left:4px solid #fbbf24}
+.card.recebida{border-left:4px solid #34d399}
+.card h2{font-size:13px;color:#94a3b8;text-transform:uppercase;font-weight:600;margin-bottom:8px}
+.card .num{font-size:22px;font-weight:700;color:#fde047;margin-bottom:6px}
+.card .sub{font-size:11px;color:#94a3b8}
+.card .sub-line{display:flex;justify-content:space-between;padding:3px 0;border-top:1px solid #334155;margin-top:5px;padding-top:8px}
+.card .sub-line strong{color:#e2e8f0}
+table{width:100%;border-collapse:collapse;font-size:11px;background:#1e293b;border-radius:6px;overflow:hidden}
+th{background:#0c1628;padding:8px;text-align:left;color:#94a3b8;font-size:10px;font-weight:600;text-transform:uppercase}
+td{padding:7px 8px;border-top:1px solid #334155}
+td.num{text-align:center;font-variant-numeric:tabular-nums;cursor:pointer}
+td.num:hover{background:#273549}
+th.num{text-align:center}
+tr.detalhe-row td{background:#0c1628;padding:0}
+.det-table{width:100%;border-collapse:collapse;font-size:10px}
+.det-table th{background:#091018;padding:5px 8px;font-size:9px;color:#94a3b8;text-transform:uppercase;text-align:left}
+.det-table td{padding:4px 8px;border-top:1px solid #1f2937;cursor:default}
+.det-table td.num{text-align:right;cursor:default}
+.det-empty{padding:10px;color:#64748b;font-size:11px}
+.det-table tr.atrasada td{background:#3f1d1d;color:#fca5a5}
+.det-table tr.atrasada td strong{color:#fecaca}
+.badge-atraso{display:inline-block;margin-left:6px;padding:1px 5px;background:#dc2626;color:#fff;border-radius:3px;font-size:9px;font-weight:700}
+.empty{text-align:center;padding:40px;color:#64748b}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid #334155;border-top-color:#fbbf24;border-radius:50%;animation:spin 0.8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<nav>
+  <span class="brand">JR Lira Tech</span>
+  <a href="/" class="btn-nav" style="background:#475569">Início</a>
+  <a href="/pedidos-distribuidora" class="btn-nav">Pedidos do CD</a>
+  <span id="userInfo" style="margin-left:auto;color:#94a3b8;font-size:11px"></span>
+</nav>
+
+<div class="main">
+  <h1>Painel CD — Saídas pras Lojas</h1>
+
+  <div class="toolbar">
+    <div>
+      <div><label>CD origem</label></div>
+      <select id="fCd">
+        <option value="srv1-itautuba">Asa Branca ITB</option>
+        <option value="srv2-asafrio">Asa Frios ITB</option>
+        <option value="srv2-asasantarem">Asa Frios STM (Santarém)</option>
+        <option value="srv1-nprogresso">N. Progresso</option>
+      </select>
+    </div>
+    <div>
+      <div><label>Mês</label></div>
+      <input type="month" id="fMes">
+    </div>
+    <button class="btn-nav" id="btnAplica" style="margin-left:auto;background:#fbbf24;color:#1a1a1a">Aplicar</button>
+  </div>
+
+  <div id="conteudo"><div class="empty"><span class="spinner"></span> Carregando…</div></div>
+</div>
+
+<script>
+const token = localStorage.jrlira_token;
+const perfil = localStorage.jrlira_perfil;
+document.getElementById('userInfo').textContent = `${localStorage.jrlira_nome||''} (${perfil})`;
+if (!token) location.href = '/';
+
+const NOMES_LOJA = {1:'L1 Econômico',2:'L2 BR',3:'L3 João Pessoa',4:'L4 Floresta',5:'L5 São José',6:'L6 Santarém'};
+const NOMES_CD = {
+  'srv1-itautuba': 'Asa Branca ITB',
+  'srv1-nprogresso': 'N. Progresso',
+  'srv2-asafrio': 'Asa Frios ITB',
+  'srv2-asasantarem': 'Asa Frios STM',
+};
+
+function api(path) { return fetch(path, {headers:{Authorization:'Bearer '+token}}).then(r=>r.json()); }
+const fmtBRL = v => 'R$ ' + Number(v||0).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+const fmtKg = v => Number(v||0).toLocaleString('pt-BR', {minimumFractionDigits:1, maximumFractionDigits:1}) + ' kg';
+const fmtN = v => Number(v||0).toLocaleString('pt-BR');
+
+// Default mês: atual
+document.getElementById('fMes').value = new Date().toISOString().slice(0,7);
+
+async function carregar() {
+  const root = document.getElementById('conteudo');
+  root.innerHTML = '<div class="empty"><span class="spinner"></span> Carregando…</div>';
+  const cd = document.getElementById('fCd').value;
+  const mes = document.getElementById('fMes').value;
+  const j = await api(`/api/pedidos-distribuidora/painel-cd-saidas?cd_origem=${cd}&mes=${mes}`);
+  if (j.erro) { root.innerHTML = '<div class="empty">Erro: '+j.erro+'</div>'; return; }
+
+  const t = j.totais.em_transito;
+  const r = j.totais.recebidas_mes;
+  // Evita timezone shift: usa construtor com ano/mês explícito
+  const [anoStr, mesStr] = mes.split('-');
+  const mesLabel = new Date(parseInt(anoStr), parseInt(mesStr)-1, 1).toLocaleDateString('pt-BR', {month:'long', year:'numeric'});
+
+  let html = `
+    <div class="cards">
+      <div class="card transito">
+        <h2>⏳ Em Trânsito (todas as pendentes)</h2>
+        <div class="num">${fmtN(t.qtd)} <span style="font-size:13px;color:#94a3b8">nota(s)</span></div>
+        <div class="sub-line"><span>Valor total:</span><strong>${fmtBRL(t.valor)}</strong></div>
+        <div class="sub-line"><span>Peso total:</span><strong>${fmtKg(t.peso)}</strong></div>
+      </div>
+      <div class="card recebida">
+        <h2>✓ Recebidas em ${mesLabel}</h2>
+        <div class="num">${fmtN(r.qtd)} <span style="font-size:13px;color:#94a3b8">nota(s)</span></div>
+        <div class="sub-line"><span>Valor total:</span><strong>${fmtBRL(r.valor)}</strong></div>
+        <div class="sub-line"><span>Peso total:</span><strong>${fmtKg(r.peso)}</strong></div>
+      </div>
+    </div>
+
+    <h2 style="font-size:14px;color:#fde047;margin:18px 0 8px">Detalhamento por Loja</h2>
+    <table>
+      <thead><tr>
+        <th>Loja</th>
+        <th class="num">⏳ Trânsito</th>
+        <th class="num">⏳ Valor</th>
+        <th class="num">⏳ Peso (kg)</th>
+        <th class="num">✓ Recebidas no mês</th>
+        <th class="num">✓ Valor</th>
+        <th class="num">✓ Peso (kg)</th>
+      </tr></thead>
+      <tbody>`;
+  // Combina lojas que aparecem em ambas
+  const lojas = new Set([...j.por_loja.em_transito.map(x=>x.loja_id), ...j.por_loja.recebidas_mes.map(x=>x.loja_id)]);
+  const transMap = new Map(j.por_loja.em_transito.map(x=>[x.loja_id,x]));
+  const rebMap = new Map(j.por_loja.recebidas_mes.map(x=>[x.loja_id,x]));
+  if (lojas.size === 0) {
+    html += '<tr><td colspan="7" style="text-align:center;color:#64748b;padding:24px">Sem dados pra esse filtro</td></tr>';
+  } else {
+    [...lojas].sort().forEach(loja => {
+      const tt = transMap.get(loja) || {qtd_notas:0,valor_total:0,peso_kg:0};
+      const rr = rebMap.get(loja) || {qtd_notas:0,valor_total:0,peso_kg:0};
+      html += `<tr data-loja="${loja}">
+        <td><strong>${NOMES_LOJA[loja]||'L'+loja}</strong></td>
+        <td class="num" style="color:#fbbf24" onclick="abrirDet(${loja},'em_transito')">${fmtN(tt.qtd_notas)}</td>
+        <td class="num" onclick="abrirDet(${loja},'em_transito')">${fmtBRL(tt.valor_total)}</td>
+        <td class="num" onclick="abrirDet(${loja},'em_transito')">${fmtKg(tt.peso_kg)}</td>
+        <td class="num" style="color:#34d399" onclick="abrirDet(${loja},'recebidas')">${fmtN(rr.qtd_notas)}</td>
+        <td class="num" onclick="abrirDet(${loja},'recebidas')">${fmtBRL(rr.valor_total)}</td>
+        <td class="num" onclick="abrirDet(${loja},'recebidas')">${fmtKg(rr.peso_kg)}</td>
+      </tr>
+      <tr class="detalhe-row" id="det-${loja}" style="display:none"><td colspan="7" id="det-cont-${loja}"></td></tr>`;
+    });
+  }
+  html += '</tbody></table>';
+  root.innerHTML = html;
+}
+
+async function abrirItens(notaId) {
+  const tr = document.getElementById('itens-'+notaId);
+  const cont = document.getElementById('itens-cont-'+notaId);
+  const seta = document.getElementById('seta-'+notaId);
+  if (tr.style.display !== 'none') {
+    tr.style.display = 'none';
+    if (seta) seta.textContent = '▸';
+    return;
+  }
+  tr.style.display = 'table-row';
+  if (seta) seta.textContent = '▾';
+  cont.innerHTML = '<div class="det-empty"><span class="spinner"></span> carregando itens…</div>';
+  const r = await api('/api/notas/'+notaId);
+  const itens = r.itens || [];
+  if (!itens.length) { cont.innerHTML = '<div class="det-empty">Sem itens</div>'; return; }
+  cont.innerHTML = `<table class="det-table" style="margin:0">
+    <thead><tr style="background:#050a14"><th>#</th><th>EAN</th><th>Descrição</th><th class="num">Qtd</th><th class="num">Vlr unit</th><th class="num">Vlr total</th></tr></thead>
+    <tbody>${itens.map(i => `<tr>
+      <td>${i.numero_item}</td>
+      <td><code>${i.ean_nota||i.ean_validado||'-'}</code></td>
+      <td>${(i.descricao_nota||'').slice(0,60)}</td>
+      <td class="num">${Number(i.quantidade||0).toFixed(2)}</td>
+      <td class="num">${fmtBRL(i.preco_unitario_nota)}</td>
+      <td class="num">${fmtBRL(i.preco_total_nota)}</td>
+    </tr>`).join('')}</tbody></table>`;
+}
+
+async function abrirDet(loja, tipo) {
+  const tr = document.getElementById('det-'+loja);
+  const cont = document.getElementById('det-cont-'+loja);
+  if (tr.dataset.aberto === tipo) {
+    tr.style.display = 'none'; tr.dataset.aberto = '';
+    return;
+  }
+  tr.style.display = 'table-row';
+  tr.dataset.aberto = tipo;
+  cont.innerHTML = '<div class="det-empty"><span class="spinner"></span> carregando…</div>';
+  const cd = document.getElementById('fCd').value;
+  const mes = document.getElementById('fMes').value;
+  const j = await api(`/api/pedidos-distribuidora/painel-cd-saidas-detalhe?cd_origem=${cd}&loja_id=${loja}&mes=${mes}&tipo=${tipo}`);
+  if (j.erro) { cont.innerHTML = '<div class="det-empty">'+j.erro+'</div>'; return; }
+  if (!j.notas?.length) { cont.innerHTML = '<div class="det-empty">Nenhuma nota</div>'; return; }
+  const HOJE = new Date();
+  cont.innerHTML = `<table class="det-table"><thead><tr>
+    <th></th><th>Nota</th><th>Emissão</th><th>Entrada</th><th class="num">Valor</th><th class="num">Peso (kg)</th>
+  </tr></thead><tbody>${j.notas.map(n => {
+    const emissao = n.data_emissao ? new Date(n.data_emissao) : null;
+    const dias = emissao && tipo === 'em_transito' ? Math.floor((HOJE - emissao) / 86400000) : 0;
+    const atrasada = tipo === 'em_transito' && dias > 15;
+    return `<tr class="${atrasada?'atrasada':''} clickable" onclick="abrirItens(${n.id})" style="cursor:pointer">
+      <td style="width:20px;text-align:center" id="seta-${n.id}">▸</td>
+      <td><strong>${n.cd_mov_codi||n.numero_nota||'-'}</strong>${atrasada?`<span class="badge-atraso">${dias}d</span>`:''}</td>
+      <td>${emissao ? emissao.toLocaleDateString('pt-BR') : '—'}</td>
+      <td>${n.data_recebimento ? new Date(n.data_recebimento).toLocaleDateString('pt-BR') : '—'}</td>
+      <td class="num">${fmtBRL(n.valor_total)}</td>
+      <td class="num">${fmtKg(n.peso_kg)}</td>
+    </tr>
+    <tr class="itens-row" id="itens-${n.id}" style="display:none"><td colspan="6" id="itens-cont-${n.id}" style="background:#050a14;padding:0"></td></tr>`;
+  }).join('')}</tbody></table>`;
+}
+
+document.getElementById('btnAplica').onclick = carregar;
+document.getElementById('fCd').onchange = carregar;
+document.getElementById('fMes').onchange = carregar;
+carregar();
+</script>
+</body>
+</html>

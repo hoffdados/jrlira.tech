@@ -116,8 +116,8 @@ async function inserirTransferencia(client, mov, lojaInfo, itens) {
     `INSERT INTO notas_entrada
         (chave_nfe, numero_nota, serie, fornecedor_nome, fornecedor_cnpj,
          data_emissao, valor_total, status, importado_por, loja_id,
-         origem, cd_mov_codi, cd_loja_cli_codi, cd_synced_em)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,'em_transito',$8,$9,'cd',$10,$11,NOW())
+         origem, cd_mov_codi, cd_loja_cli_codi, cd_synced_em, origem_cd_codigo)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'em_transito',$8,$9,'cd',$10,$11,NOW(),'srv1-itautuba')
        ON CONFLICT (cd_mov_codi) WHERE cd_mov_codi IS NOT NULL DO NOTHING
        RETURNING id`,
     [

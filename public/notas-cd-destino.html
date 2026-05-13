@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Saídas do CD</title>
+<link rel="stylesheet" href="/shared.css">
+<script src="/shared.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f172a;color:#e2e8f0;font-size:12px}
+nav{background:#1e293b;padding:10px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #334155}
+.brand{font-family:'Segoe UI Black',sans-serif;font-weight:900;font-size:16px;color:#fde047}
+.btn-nav{background:#0ea5e9;color:#fff;border:none;padding:5px 10px;border-radius:4px;font-size:11px;cursor:pointer;text-decoration:none}
+.main{padding:14px 20px;max-width:1500px;margin:0 auto}
+h1{font-size:18px;margin-bottom:6px}
+.sub{color:#64748b;font-size:11px;margin-bottom:14px}
+.toolbar{display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;padding:8px 10px;background:#1e293b;border:1px solid #334155;border-radius:5px}
+select,input{background:#0f172a;border:1px solid #334155;color:#e2e8f0;padding:5px 8px;font-size:11px;border-radius:4px}
+button{cursor:pointer;border:none;border-radius:4px;font-size:11px;padding:5px 10px;font-weight:600}
+.btn-ghost{background:#1e293b;color:#94a3b8;border:1px solid #334155}
+.btn-sm{padding:3px 8px;font-size:10px}
+table{width:100%;border-collapse:collapse;font-size:11px;background:#1e293b;border-radius:6px;overflow:hidden}
+th{background:#0c1628;padding:8px;text-align:left;color:#94a3b8;font-size:10px;font-weight:600;text-transform:uppercase}
+td{padding:7px 8px;border-top:1px solid #334155;cursor:pointer}
+tr.expandida{background:#0c1a2e}
+.status{display:inline-block;padding:2px 6px;border-radius:3px;font-size:9px;font-weight:700;text-transform:uppercase}
+.st-em_transito{background:#451a03;color:#fbbf24}
+.st-recebida{background:#0c2912;color:#86efac}
+.st-em_conferencia{background:#1e3a5f;color:#7dd3fc}
+.st-conferida{background:#052e16;color:#34d399}
+.st-validada{background:#1f1f1f;color:#666}
+.empty{text-align:center;padding:40px;color:#64748b}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid #334155;border-top-color:#fbbf24;border-radius:50%;animation:spin 0.8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.itens-wrap{padding:0;background:#0c1628}
+.itens-wrap table{background:transparent;border-radius:0}
+.itens-wrap th{background:#091018;font-size:9px;padding:5px 8px}
+.itens-wrap td{font-size:10px;padding:4px 8px;cursor:default}
+.tot-line{display:flex;gap:14px;padding:8px 12px;background:#0c2912;border-radius:5px;margin-bottom:10px;font-size:11px}
+.tot-line strong{color:#fde047}
+</style>
+</head>
+<body>
+
+<nav>
+  <span class="brand">JR Lira Tech</span>
+  <a href="/" class="btn-nav" style="background:#475569">Início</a>
+  <a href="/pedidos-distribuidora" class="btn-nav">Pedidos do CD</a>
+  <span id="userInfo" style="margin-left:auto;color:#94a3b8;font-size:11px"></span>
+</nav>
+
+<div class="main">
+  <h1 id="titulo">Saídas do CD</h1>
+  <div class="sub" id="subtitulo">Transferências enviadas pra lojas. Por padrão mostra só em trânsito (ainda não chegou no mercado).</div>
+
+  <div class="toolbar">
+    <button class="btn-ghost" id="btnRefresh">↻ Atualizar</button>
+    <label style="font-size:10px;color:#64748b">Status:</label>
+    <select id="fStatus">
+      <option value="em_transito" selected>Em trânsito</option>
+      <option value="">Todos (incl. recebidas)</option>
+      <option value="recebida">Recebida</option>
+      <option value="em_conferencia">Em conferência</option>
+      <option value="conferida">Conferida</option>
+      <option value="validada">Validada</option>
+    </select>
+    <label style="font-size:10px;color:#64748b">Loja destino:</label>
+    <select id="fLoja">
+      <option value="">Todas</option>
+      <option value="1">L1 — Econômico</option>
+      <option value="2">L2 — BR</option>
+      <option value="3">L3 — João Pessoa</option>
+      <option value="4">L4 — Floresta</option>
+      <option value="5">L5 — São José</option>
+      <option value="6">L6 — Santarém</option>
+    </select>
+    <span id="contador" style="margin-left:auto;color:#94a3b8;font-size:11px"></span>
+  </div>
+
+  <div id="totais"></div>
+  <div id="conteudo"><div class="empty"><span class="spinner"></span> Carregando…</div></div>
+</div>
+
+<script>
+const token = localStorage.jrlira_token;
+const perfil = localStorage.jrlira_perfil;
+document.getElementById('userInfo').textContent = `${localStorage.jrlira_nome||''} (${perfil})`;
+if (!token || !['admin','cadastro','estoque','ceo'].includes(perfil)) location.href = '/';
+
+// CD ORIGEM pelo path ou query ?cd=
+const params = new URLSearchParams(location.search);
+const PATH_TO_CD = {
+  '/notas-cd-asafrio': 'srv2-asafrio',
+  '/notas-cd-asasantarem': 'srv2-asasantarem',
+  '/notas-cd-itautuba': 'srv1-itautuba',
+  '/notas-cd-nprogresso': 'srv1-nprogresso',
+};
+const cdOrigem = params.get('cd') || PATH_TO_CD[location.pathname] || 'srv2-asafrio';
+const NOMES = {
+  'srv1-itautuba': 'Asa Branca ITB',
+  'srv1-nprogresso': 'N. Progresso',
+  'srv2-asafrio': 'Asa Frios',
+  'srv2-asasantarem': 'Asa Santarém',
+};
+const NOMES_LOJA = {1:'L1 Econ.',2:'L2 BR',3:'L3 J.Pessoa',4:'L4 Flor.',5:'L5 S.José',6:'L6 Stm'};
+const nomeCd = NOMES[cdOrigem] || cdOrigem;
+document.getElementById('titulo').textContent = `Saídas do CD ${nomeCd}`;
+document.getElementById('subtitulo').textContent = `Transferências enviadas POR ${nomeCd} pras lojas. Default: só "em trânsito" (não chegou no mercado). Recebidas saem automaticamente quando entram no Ecocentauro da loja.`;
+
+function api(path) {
+  return fetch(path, { headers: { Authorization:'Bearer '+token } }).then(r => r.json());
+}
+const fmtBRL = v => 'R$ ' + Number(v||0).toFixed(2).replace('.', ',');
+const fmtData = d => d ? new Date(d).toLocaleDateString('pt-BR') : '';
+
+async function carregar() {
+  const root = document.getElementById('conteudo');
+  root.innerHTML = '<div class="empty"><span class="spinner"></span> Carregando…</div>';
+  const status = document.getElementById('fStatus').value;
+  const loja = document.getElementById('fLoja').value;
+  // Filter: origem_cd_codigo = CD selecionado, destino é LOJA (loja_id NOT NULL).
+  // Backend já filtra status='em_transito' por padrão se passado.
+  const qs = [`origem_cd_codigo=${cdOrigem}`, 'origem=cd', 'incluir_validadas_cd=1'];
+  if (status) qs.push('status=' + status);
+  const notasResp = await api('/api/notas?' + qs.join('&'));
+  // Filtra no front: tem que ter loja_id (não é CD destino) e (se filtro de loja) bater
+  let notas = notasResp.filter(n => n.loja_id != null);
+  if (loja) notas = notas.filter(n => String(n.loja_id) === loja);
+
+  document.getElementById('contador').textContent = `${notas.length} nota(s)`;
+  // Totais por loja
+  const porLoja = {};
+  for (const n of notas) {
+    if (!porLoja[n.loja_id]) porLoja[n.loja_id] = { qtd: 0, valor: 0 };
+    porLoja[n.loja_id].qtd++;
+    porLoja[n.loja_id].valor += parseFloat(n.valor_total||0);
+  }
+  document.getElementById('totais').innerHTML = Object.keys(porLoja).sort().map(k =>
+    `<div class="tot-line"><strong>${NOMES_LOJA[k]||'L'+k}</strong> · ${porLoja[k].qtd} nota(s) · ${fmtBRL(porLoja[k].valor)}</div>`
+  ).join('');
+
+  if (!notas.length) { root.innerHTML = '<div class="empty">Nenhuma nota nesse filtro.</div>'; return; }
+  root.innerHTML = `<table><thead><tr>
+    <th></th><th>Nota</th><th>Loja</th><th>Emitida</th><th>Valor</th><th>Itens</th><th>Status</th>
+  </tr></thead><tbody>${notas.map(n => `
+    <tr id="n-${n.id}" onclick="toggleItens(${n.id})">
+      <td style="width:24px">▸</td>
+      <td><strong>${n.numero_nota||'-'}</strong>/${n.serie||'1'}</td>
+      <td><span class="status st-em_transito">${NOMES_LOJA[n.loja_id]||'L'+n.loja_id}</span></td>
+      <td>${fmtData(n.data_emissao)}</td>
+      <td style="text-align:right">${fmtBRL(n.valor_total)}</td>
+      <td style="text-align:right">${n.total_itens||0}</td>
+      <td><span class="status st-${n.status}">${n.status||'-'}</span></td>
+    </tr>
+    <tr id="itens-${n.id}" style="display:none"><td colspan="7" class="itens-wrap" id="cont-itens-${n.id}"></td></tr>
+  `).join('')}</tbody></table>`;
+}
+
+async function toggleItens(notaId) {
+  const tr = document.getElementById('itens-'+notaId);
+  const setaTd = document.querySelector(`#n-${notaId} td:first-child`);
+  if (tr.style.display === 'none') {
+    tr.style.display = 'table-row';
+    setaTd.textContent = '▾';
+    document.getElementById('n-'+notaId).classList.add('expandida');
+    const cont = document.getElementById('cont-itens-'+notaId);
+    cont.innerHTML = '<div style="padding:8px"><span class="spinner"></span> carregando…</div>';
+    const nota = await api('/api/notas/'+notaId);
+    const itens = nota.itens || [];
+    cont.innerHTML = `<table><thead><tr>
+      <th>#</th><th>EAN</th><th>Descrição</th><th>Qtd</th><th>Vlr unit</th><th>Vlr total</th>
+    </tr></thead><tbody>${itens.map(i => `<tr>
+      <td>${i.numero_item}</td>
+      <td><code>${i.ean_nota||i.ean_validado||'-'}</code></td>
+      <td>${i.descricao_nota||''}</td>
+      <td style="text-align:right">${Number(i.quantidade||0).toFixed(2)}</td>
+      <td style="text-align:right">${fmtBRL(i.preco_unitario_nota)}</td>
+      <td style="text-align:right">${fmtBRL(i.preco_total_nota)}</td>
+    </tr>`).join('')}</tbody></table>`;
+  } else {
+    tr.style.display = 'none';
+    setaTd.textContent = '▸';
+    document.getElementById('n-'+notaId).classList.remove('expandida');
+  }
+}
+
+document.getElementById('btnRefresh').onclick = carregar;
+document.getElementById('fStatus').onchange = carregar;
+document.getElementById('fLoja').onchange = carregar;
+carregar();
+</script>
+</body>
+</html>

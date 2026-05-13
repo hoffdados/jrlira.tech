@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>Painel CD → CD v2 — Cross-check transferências entre CDs</title>
+<link rel="stylesheet" href="/shared.css">
+<script src="/shared.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f172a;color:#e2e8f0;font-size:12px}
+nav{background:#1e293b;padding:10px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #334155}
+.brand{font-family:'Segoe UI Black',sans-serif;font-weight:900;font-size:16px;color:#fde047}
+.btn-nav{background:#0ea5e9;color:#fff;border:none;padding:5px 10px;border-radius:4px;font-size:11px;cursor:pointer;text-decoration:none}
+.main{padding:14px 20px;max-width:1500px;margin:0 auto}
+h1{font-size:18px;margin-bottom:12px}
+.toolbar{display:flex;gap:10px;align-items:center;margin-bottom:14px;padding:10px;background:#1e293b;border:1px solid #334155;border-radius:5px;flex-wrap:wrap}
+label{font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.04em}
+select,input{background:#0f172a;border:1px solid #334155;color:#e2e8f0;padding:6px 10px;font-size:12px;border-radius:4px}
+.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
+.card{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:14px;cursor:pointer;transition:transform .1s}
+.card:hover{transform:translateY(-2px)}
+.card.active{outline:2px solid #fde047}
+.card.transito{border-left:4px solid #fbbf24}
+.card.recebida{border-left:4px solid #34d399}
+.card.perdido{border-left:4px solid #ef4444}
+.card.pendencia{border-left:4px solid #a855f7}
+.card h2{font-size:11px;color:#94a3b8;text-transform:uppercase;font-weight:600;margin-bottom:8px}
+.card .num{font-size:24px;font-weight:700;color:#fde047;margin-bottom:6px}
+.card .val{font-size:11px;color:#94a3b8}
+.aviso{padding:10px 14px;background:#1e293b;border-left:4px solid #0ea5e9;margin-bottom:14px;font-size:12px;color:#94a3b8}
+.aviso strong{color:#e2e8f0}
+table{width:100%;border-collapse:collapse;font-size:11px;background:#1e293b;border-radius:6px;overflow:hidden}
+th{background:#0c1628;padding:8px;text-align:left;color:#94a3b8;font-size:10px;font-weight:600;text-transform:uppercase}
+td{padding:7px 8px;border-top:1px solid #334155}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+td.center{text-align:center}
+tr.clickable{cursor:pointer}
+tr.clickable:hover{background:#273549}
+tr.detalhe-row td{background:#0c1628;padding:0}
+.det-table{width:100%;border-collapse:collapse;font-size:10px}
+.det-table th{background:#091018;padding:5px 8px;font-size:9px;color:#94a3b8;text-transform:uppercase}
+.det-table td{padding:4px 8px;border-top:1px solid #1f2937}
+.det-table td.num{text-align:right}
+.empty{text-align:center;padding:40px;color:#64748b}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid #334155;border-top-color:#fbbf24;border-radius:50%;animation:spin 0.8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.badge{display:inline-block;padding:1px 5px;border-radius:3px;font-size:9px;font-weight:700;margin-left:4px}
+.badge-perdido{background:#dc2626;color:#fff}
+.badge-pendencia{background:#a855f7;color:#fff}
+.acoes{display:flex;gap:8px;margin-bottom:12px}
+.acoes button{background:#1e293b;color:#94a3b8;border:1px solid #334155;padding:5px 10px;border-radius:4px;cursor:pointer;font-size:11px}
+.acoes button:hover{color:#fde047}
+.sla-info{font-size:10px;color:#94a3b8;padding:6px 0}
+</style>
+</head>
+<body>
+
+<nav>
+  <span class="brand">JR Lira Tech</span>
+  <a href="/" class="btn-nav" style="background:#475569">Início</a>
+  <a href="/painel-cd-saidas" class="btn-nav">Painel CD→Lojas</a>
+  <a href="/pedidos-distribuidora" class="btn-nav">Pedidos do CD</a>
+  <span id="userInfo" style="margin-left:auto;color:#94a3b8;font-size:11px"></span>
+</nav>
+
+<div class="main">
+  <h1>Painel CD → CD — Cross-check entre CDs</h1>
+  <div class="aviso">Cruza saídas de um CD com entradas de outro pelo número do pedido (mcp_codi → MCP_NNOTAFIS). <strong>SLA: 10 dias</strong>. Acima disso, trânsito perdido → AUDITAR.</div>
+
+  <div class="toolbar">
+    <div>
+      <div><label>CD origem</label></div>
+      <select id="fOrigem">
+        <option value="">(Todos)</option>
+        <option value="srv1-itautuba">Asa Branca ITB</option>
+        <option value="srv2-asafrio">Asa Frios ITB</option>
+        <option value="srv2-asasantarem">Asa Frios STM</option>
+        <option value="srv1-nprogresso">N. Progresso</option>
+      </select>
+    </div>
+    <div>
+      <div><label>CD destino</label></div>
+      <select id="fDestino">
+        <option value="">(Todos)</option>
+        <option value="srv1-itautuba">Asa Branca ITB</option>
+        <option value="srv2-asafrio">Asa Frios ITB</option>
+        <option value="srv2-asasantarem">Asa Frios STM</option>
+        <option value="srv1-nprogresso">N. Progresso</option>
+      </select>
+    </div>
+    <div>
+      <div><label>Mês (recebidas)</label></div>
+      <input type="month" id="fMes">
+    </div>
+    <div class="acoes" style="margin-left:auto">
+      <button id="btnMatch" title="Roda match retroativo (cruza com UltraSyst dos destinos)">⚙ Rodar match agora</button>
+      <button id="btnAplica" style="background:#fbbf24;color:#1a1a1a">Aplicar</button>
+    </div>
+  </div>
+
+  <div id="conteudo"><div class="empty"><span class="spinner"></span> Carregando…</div></div>
+</div>
+
+<script>
+const token = localStorage.jrlira_token;
+const perfil = localStorage.jrlira_perfil;
+document.getElementById('userInfo').textContent = `${localStorage.jrlira_nome||''} (${perfil})`;
+if (!token) location.href = '/';
+
+const NOMES_CD = {
+  'srv1-itautuba': 'Asa Branca ITB',
+  'srv1-nprogresso': 'N. Progresso',
+  'srv2-asafrio': 'Asa Frios ITB',
+  'srv2-asasantarem': 'Asa Frios STM',
+};
+
+async function api(path, opts) {
+  const r = await fetch(path, {...(opts||{}), headers:{Authorization:'Bearer '+token, ...(opts?.headers||{})}});
+  if (r.status === 401) { alert('Sessão expirada — faça login novamente.'); localStorage.clear(); location.href = '/'; return {}; }
+  return r.json();
+}
+const fmtBRL = v => 'R$ ' + Number(v||0).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+const fmtN = v => Number(v||0).toLocaleString('pt-BR');
+const fmtData = d => d ? new Date(d).toLocaleDateString('pt-BR') : '—';
+
+const hoje = new Date();
+document.getElementById('fMes').value = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`;
+
+let tipoAtual = 'recebida'; // default: começa mostrando o que JÁ FOI confirmado
+let dadosAtuais = null;
+
+async function carregar() {
+  const o = document.getElementById('fOrigem').value;
+  const d = document.getElementById('fDestino').value;
+  const m = document.getElementById('fMes').value;
+  document.getElementById('conteudo').innerHTML = '<div class="empty"><span class="spinner"></span> Carregando…</div>';
+  const qs = new URLSearchParams({mes:m});
+  if (o) qs.set('cd_origem', o);
+  if (d) qs.set('cd_destino', d);
+  const data = await api('/api/pedidos-distribuidora/painel-cd-cd?' + qs);
+  if (data.erro) { document.getElementById('conteudo').innerHTML = `<div class="empty">Erro: ${data.erro}</div>`; return; }
+  dadosAtuais = data;
+  render(data);
+}
+
+function card(tipo, titulo, qtd, val, cls) {
+  return `<div class="card ${cls} ${tipoAtual===tipo?'active':''}" onclick="trocarTipo('${tipo}', event)">
+    <h2>${titulo}</h2>
+    <div class="num">${fmtN(qtd)}</div>
+    <div class="val">${fmtBRL(val)}</div>
+  </div>`;
+}
+
+async function render(d) {
+  const t = d.totais;
+  // Matriz por par (origem → destino) — visão consolidada
+  const matrizRows = d.por_par.map(p => {
+    const nomeO = NOMES_CD[p.origem_cd_codigo] || p.origem_cd_codigo;
+    const nomeD = NOMES_CD[p.cd_destino_codigo] || p.cd_destino_codigo;
+    const cellNum = (v, tipo) => `<td class="num" data-tipo="${tipo}" data-o="${p.origem_cd_codigo}" data-dd="${p.cd_destino_codigo}" onclick="abrirDetalhe('${tipo}','${p.origem_cd_codigo}','${p.cd_destino_codigo}')">${v>0?fmtN(v):'—'}</td>`;
+    return `<tr>
+      <td><strong>${nomeO}</strong> → ${nomeD}</td>
+      ${cellNum(p.qtd_em_transito, 'em_transito')}
+      ${cellNum(p.qtd_perdido, 'perdido')}
+      ${cellNum(p.qtd_pendencia, 'pendencia')}
+      ${cellNum(p.qtd_recebida, 'recebida')}
+      <td class="num">${p.sla_medio_dias != null ? Number(p.sla_medio_dias).toFixed(1) + 'd' : '—'}</td>
+    </tr>`;
+  }).join('');
+
+  const matriz = d.por_par.length ? `
+    <h3 style="font-size:13px;margin:14px 0 8px;color:#94a3b8">Por par origem → destino</h3>
+    <table>
+      <thead><tr>
+        <th>Rota</th>
+        <th class="num" style="color:#fbbf24">⏳ Trânsito ≤${d.sla_dias}d</th>
+        <th class="num" style="color:#ef4444">🚨 Perdido >${d.sla_dias}d</th>
+        <th class="num" style="color:#a855f7">⚠ Pendência</th>
+        <th class="num" style="color:#34d399">✓ Recebidas ${d.mes}</th>
+        <th class="num">SLA médio</th>
+      </tr></thead>
+      <tbody>${matrizRows}</tbody>
+    </table>` : '<div class="empty">Sem dados nas combinações selecionadas.</div>';
+
+  document.getElementById('conteudo').innerHTML = `
+    <div class="cards">
+      ${card('em_transito','⏳ Em trânsito (≤'+d.sla_dias+'d)', t.em_transito.qtd, t.em_transito.val, 'transito')}
+      ${card('perdido', '🚨 Trânsito perdido (>'+d.sla_dias+'d)', t.perdido.qtd, t.perdido.val, 'perdido')}
+      ${card('pendencia','⚠ Pendência no origem', t.pendencia.qtd, t.pendencia.val, 'pendencia')}
+      ${card('recebida','✓ Recebidas no mês', t.recebida.qtd, t.recebida.val, 'recebida')}
+    </div>
+    ${matriz}
+    <div id="lista"></div>
+  `;
+  await carregarLista();
+}
+
+function trocarTipo(t, ev) { tipoAtual = t; document.querySelectorAll('.card').forEach(c=>c.classList.remove('active')); if(ev) ev.currentTarget.classList.add('active'); carregarLista(); }
+
+// Click numa célula da matriz → filtra a lista por aquele par + tipo
+function abrirDetalhe(tipo, origem, destino) {
+  tipoAtual = tipo;
+  document.getElementById('fOrigem').value = origem;
+  document.getElementById('fDestino').value = destino;
+  document.querySelectorAll('.card').forEach(c=>c.classList.remove('active'));
+  carregarLista();
+  document.getElementById('lista').scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+async function carregarLista() {
+  const o = document.getElementById('fOrigem').value;
+  const d = document.getElementById('fDestino').value;
+  const m = document.getElementById('fMes').value;
+  const div = document.getElementById('lista');
+  div.innerHTML = '<div class="empty"><span class="spinner"></span> Carregando notas…</div>';
+  const qs = new URLSearchParams({mes:m, tipo:tipoAtual});
+  if (o) qs.set('cd_origem', o);
+  if (d) qs.set('cd_destino', d);
+  const data = await api('/api/pedidos-distribuidora/painel-cd-cd-detalhe?' + qs);
+  if (data.erro) { div.innerHTML = `<div class="empty">Erro: ${data.erro}</div>`; return; }
+  if (!data.notas.length) { div.innerHTML = '<div class="empty">Nenhuma nota nessa categoria.</div>'; return; }
+  const orientacao = orientacaoPorTipo(tipoAtual);
+  const showSla = tipoAtual === 'recebida';
+  const showDiasEmissao = tipoAtual !== 'recebida';
+  div.innerHTML = `
+    ${orientacao}
+    <table>
+      <thead><tr>
+        <th>Origem → Destino</th><th>Pedido (mcp_codi)</th><th>Emissão</th>
+        ${showDiasEmissao ? '<th class="num">Dias em trânsito</th>' : ''}
+        ${showSla ? '<th>Recebida em</th><th class="num">SLA (dias)</th>' : ''}
+        <th class="num">Itens</th><th class="num">Valor</th>
+      </tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>`;
+  const tbody = document.getElementById('tbody');
+  data.notas.forEach(n => {
+    const tr = document.createElement('tr');
+    tr.className = 'clickable';
+    tr.onclick = () => expandir(n.id, tr);
+    tr.innerHTML = `
+      <td>${NOMES_CD[n.origem_cd_codigo]||n.origem_cd_codigo} → ${NOMES_CD[n.cd_destino_codigo]||n.cd_destino_codigo}</td>
+      <td>${n.cd_mov_codi || '<span class="badge badge-pendencia">SEM NF</span>'}</td>
+      <td>${fmtData(n.data_emissao)}</td>
+      ${showDiasEmissao ? `<td class="num">${n.dias_emissao||'—'}${n.dias_emissao>10?'<span class="badge badge-perdido">+10d</span>':''}</td>` : ''}
+      ${showSla ? `<td>${fmtData(n.data_recebimento)}</td><td class="num">${n.sla_dias??'—'}</td>` : ''}
+      <td class="num">${fmtN(n.qtd_itens)}</td>
+      <td class="num">${fmtBRL(n.valor_total)}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function orientacaoPorTipo(t) {
+  if (t==='perdido') return `<div class="aviso" style="border-color:#ef4444"><strong>Auditar:</strong> notas saíram do origem há mais de 10 dias mas não cruzaram com entrada no destino. Verificar com CD origem (NF foi emitida?) e CD destino (chegou mas não foi dado entrada?).</div>`;
+  if (t==='pendencia') return `<div class="aviso" style="border-color:#a855f7"><strong>Auditar:</strong> notas sem mcp_codi (movimento interno sem NF). CD origem precisa emitir NF ou cancelar formalmente.</div>`;
+  if (t==='em_transito') return `<div class="aviso"><strong>Normal:</strong> transferências dentro do SLA (≤10 dias). Aguardando dar entrada no destino.</div>`;
+  return `<div class="aviso" style="border-color:#34d399"><strong>OK:</strong> transferências que cruzaram com sucesso no mês selecionado.</div>`;
+}
+
+async function expandir(id, tr) {
+  const next = tr.nextElementSibling;
+  if (next && next.classList.contains('detalhe-row')) { next.remove(); return; }
+  const detTr = document.createElement('tr');
+  detTr.className = 'detalhe-row';
+  detTr.innerHTML = `<td colspan="9"><div class="empty"><span class="spinner"></span> Carregando itens…</div></td>`;
+  tr.parentNode.insertBefore(detTr, tr.nextSibling);
+  const data = await api('/api/pedidos-distribuidora/painel-cd-cd-nota-itens?nota_id=' + id);
+  if (data.erro) { detTr.firstChild.innerHTML = `Erro: ${data.erro}`; return; }
+  if (!data.itens.length) { detTr.firstChild.innerHTML = '<div class="det-empty">Sem itens</div>'; return; }
+  const linhas = data.itens.map(i => `
+    <tr><td>${i.numero_item}</td><td>${i.cd_pro_codi||'—'}</td><td>${i.ean_nota||'—'}</td>
+        <td>${i.descricao_nota||'—'}</td>
+        <td class="num">${Number(i.quantidade||0).toFixed(3)}</td>
+        <td class="num">${fmtBRL(i.preco_unitario_nota)}</td>
+        <td class="num">${fmtBRL(i.preco_total_nota)}</td></tr>`).join('');
+  detTr.firstChild.innerHTML = `<table class="det-table">
+    <thead><tr><th>#</th><th>Cod CD</th><th>EAN</th><th>Descrição</th><th class="num">Qtd</th><th class="num">Unit</th><th class="num">Total</th></tr></thead>
+    <tbody>${linhas}</tbody></table>`;
+}
+
+document.getElementById('btnAplica').onclick = carregar;
+document.getElementById('btnMatch').onclick = async () => {
+  if (!confirm('Roda match agora? Vai consultar UltraSyst de TODOS os CDs destino e marcar como recebidas as que casarem.')) return;
+  const btn = document.getElementById('btnMatch');
+  btn.disabled = true; btn.textContent = '⏳ Matchando…';
+  const r = await api('/api/pedidos-distribuidora/match-cd-cd', {method:'POST'});
+  btn.disabled = false; btn.textContent = '⚙ Rodar match agora';
+  alert('Match concluído: ' + (r.recebidas||0) + ' nota(s) reclassificada(s) como recebida em ' + Math.round((r.ms||0)/1000) + 's.');
+  carregar();
+};
+
+carregar();
+</script>
+</body>
+</html>
