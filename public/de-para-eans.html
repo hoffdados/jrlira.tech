@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>De-para EANs CD</title>
+<link rel="stylesheet" href="/shared.css">
+<script src="/shared.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f172a;color:#e2e8f0;font-size:13px}
+nav{background:#1e293b;padding:10px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #334155}
+.brand{font-family:'Segoe UI Black',sans-serif;font-weight:900;font-size:16px;color:#fde047}
+.btn-nav{background:#0ea5e9;color:#fff;border:none;padding:5px 10px;border-radius:4px;font-size:11px;cursor:pointer;text-decoration:none}
+.wrap{max-width:1000px;margin:14px auto;padding:0 16px}
+h1{font-size:18px;margin-bottom:10px}
+.toolbar{display:flex;gap:10px;align-items:center;background:#1e293b;border:1px solid #334155;border-radius:6px;padding:10px 14px;margin-bottom:12px;flex-wrap:wrap}
+.toolbar label{font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em}
+select{background:#0f172a;border:1px solid #334155;color:#e2e8f0;padding:6px 10px;font-size:13px;border-radius:4px}
+.btn{background:#0ea5e9;color:#fff;border:none;padding:7px 12px;border-radius:4px;cursor:pointer;font-size:12px}
+.btn:hover{filter:brightness(1.15)}
+.btn-yellow{background:#fbbf24;color:#1a1a1a;font-weight:600}
+.btn-green{background:#16a34a}
+.btn-ghost{background:#334155;color:#94a3b8}
+.contador{margin-left:auto;font-size:12px;color:#94a3b8}
+.contador strong{color:#fde047}
+.card{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:16px;margin-bottom:10px}
+.card.ref{border-left:4px solid #fde047}
+.card.itb{border-left:4px solid #34d399}
+.card.mer{border-left:4px solid #38bdf8}
+.card-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
+.cd-nome{font-size:14px;font-weight:600;color:#fde047}
+.status{font-size:11px;color:#94a3b8;text-transform:uppercase}
+.info{font-size:12px;color:#94a3b8;line-height:1.55}
+.info code{background:#0c1628;padding:1px 6px;border-radius:3px;color:#fde047;font-family:Consolas,monospace}
+.cand{display:flex;justify-content:space-between;align-items:center;padding:8px;background:#0c1628;border-radius:5px;margin-top:6px;gap:10px}
+.cand-info{flex:1;font-size:12px;min-width:0}
+.cand-info .desc{color:#e2e8f0;margin-bottom:3px}
+.cand-info .det{color:#64748b;font-size:11px}
+.cand-acoes button{padding:5px 10px;font-size:11px;border-radius:4px;border:none;cursor:pointer}
+.sim{display:inline-block;padding:1px 6px;background:#475569;color:#cbd5e1;border-radius:3px;font-size:10px;margin-left:6px}
+.acoes-final{display:flex;gap:8px;margin-top:14px;justify-content:center}
+.empty{text-align:center;padding:40px;color:#64748b}
+.empty .big{font-size:60px;margin-bottom:10px}
+.loading{text-align:center;padding:40px;color:#94a3b8}
+.spinner{display:inline-block;width:16px;height:16px;border:2px solid #334155;border-top-color:#fbbf24;border-radius:50%;animation:spin 0.8s linear infinite;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<nav>
+  <span class="brand">JR Lira Tech</span>
+  <a href="/" class="btn-nav" style="background:#475569">Início</a>
+  <a href="/produto-canonico" class="btn-nav">Produto Canônico</a>
+  <span id="userInfo" style="margin-left:auto;color:#94a3b8;font-size:11px"></span>
+</nav>
+
+<div class="wrap">
+  <h1>De-para EANs — referência ITB</h1>
+  <div class="toolbar">
+    <div>
+      <div><label>CD origem (procurar EAN no ITB)</label></div>
+      <select id="fCd">
+        <option value="srv1-nprogresso">N. Progresso</option>
+        <option value="srv2-asafrio">Asa Frios ITB</option>
+        <option value="srv2-asasantarem">Asa Frios STM</option>
+      </select>
+    </div>
+    <button class="btn btn-ghost" id="btnPrev">← Anterior</button>
+    <button class="btn btn-yellow" id="btnNext">Próximo →</button>
+    <span class="contador">Produto <strong id="indice">—</strong> / <strong id="total">—</strong> pendente(s)</span>
+  </div>
+  <div id="conteudo" class="loading"><span class="spinner"></span> Carregando…</div>
+</div>
+
+<script>
+const token = localStorage.jrlira_token;
+const perfil = localStorage.jrlira_perfil;
+document.getElementById('userInfo').textContent = `${localStorage.jrlira_nome||''} (${perfil})`;
+if (!token) location.href = '/';
+
+const NOMES_CD = {
+  'srv1-itautuba':'Asa Branca ITB','srv1-nprogresso':'N. Progresso',
+  'srv2-asafrio':'Asa Frios ITB','srv2-asasantarem':'Asa Frios STM',
+};
+
+async function api(path, opts) {
+  const r = await fetch(path, {...(opts||{}), headers:{'Authorization':'Bearer '+token, 'Content-Type':'application/json', ...(opts?.headers||{})}});
+  if (r.status === 401) { alert('Sessão expirada'); localStorage.clear(); location.href='/'; return {}; }
+  return r.json();
+}
+const fmtN = v => Number(v||0).toLocaleString('pt-BR', {maximumFractionDigits:0});
+const escapeHtml = s => String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+let cdOrigem = localStorage.de_para_cd || 'srv1-nprogresso';
+document.getElementById('fCd').value = cdOrigem;
+let indice = parseInt(localStorage.de_para_indice_v2 || '0', 10);
+
+async function carregarTotal() {
+  const r = await api('/api/de-para-eans/total?cd_origem=' + cdOrigem);
+  document.getElementById('total').textContent = fmtN(r.total || 0);
+}
+
+async function carregar() {
+  document.getElementById('conteudo').innerHTML = '<div class="loading"><span class="spinner"></span> Carregando…</div>';
+  document.getElementById('indice').textContent = indice + 1;
+  localStorage.de_para_indice_v2 = String(indice);
+  localStorage.de_para_cd = cdOrigem;
+  const r = await api('/api/de-para-eans/proximo?cd_origem=' + cdOrigem + '&indice=' + indice);
+  if (r.erro) { document.getElementById('conteudo').innerHTML = `<div class="empty">Erro: ${r.erro}</div>`; return; }
+  if (r.vazio) {
+    document.getElementById('conteudo').innerHTML = `<div class="empty"><div class="big">🎉</div>Sem produtos pendentes em ${NOMES_CD[cdOrigem]}.</div>`;
+    return;
+  }
+  render(r);
+}
+
+function render(r) {
+  const html = [];
+  // Card produto do CD origem
+  html.push(`
+    <div class="card ref">
+      <div class="card-head">
+        <div class="cd-nome">★ ${NOMES_CD[r.cd_origem]} — ${escapeHtml(r.ref.mat_desc)}</div>
+        <div class="status">${fmtN(r.ref.qtd_venda_90d)} unid 90d</div>
+      </div>
+      <div class="info">EAN atual: <code id="eanRef">${r.ref.ean}</code> · mat_codi: <code id="matRef">${r.ref.mat_codi}</code></div>
+    </div>`);
+
+  // Candidatos no ITB
+  let candsHtml = '';
+  if (r.candidatos_itb?.length) {
+    candsHtml = r.candidatos_itb.map(k => `
+      <div class="cand">
+        <div class="cand-info">
+          <div class="desc">${escapeHtml(k.mat_desc)} <span class="sim">${(k.sim*100).toFixed(0)}%</span></div>
+          <div class="det">mat_codi: <code>${k.mat_codi}</code> · EAN(s) ITB: ${escapeHtml(k.eans_itb || '(nenhum)')}</div>
+        </div>
+        <div class="cand-acoes">
+          <button class="btn btn-green" onclick="vincular('${k.mat_codi}')">Vincular</button>
+        </div>
+      </div>`).join('');
+  } else {
+    candsHtml = '<div class="info" style="margin-top:6px;color:#64748b">Nenhum candidato similar no ITB.</div>';
+  }
+  html.push(`<div class="card itb">
+    <div class="card-head"><div class="cd-nome">🔍 Asa Branca ITB — candidatos por descrição</div></div>
+    ${candsHtml}
+  </div>`);
+
+  // Mercado
+  if (r.mercado.encontrado.length) {
+    const lojas = r.mercado.encontrado.map(x => 'L'+x.loja_id).join(', ');
+    html.push(`<div class="card mer">
+      <div class="card-head"><div class="cd-nome">📦 Mercado</div><div class="status">✓ ${r.mercado.encontrado.length} cadastro(s)</div></div>
+      <div class="info">EAN ${r.ref.ean} usado em: <strong>${lojas}</strong></div>
+      <div class="info">${escapeHtml(r.mercado.encontrado[0].descricao || '')}</div>
+    </div>`);
+  } else if (r.mercado.candidatos.length) {
+    const lis = r.mercado.candidatos.map(c => `
+      <div class="info">L${c.loja_id} · ${escapeHtml(c.descricao)} · EAN <code>${c.codigobarra}</code> <span class="sim">${(c.sim*100).toFixed(0)}%</span></div>`).join('');
+    html.push(`<div class="card mer">
+      <div class="card-head"><div class="cd-nome">📦 Mercado — candidatos por descrição</div></div>
+      ${lis}
+    </div>`);
+  } else {
+    html.push(`<div class="card mer">
+      <div class="card-head"><div class="cd-nome">📦 Mercado</div><div class="status">— sem cadastro</div></div>
+      <div class="info">Esse produto não está em nenhum mercado.</div>
+    </div>`);
+  }
+
+  html.push(`<div class="acoes-final">
+    <button class="btn btn-ghost" onclick="anterior()">← Anterior</button>
+    <button class="btn" style="background:#475569" onclick="marcarExclusivo()">Não tem no ITB (exclusivo)</button>
+    <button class="btn btn-yellow" onclick="proximo()">Pular / Próximo →</button>
+  </div>`);
+
+  document.getElementById('conteudo').innerHTML = html.join('');
+}
+
+async function vincular(matItb) {
+  const matOrigem = document.getElementById('matRef').textContent;
+  if (!confirm(`Vincular ${matOrigem} de ${NOMES_CD[cdOrigem]} ao ITB ${matItb}?`)) return;
+  const res = await api('/api/de-para-eans/vincular', {
+    method: 'POST',
+    body: JSON.stringify({ cd_origem: cdOrigem, mat_codi_origem: matOrigem, mat_codi_itb: matItb })
+  });
+  if (res.erro) return alert('Erro: ' + res.erro);
+  carregar(); carregarTotal();
+}
+
+async function marcarExclusivo() {
+  const matOrigem = document.getElementById('matRef').textContent;
+  const res = await api('/api/de-para-eans/exclusivo', {
+    method: 'POST',
+    body: JSON.stringify({ cd_origem: cdOrigem, mat_codi_origem: matOrigem })
+  });
+  if (res.erro) return alert('Erro: ' + res.erro);
+  carregar(); carregarTotal();
+}
+
+function proximo() { indice++; carregar(); }
+function anterior() { if (indice > 0) { indice--; carregar(); } }
+document.getElementById('btnNext').onclick = proximo;
+document.getElementById('btnPrev').onclick = anterior;
+document.getElementById('fCd').onchange = e => { cdOrigem = e.target.value; indice = 0; carregarTotal(); carregar(); };
+
+carregarTotal();
+carregar();
+</script>
+</body>
+</html>

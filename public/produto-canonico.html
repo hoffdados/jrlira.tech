@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Produto Canônico — Match Cross-CD</title>
+<link rel="stylesheet" href="/shared.css">
+<script src="/shared.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh;font-size:12px}
+nav{background:#1e293b;padding:10px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #334155}
+.brand{font-family:'Segoe UI Black','Segoe UI',sans-serif;font-weight:900;font-size:16px;color:#fde047}
+.btn-nav{background:#0ea5e9;color:#fff;border:none;padding:5px 10px;border-radius:4px;font-size:11px;cursor:pointer;text-decoration:none}
+.main{padding:16px 20px;max-width:1600px;margin:0 auto}
+h1{font-size:18px;margin-bottom:4px}
+.sub{color:#64748b;font-size:11px;margin-bottom:14px}
+.tabs{display:flex;gap:2px;border-bottom:1px solid #334155;margin-bottom:14px}
+.tab{padding:8px 16px;background:#1e293b;color:#94a3b8;cursor:pointer;border:1px solid #334155;border-bottom:none;border-radius:5px 5px 0 0;font-size:12px;font-weight:600}
+.tab.active{background:#0f172a;color:#fde047;border-color:#fbbf24}
+.tab .badge{background:#fbbf24;color:#1a1a1a;border-radius:8px;padding:1px 7px;font-size:10px;margin-left:6px;font-weight:700}
+.toolbar{display:flex;gap:10px;align-items:end;padding:10px;background:#1e293b;border:1px solid #334155;border-radius:5px;margin-bottom:10px;flex-wrap:wrap}
+label{font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;display:block}
+input,select{background:#0f172a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;padding:5px 8px;font-size:12px}
+input:focus,select:focus{outline:none;border-color:#fbbf24}
+button{cursor:pointer;border:none;border-radius:4px;font-size:11px;padding:6px 12px;font-weight:600}
+.btn-primary{background:#fbbf24;color:#1a1a1a}.btn-primary:hover{background:#f59e0b}
+.btn-ghost{background:#1e293b;color:#94a3b8;border:1px solid #334155}.btn-ghost:hover{background:#273549}
+.btn-success{background:#16a34a;color:#fff}.btn-success:hover{background:#15803d}
+.btn-danger{background:#dc2626;color:#fff}.btn-danger:hover{background:#b91c1c}
+.btn-sm{padding:4px 8px;font-size:10px}
+
+.card{background:#1e293b;border:1px solid #334155;border-radius:6px;padding:12px;margin-bottom:8px}
+.card.conflito{border-color:#dc2626;background:#27151a}
+.card-head{display:flex;justify-content:space-between;align-items:start;margin-bottom:8px}
+.card-title{font-size:13px;font-weight:700;color:#fde047}
+.card-meta{font-size:10px;color:#94a3b8;margin-top:2px}
+.card-actions{display:flex;gap:6px}
+
+table.matches{width:100%;border-collapse:collapse;font-size:11px;margin-top:6px}
+table.matches th{background:#0c1628;padding:5px 8px;text-align:left;color:#94a3b8;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+table.matches td{padding:5px 8px;border-top:1px solid #334155;color:#cbd5e1}
+table.matches tr.diferente td{background:#3f1d1d}
+.cd-tag{display:inline-block;padding:1px 6px;border-radius:3px;font-size:9px;font-weight:700;text-transform:uppercase}
+.cd-tag.itb{background:#0e3a5f;color:#7dd3fc}
+.cd-tag.np{background:#3a2812;color:#fdba74}
+.cd-tag.af{background:#0c2912;color:#86efac}
+.cd-tag.stm{background:#2c1452;color:#c4b5fd}
+
+.empty{text-align:center;padding:30px;color:#64748b;font-size:13px}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid #334155;border-top-color:#fbbf24;border-radius:50%;animation:spin 0.8s linear infinite;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;z-index:50}
+.modal-bg.show{display:flex}
+.modal{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:20px;max-width:90vw;max-height:90vh;overflow:auto;min-width:600px}
+.modal h2{font-size:14px;color:#fde047;margin-bottom:10px}
+
+.search-result{padding:6px 8px;cursor:pointer;border-bottom:1px solid #334155;font-size:11px}
+.search-result:hover{background:#273549}
+.search-result.ja-vinculado{opacity:.4;cursor:not-allowed}
+.selected-match{display:flex;justify-content:space-between;padding:5px 8px;background:#0c2912;border-radius:3px;margin:3px 0;font-size:11px}
+.selected-match .x{cursor:pointer;color:#dc2626;font-weight:700}
+</style>
+</head>
+<body>
+
+<nav>
+  <span class="brand">JR Lira Tech</span>
+  <span style="color:#64748b">›</span>
+  <a href="/index-novo.html" class="btn-nav" style="background:#475569">Início</a>
+  <a href="/pedidos-distribuidora.html" class="btn-nav" style="background:#0284c7">Pedidos do CD</a>
+  <span id="userInfo" style="margin-left:auto;color:#94a3b8;font-size:11px"></span>
+</nav>
+
+<div class="main">
+  <h1>Produto Canônico — Match Cross-CD</h1>
+  <div class="sub">Unifica o mesmo produto físico entre os 4 CDs quando mat_codi/EAN diferem.</div>
+
+  <div class="toolbar">
+    <button class="btn-primary" id="btnAutoMatch">Rodar auto-match</button>
+    <span id="resultAutoMatch" style="font-size:11px;color:#94a3b8"></span>
+    <div style="margin-left:auto"></div>
+    <button class="btn-ghost" id="btnRefresh">↻ Atualizar</button>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="pendentes">Pendentes <span class="badge" id="badge-pendentes">…</span></div>
+    <div class="tab" data-tab="conflitos">Conflitos <span class="badge" id="badge-conflitos">…</span></div>
+    <div class="tab" data-tab="revisao">Aguardando revisão <span class="badge" id="badge-revisao">…</span></div>
+  </div>
+
+  <div id="tabContent"></div>
+</div>
+
+<div class="modal-bg" id="modalBg">
+  <div class="modal">
+    <h2 id="modalTitle">Vincular a outros CDs</h2>
+    <div id="modalBody"></div>
+    <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn-ghost" onclick="document.getElementById('modalBg').classList.remove('show')">Cancelar</button>
+      <button class="btn-success" id="modalSalvar">Salvar canônico</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const token = localStorage.jrlira_token;
+const nome = localStorage.jrlira_nome || 'admin';
+const perfil = localStorage.jrlira_perfil;
+document.getElementById('userInfo').textContent = `${nome} (${perfil})`;
+
+const CDS = [
+  { codigo: 'srv1-itautuba', label: 'ITB', cls: 'itb', nome: 'Asa Branca ITB' },
+  { codigo: 'srv1-nprogresso', label: 'NP', cls: 'np', nome: 'N. Progresso' },
+  { codigo: 'srv2-asafrio', label: 'AF', cls: 'af', nome: 'Asa Frio' },
+  { codigo: 'srv2-asasantarem', label: 'STM', cls: 'stm', nome: 'Santarém' },
+];
+const cdByCodigo = Object.fromEntries(CDS.map(c => [c.codigo, c]));
+
+function api(path, opts={}) {
+  return fetch('/api/produto-canonico'+path, {
+    headers: { Authorization: 'Bearer '+token, ...(opts.headers||{}) },
+    ...opts,
+  }).then(r => r.json());
+}
+
+async function carregarBadges() {
+  try {
+    const r = await api('/pendencias');
+    document.getElementById('badge-pendentes').textContent = r.produtos_sem_canonico ?? 0;
+    document.getElementById('badge-conflitos').textContent = r.conflitos ?? 0;
+    document.getElementById('badge-revisao').textContent = r.aguardando_revisao ?? 0;
+  } catch (e) { console.error(e); }
+}
+
+let tabAtual = 'pendentes';
+let cdOrigemPendentes = 'srv1-itautuba';
+
+async function carregarTab(tab) {
+  tabAtual = tab;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  const root = document.getElementById('tabContent');
+  root.innerHTML = '<div class="empty"><span class="spinner"></span> Carregando…</div>';
+
+  if (tab === 'pendentes') {
+    const r = await api('/pendentes?cd_origem='+cdOrigemPendentes+'&limit=200');
+    if (!r.pendentes?.length) { root.innerHTML = '<div class="empty">Sem pendências em ' + cdByCodigo[cdOrigemPendentes].nome + '. Tudo vinculado 🎉</div>'; return; }
+    const eansLojas = r.eans_lojas || {};
+    let html = `<div class="card"><div style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><label style="margin:0">CD origem:</label>
+      <select id="cdOrigemSel">${CDS.map(c => `<option value="${c.codigo}" ${c.codigo===cdOrigemPendentes?'selected':''}>${c.nome}</option>`).join('')}</select>
+      <span style="margin-left:auto;color:#94a3b8">${r.total} produtos pendentes</span></div>
+      <div style="font-size:10px;color:#64748b;margin-top:4px">💡 <strong>EAN Lojas</strong> = EAN mais frequente em produtos_externo das 6 lojas (referência verdadeira). Vermelho = diverge do CD; verde = bate.</div>
+      </div>`;
+    html += `<table class="matches"><thead><tr><th>MAT</th><th>Descrição</th><th>EAN CD</th><th>EAN Lojas (qtd)</th><th>Estoque</th><th>Ação</th></tr></thead><tbody>`;
+    for (const p of r.pendentes) {
+      const eanCd = (p.ean_codi||'').replace(/^0+/,'');
+      const eansL = eansLojas[p.mat_codi] || [];
+      let eanLojasHtml = '<span style="color:#64748b">—</span>';
+      let eanRecomendado = '';
+      if (eansL.length) {
+        eanRecomendado = eansL[0].ean;
+        eanLojasHtml = eansL.map(e => {
+          const cls = (e.ean === eanCd) ? 'style="color:#86efac"' : 'style="color:#fca5a5"';
+          return `<div ${cls}><code>${e.ean}</code> <span style="color:#94a3b8;font-size:9px">(${e.qtd_lojas} loja${e.qtd_lojas>1?'s':''})</span></div>`;
+        }).join('');
+      }
+      const descEsc = (p.mat_desc||'').replace(/'/g,"\\'");
+      const btnMercado = eanRecomendado
+        ? `<button class="btn-success btn-sm" style="margin-right:4px" title="Cria canônico usando este EAN em todos os CDs" onclick="usarEanMercado('${eanRecomendado}','${descEsc}')">EAN mercado</button>`
+        : '';
+      html += `<tr><td><code>${p.mat_codi}</code></td><td>${p.mat_desc||''}</td>
+        <td><code>${p.ean_codi||'—'}</code></td>
+        <td>${eanLojasHtml}</td>
+        <td style="text-align:right">${p.est_quan ? Number(p.est_quan).toFixed(0) : ''}</td>
+        <td>${btnMercado}<button class="btn-primary btn-sm" onclick="abrirVincular('${cdOrigemPendentes}','${p.mat_codi}','${descEsc}','${p.ean_codi||''}','${eanRecomendado}')">Vincular</button></td></tr>`;
+    }
+    html += `</tbody></table>`;
+    root.innerHTML = html;
+    document.getElementById('cdOrigemSel').onchange = e => { cdOrigemPendentes = e.target.value; carregarTab('pendentes'); };
+  }
+  else if (tab === 'conflitos') {
+    const list = await api('/conflitos');
+    if (!list.length) { root.innerHTML = '<div class="empty">Sem conflitos detectados 🎉</div>'; return; }
+    let html = '';
+    for (const c of list) {
+      html += `<div class="card conflito"><div class="card-head"><div>
+        <div class="card-title">⚠️ ${c.descricao_canonica}</div>
+        <div class="card-meta">EAN ${c.ean_canonico || '—'} · criado ${new Date(c.criado_em).toLocaleString('pt-BR')}</div>
+      </div>
+        <div class="card-actions">
+          <button class="btn-success btn-sm" onclick="resolverConflito(${c.id})">Manter selecionados</button>
+          <button class="btn-danger btn-sm" onclick="descartar(${c.id})">Descartar</button>
+        </div></div>
+        <table class="matches" id="conf-${c.id}"><thead><tr><th>✓</th><th>CD</th><th>MAT</th><th>Descrição (atual)</th><th>EAN</th><th>Est</th></tr></thead><tbody>`;
+      for (const m of c.matches) {
+        const cd = cdByCodigo[m.cd_codigo] || { label: m.cd_codigo, cls: '' };
+        const desc = m.desc_atual || m.mat_desc;
+        const isDif = (desc||'').toUpperCase() !== (c.descricao_canonica||'').toUpperCase();
+        html += `<tr class="${isDif?'diferente':''}"><td><input type="checkbox" data-cd="${m.cd_codigo}" data-mat="${m.mat_codi}" ${!isDif?'checked':''}></td>
+          <td><span class="cd-tag ${cd.cls}">${cd.label}</span></td>
+          <td><code>${m.mat_codi}</code></td>
+          <td>${desc||''}</td>
+          <td><code>${m.ean_codi||''}</code></td>
+          <td style="text-align:right">${m.est_quan ? Number(m.est_quan).toFixed(0) : ''}</td></tr>`;
+      }
+      html += `</tbody></table></div>`;
+    }
+    root.innerHTML = html;
+  }
+  else if (tab === 'revisao') {
+    const list = await api('/aguardando-revisao');
+    if (!list.length) { root.innerHTML = '<div class="empty">Nada aguardando revisão</div>'; return; }
+    let html = '';
+    for (const c of list) {
+      html += `<div class="card"><div class="card-head"><div>
+        <div class="card-title">${c.descricao_canonica}</div>
+        <div class="card-meta">EAN ${c.ean_canonico || '—'} · ${c.matches.length} CDs vinculados</div>
+      </div>
+        <div class="card-actions">
+          <button class="btn-success btn-sm" onclick="aprovar(${c.id})">✓ Aprovar</button>
+          <button class="btn-danger btn-sm" onclick="descartar(${c.id})">Descartar</button>
+        </div></div>
+        <table class="matches"><thead><tr><th>CD</th><th>MAT</th><th>Descrição</th><th>EAN</th><th>Est</th></tr></thead><tbody>`;
+      for (const m of c.matches) {
+        const cd = cdByCodigo[m.cd_codigo] || { label: m.cd_codigo, cls: '' };
+        html += `<tr><td><span class="cd-tag ${cd.cls}">${cd.label}</span></td>
+          <td><code>${m.mat_codi}</code></td><td>${m.mat_desc||''}</td>
+          <td><code>${m.ean_codi||''}</code></td>
+          <td style="text-align:right">${m.est_quan ? Number(m.est_quan).toFixed(0) : ''}</td></tr>`;
+      }
+      html += `</tbody></table></div>`;
+    }
+    root.innerHTML = html;
+  }
+}
+
+async function usarEanMercado(ean, desc) {
+  if (!confirm(`Criar canônico com EAN ${ean} buscando em TODOS os 4 CDs?\nDescrição: ${desc}`)) return;
+  try {
+    const r = await api('/criar-do-ean-loja', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ ean, descricao_canonica: desc })
+    });
+    if (r.erro) {
+      if (r.canonico_atual) alert(`Conflito: ${r.cd_codigo} mat ${r.mat_codi} já está em outro canônico ("${r.canonico_atual}"). Use o botão Vincular pra ajustar manualmente.`);
+      else alert('Erro: '+r.erro);
+      return;
+    }
+    alert(`Canônico criado! ${r.matches_criados} CD(s) vinculado(s).`);
+    carregarBadges(); carregarTab(tabAtual);
+  } catch (e) { alert('Falha: '+e.message); }
+}
+
+async function aprovar(id) {
+  await api('/aprovar/'+id, { method:'POST' });
+  carregarBadges(); carregarTab(tabAtual);
+}
+async function descartar(id) {
+  if (!confirm('Descartar este canônico?')) return;
+  await api('/descartar/'+id, { method:'POST' });
+  carregarBadges(); carregarTab(tabAtual);
+}
+async function resolverConflito(id) {
+  const checks = document.querySelectorAll(`#conf-${id} input[type="checkbox"]`);
+  const manter = [];
+  checks.forEach(c => { if (c.checked) manter.push({ cd_codigo: c.dataset.cd, mat_codi: c.dataset.mat }); });
+  if (manter.length === 0) { alert('Selecione ao menos 1 match'); return; }
+  await api('/resolver-conflito/'+id, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ matches_manter: manter })
+  });
+  carregarBadges(); carregarTab(tabAtual);
+}
+
+// ── Vincular pendente: modal com busca em N CDs ──
+let modalCtx = null;
+function abrirVincular(cdOrigem, matCodi, matDesc, eanCodi, eanLojas) {
+  modalCtx = { cdOrigem, matCodi, matDesc, eanCodi, eanLojas, matches: [] };
+  document.getElementById('modalTitle').textContent = `Vincular: ${matDesc}`;
+  const outros = CDS.filter(c => c.codigo !== cdOrigem);
+  let html = `<div style="background:#0c1628;padding:8px;border-radius:4px;margin-bottom:10px">
+    <div><strong>Origem:</strong> <span class="cd-tag ${cdByCodigo[cdOrigem].cls}">${cdByCodigo[cdOrigem].label}</span>
+      <code>${matCodi}</code> — ${matDesc} <code style="color:#94a3b8">EAN CD: ${eanCodi||'—'}</code></div>
+    ${eanLojas ? `<div style="margin-top:4px;font-size:11px;color:#86efac">💡 EAN nas lojas: <code>${eanLojas}</code> — preenchido como busca padrão</div>` : ''}
+  </div>
+  <label>Descrição canônica</label>
+  <input id="descCanonica" value="${matDesc}" style="width:100%;margin-bottom:10px">
+  <div id="selected"></div>`;
+  // Busca padrão: EAN das lojas (mais confiável), senão EAN do CD, senão descrição
+  const buscaPadrao = eanLojas || eanCodi || matDesc.split(' ').slice(0,2).join(' ');
+  for (const cd of outros) {
+    html += `<div style="margin-top:10px;padding:8px;background:#0c1628;border-radius:4px">
+      <label>Buscar em <span class="cd-tag ${cd.cls}">${cd.label}</span> ${cd.nome}</label>
+      <input id="busca-${cd.codigo}" placeholder="descrição, EAN, mat_codi…" value="${buscaPadrao}" oninput="buscarEmCd('${cd.codigo}', this.value)" style="width:100%">
+      <div id="res-${cd.codigo}"></div></div>`;
+  }
+  document.getElementById('modalBody').innerHTML = html;
+  document.getElementById('modalBg').classList.add('show');
+  renderSelected();
+  // Dispara busca automática em todos os CDs com a query padrão
+  if (buscaPadrao && buscaPadrao.length >= 2) {
+    for (const cd of outros) buscarEmCd(cd.codigo, buscaPadrao);
+  }
+}
+async function buscarEmCd(cd, q) {
+  const el = document.getElementById('res-'+cd);
+  if (!q || q.length < 2) { el.innerHTML = ''; return; }
+  const rows = await api(`/buscar-em-cd?cd_codigo=${cd}&q=${encodeURIComponent(q)}`);
+  el.innerHTML = rows.slice(0, 8).map(r => `
+    <div class="search-result ${r.ja_vinculado?'ja-vinculado':''}" ${r.ja_vinculado?'':`onclick="selecionarMatch('${cd}','${r.mat_codi}','${(r.mat_desc||'').replace(/'/g,"\\'")}','${r.ean_codi||''}')"`}>
+      <code>${r.mat_codi}</code> ${r.mat_desc||''} <code style="color:#64748b">${r.ean_codi||''}</code>
+      ${r.ja_vinculado?'<span style="color:#dc2626;font-size:9px"> (já vinculado)</span>':''}
+    </div>`).join('');
+}
+function selecionarMatch(cd, mat, desc, ean) {
+  modalCtx.matches = modalCtx.matches.filter(m => m.cd_codigo !== cd); // só 1 por CD
+  modalCtx.matches.push({ cd_codigo: cd, mat_codi: mat, mat_desc: desc, ean_codi: ean });
+  renderSelected();
+  document.getElementById('res-'+cd).innerHTML = '';
+}
+function renderSelected() {
+  const el = document.getElementById('selected');
+  if (!modalCtx.matches.length) { el.innerHTML = ''; return; }
+  el.innerHTML = '<label>Vinculados</label>' + modalCtx.matches.map((m,i) => {
+    const cd = cdByCodigo[m.cd_codigo];
+    return `<div class="selected-match"><span><span class="cd-tag ${cd.cls}">${cd.label}</span> <code>${m.mat_codi}</code> ${m.mat_desc}</span>
+      <span class="x" onclick="modalCtx.matches.splice(${i},1);renderSelected()">×</span></div>`;
+  }).join('');
+}
+
+document.getElementById('modalSalvar').onclick = async () => {
+  const desc = document.getElementById('descCanonica').value.trim();
+  if (!desc) { alert('Descrição canônica obrigatória'); return; }
+  if (!modalCtx.matches.length) { alert('Vincule pelo menos 1 outro CD'); return; }
+  // Inclui o produto origem nos matches
+  const matches = [
+    { cd_codigo: modalCtx.cdOrigem, mat_codi: modalCtx.matCodi, mat_desc: modalCtx.matDesc, ean_codi: modalCtx.eanCodi },
+    ...modalCtx.matches
+  ];
+  await api('/criar', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ descricao_canonica: desc, ean_canonico: modalCtx.eanCodi, matches })
+  });
+  document.getElementById('modalBg').classList.remove('show');
+  carregarBadges(); carregarTab(tabAtual);
+};
+
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => carregarTab(t.dataset.tab));
+document.getElementById('btnRefresh').onclick = () => { carregarBadges(); carregarTab(tabAtual); };
+document.getElementById('btnAutoMatch').onclick = async () => {
+  const btn = document.getElementById('btnAutoMatch');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Rodando…';
+  try {
+    const r = await api('/auto-match', { method:'POST' });
+    document.getElementById('resultAutoMatch').textContent = `${r.canonicos_criados} canônicos · ${r.matches_criados} vínculos · ${r.conflitos} conflitos`;
+    carregarBadges(); carregarTab(tabAtual);
+  } finally { btn.disabled = false; btn.textContent = 'Rodar auto-match'; }
+};
+
+carregarBadges();
+carregarTab('pendentes');
+</script>
+</body>
+</html>
