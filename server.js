@@ -36,6 +36,7 @@ app.use('/api/cr', require('./src/routes/contas-receber'));
 app.use('/api/acordos', require('./src/routes/acordos'));
 app.use('/api/ultrasyst', require('./src/routes/ultrasyst'));
 app.use('/api/produtos-embalagem', require('./src/routes/produtos_embalagem'));
+app.use('/api/cd-produtos-embalagem', require('./src/routes/cd_produtos_embalagem'));
 app.use('/api/embalagens-fornecedor', require('./src/routes/embalagens_fornecedor'));
 app.use('/api/auditagem-divergencias', require('./src/routes/auditagem_divergencias'));
 app.use('/api/validades-em-risco', require('./src/routes/validades_em_risco'));
@@ -2632,6 +2633,29 @@ async function initDB() {
       DROP TRIGGER IF EXISTS trg_norm_ean ON cd_material;
       CREATE TRIGGER trg_norm_ean BEFORE INSERT OR UPDATE ON cd_material
         FOR EACH ROW EXECUTE FUNCTION trim_zeros_cd_ean();
+    `);
+
+    // cd_produtos_embalagem — qtd_embalagem e EANs (principal + secundário) por CD.
+    // Alimentada por upload Excel — não tocada pelo sync_cd.
+    await runMigration(client, '20260513_cd_produtos_embalagem', `
+      CREATE TABLE IF NOT EXISTS cd_produtos_embalagem (
+        cd_codigo       VARCHAR(40) NOT NULL,
+        mat_codi        VARCHAR(20) NOT NULL,
+        ean_principal   VARCHAR(20),
+        ean_secundario  VARCHAR(20),
+        qtd_embalagem   NUMERIC(10,2) NOT NULL DEFAULT 1,
+        peso_unidade_kg NUMERIC(10,3),
+        peso_variavel   BOOLEAN NOT NULL DEFAULT FALSE,
+        atualizado_em   TIMESTAMPTZ DEFAULT NOW(),
+        atualizado_por  VARCHAR(120),
+        PRIMARY KEY (cd_codigo, mat_codi)
+      );
+      CREATE INDEX IF NOT EXISTS idx_cpe_ean_principal
+        ON cd_produtos_embalagem ((NULLIF(LTRIM(ean_principal,'0'),'')))
+        WHERE ean_principal IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_cpe_ean_secundario
+        ON cd_produtos_embalagem ((NULLIF(LTRIM(ean_secundario,'0'),'')))
+        WHERE ean_secundario IS NOT NULL;
     `);
 
     console.log('[DB] Tabelas inicializadas');
