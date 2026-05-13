@@ -348,6 +348,25 @@ router.get('/grade', adminOuCeo, async (req, res) => {
     ) : [];
     tick('estCds');
 
+    // 5a-tri) Estoque via cd_produtos_embalagem do destino — match por ean_principal OU ean_secundario.
+    // ean_secundario é a "ponte" cadastrada manualmente que liga produtos com cadastro divergente
+    // entre CD origem e destino (ex: ASA FRIO usa ean_principal próprio mas ean_secundario = EAN do ITB).
+    const estCdsCpe = cdDestinos.length && eansAmpliados.length ? await dbQuery(
+      `SELECT cpe.cd_codigo, cpe.mat_codi,
+              NULLIF(LTRIM(cpe.ean_principal,'0'),'')  AS ean_principal,
+              NULLIF(LTRIM(cpe.ean_secundario,'0'),'') AS ean_secundario,
+              cpe.qtd_embalagem, cpe.peso_unidade_kg, cpe.peso_variavel,
+              cde.est_quan
+         FROM cd_produtos_embalagem cpe
+         LEFT JOIN cd_estoque cde
+                ON cde.cd_codigo = cpe.cd_codigo AND cde.pro_codi = cpe.mat_codi
+        WHERE cpe.cd_codigo = ANY($1::text[])
+          AND (NULLIF(LTRIM(cpe.ean_principal,'0'),'')  = ANY($2::text[])
+            OR NULLIF(LTRIM(cpe.ean_secundario,'0'),'') = ANY($2::text[]))`,
+      [cdDestinos.map(d => d.cd_codigo), eansAmpliados]
+    ) : [];
+    tick('estCdsCpe');
+
     // 5a-bis) Estoque via canônico — quando EAN não cruza, pega direto pelo mat_codi do destino
     const estCdsCanonico = canonicosDestinos.length ? await dbQuery(
       `SELECT cde.cd_codigo, cde.pro_codi AS mat_codi, cde.est_quan
@@ -551,6 +570,16 @@ router.get('/grade', adminOuCeo, async (req, res) => {
     // Estoque CD destino — chave: `${cd_codigo}|${ean_norm}` (match EAN)
     const estCdMap = new Map();
     for (const e of estCds) estCdMap.set(`${e.cd_codigo}|${norm(e.ean_codi)}`, e);
+    // estCdsCpe — mapeia ambos ean_principal e ean_secundario pro mesmo record (CD+mat+estoque).
+    // Entra como fallback após estCdMap no loop.
+    const estCdMapCpe = new Map();
+    for (const e of estCdsCpe) {
+      const rec = { est_quan: e.est_quan, mat_codi: e.mat_codi,
+                    qtd_embalagem: e.qtd_embalagem, peso_unidade_kg: e.peso_unidade_kg,
+                    peso_variavel: e.peso_variavel };
+      if (e.ean_principal)  estCdMapCpe.set(`${e.cd_codigo}|${e.ean_principal}`, rec);
+      if (e.ean_secundario) estCdMapCpe.set(`${e.cd_codigo}|${e.ean_secundario}`, rec);
+    }
 
     // Estoque CD destino via canônico — chave: `${cd_codigo}|${mat_codi_destino}` → mas guardado por mat_origem pra lookup
     // Pra simplificar: vamos guardar por (cd_codigo, mat_codi_origem)
@@ -609,11 +638,12 @@ router.get('/grade', adminOuCeo, async (req, res) => {
           // Match direto por codbarra = ean principal do produto
           const e = estLojaMap.get(`${d.loja_id}|${eanN}`);
           const v = vendaPorCb.get(`${d.loja_id}|${eanN}`);
-          const t = transitoPorCb.get(`${d.loja_id}|${eanN}`) || 0;
+          // NF do CD manda quantidade em CX (1 unid NF = 1 CX). Estoque da loja é em UN de venda.
+          const tCx = transitoPorCb.get(`${d.loja_id}|${eanN}`) || 0;
           slot.estoque_un = e ? parseFloat(e.estdisponivel) : 0;
-          slot.transito_un = t;
+          slot.transito_cx = Math.floor(tCx);
+          slot.transito_un = tCx * qtdEmb;
           slot.estoque_cx = qtdEmb > 0 ? Math.floor(slot.estoque_un / qtdEmb) : 0;
-          slot.transito_cx = qtdEmb > 0 ? Math.floor(slot.transito_un / qtdEmb) : 0;
           const qtd_90d = v ? parseFloat(v.qtd_90d) || 0 : 0;
           const media_dia = qtd_90d / 90;
           const sug_un = Math.max(0, 35 * media_dia - slot.estoque_un - slot.transito_un);
@@ -628,11 +658,12 @@ router.get('/grade', adminOuCeo, async (req, res) => {
         } else if (d.tipo === 'CD' && d.cd_codigo) {
           // CDs destino controlam estoque na MESMA unidade do CD origem (CX) — não dividir por qtd_embalagem
           // Match por EAN primeiro; se não tiver, tenta EANs equivalentes via produtoprincipal das lojas;
+          // depois fallback cd_produtos_embalagem (ean_principal/secundario manual);
           // último fallback: canônico (mat_codi do destino mapeado).
           const eansTentar = ppEqMap.get(eanN) || new Set([eanN]);
           let e = null, v = null, t = 0;
           for (const eq of eansTentar) {
-            if (!e || !e.est_quan) e = estCdMap.get(`${d.cd_codigo}|${eq}`) || e;
+            if (!e || !e.est_quan) e = estCdMap.get(`${d.cd_codigo}|${eq}`) || estCdMapCpe.get(`${d.cd_codigo}|${eq}`) || e;
             if (!v) v = vendasCdMap.get(`${d.cd_codigo}|${eq}`) || v;
             if (!t) t = transitoCdMap.get(`${d.cd_codigo}|${eq}`) || 0;
           }
