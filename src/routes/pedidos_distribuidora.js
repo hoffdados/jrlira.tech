@@ -282,7 +282,27 @@ router.get('/grade', adminOuCeo, async (req, res) => {
           AND NULLIF(LTRIM(ce2.ean_codi,'0'),'') = ANY($2::text[])`,
       [cdOrigem, eansNorm]
     ) : [];
-    const eansAmpliados = [...new Set([...eansNorm, ...eansExpandidosCdOrigem.map(x => x.ean_codi).filter(Boolean)])];
+    // 5-bis) Expande via produtos_externo.produtoprincipal das lojas.
+    // Cada loja agrega múltiplos EANs sob o mesmo produtoprincipal — usar isso pra
+    // descobrir EAN equivalente que cd_ean do origem não tem (cadastro divergente CD↔CD).
+    const eansExpandidosPP = eansNorm.length ? await dbQuery(
+      `WITH pp AS (
+         SELECT DISTINCT produtoprincipal
+           FROM produtos_externo
+          WHERE produtoprincipal IS NOT NULL AND produtoprincipal <> ''
+            AND NULLIF(LTRIM(codigobarra,'0'),'') = ANY($1::text[])
+       )
+       SELECT DISTINCT NULLIF(LTRIM(pe.codigobarra,'0'),'') AS ean
+         FROM produtos_externo pe
+         JOIN pp ON pp.produtoprincipal = pe.produtoprincipal
+        WHERE pe.codigobarra IS NOT NULL`,
+      [eansNorm]
+    ) : [];
+    const eansAmpliados = [...new Set([
+      ...eansNorm,
+      ...eansExpandidosCdOrigem.map(x => x.ean_codi).filter(Boolean),
+      ...eansExpandidosPP.map(x => x.ean).filter(Boolean),
+    ])];
 
     // 5a) FALLBACK CANÔNICO: produto_canonico_match resolve casos onde EAN não cruza
     // (cadastro divergente entre CDs). Pega mat_codi de cada CD destino pelos mat_codis do CD origem.
@@ -366,12 +386,12 @@ router.get('/grade', adminOuCeo, async (req, res) => {
     // 5b) "Vendas" dos CDs destino (consumo real) — fonte: CAPA + MOVIITEM (CAP_TIPO='3' = venda externa/rota/atacado).
     // Devolução (CAP_DEVOL='S') subtrai. cd_movcompra registra só transferências internas (NOP=31), não serve.
     // Lê do cache diário (vendas_cd_cache).
-    const vendasCds = cdDestinos.length && eansNorm.length ? await dbQuery(
+    const vendasCds = cdDestinos.length && eansAmpliados.length ? await dbQuery(
       `SELECT cd_codigo, ean_norm AS ean, qtd_90d, ultima_saida
          FROM vendas_cd_cache
         WHERE cd_codigo = ANY($1::text[])
           AND ean_norm = ANY($2::text[])`,
-      [cdDestinos.map(d => d.cd_codigo), eansNorm]
+      [cdDestinos.map(d => d.cd_codigo), eansAmpliados]
     ) : [];
     tick('vendasCds');
 
