@@ -1,4 +1,9 @@
-async function enviarEmail(destinatario, assunto, html, anexos = []) {
+// Throttle global: Resend limita 5 req/s. Serializa todos envios com gap mínimo de 250ms (4/s, margem segura).
+const RESEND_MIN_GAP_MS = 250;
+let _ultimoEnvioMs = 0;
+let _fila = Promise.resolve();
+
+async function _enviarAgora(destinatario, assunto, html, anexos) {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) { console.warn('[mailer] RESEND_API_KEY ausente — email não enviado'); return; }
   const from = process.env.MAIL_FROM || 'notificacoes@jrlira.tech';
@@ -17,7 +22,23 @@ async function enviarEmail(destinatario, assunto, html, anexos = []) {
   if (!res.ok) {
     const err = await res.text();
     console.error('[mailer] Resend erro:', err);
+    if (res.status === 429) {
+      // backoff extra de 1s pra escapar do rate limit
+      await new Promise(r => setTimeout(r, 1000));
+    }
   }
+}
+
+function enviarEmail(destinatario, assunto, html, anexos = []) {
+  _fila = _fila.then(async () => {
+    const agora = Date.now();
+    const espera = Math.max(0, _ultimoEnvioMs + RESEND_MIN_GAP_MS - agora);
+    if (espera > 0) await new Promise(r => setTimeout(r, espera));
+    _ultimoEnvioMs = Date.now();
+    try { await _enviarAgora(destinatario, assunto, html, anexos); }
+    catch (e) { console.error('[mailer] excecao:', e.message); }
+  });
+  return _fila;
 }
 
 function templateCredenciais({ nome, usuario, senha, perfil }) {
