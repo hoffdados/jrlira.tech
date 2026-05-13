@@ -1,0 +1,33 @@
+{
+  "name": "JR Lira Tech",
+  "short_name": "JR Lira",
+  "description": "Sistema de operações — notas, estoque, validades e auditoria da rede SuperAsa.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "lang": "pt-BR",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "32x32 64x64 128x128",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
