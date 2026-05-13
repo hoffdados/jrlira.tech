@@ -2604,6 +2604,36 @@ async function initDB() {
         ADD COLUMN IF NOT EXISTS cancelada_motivo TEXT;
     `);
 
+    // Normaliza EANs nas tabelas dos CDs (strip leading zeros).
+    // Match cross-CD usa LTRIM em runtime, mas tendo o dado limpo:
+    // (1) evita falha quando uma query esquece o LTRIM, (2) deixa índices BTREE funcionarem direto.
+    await runMigration(client, '20260513_cd_ean_strip_leading_zeros', `
+      UPDATE cd_ean
+         SET ean_codi = NULLIF(LTRIM(ean_codi,'0'),'')
+       WHERE ean_codi ~ '^0';
+    `);
+    await runMigration(client, '20260513_cd_material_strip_leading_zeros', `
+      UPDATE cd_material
+         SET ean_codi = NULLIF(LTRIM(ean_codi,'0'),'')
+       WHERE ean_codi ~ '^0';
+    `);
+    await runMigration(client, '20260513_trim_zeros_cd_fn', `
+      CREATE OR REPLACE FUNCTION trim_zeros_cd_ean() RETURNS TRIGGER AS $trg$
+      BEGIN
+        NEW.ean_codi := NULLIF(LTRIM(COALESCE(NEW.ean_codi,''),'0'),'');
+        RETURN NEW;
+      END;
+      $trg$ LANGUAGE plpgsql;
+    `);
+    await runMigration(client, '20260513_trim_zeros_cd_triggers', `
+      DROP TRIGGER IF EXISTS trg_norm_ean ON cd_ean;
+      CREATE TRIGGER trg_norm_ean BEFORE INSERT OR UPDATE ON cd_ean
+        FOR EACH ROW EXECUTE FUNCTION trim_zeros_cd_ean();
+      DROP TRIGGER IF EXISTS trg_norm_ean ON cd_material;
+      CREATE TRIGGER trg_norm_ean BEFORE INSERT OR UPDATE ON cd_material
+        FOR EACH ROW EXECUTE FUNCTION trim_zeros_cd_ean();
+    `);
+
     console.log('[DB] Tabelas inicializadas');
   } finally {
     client.release();

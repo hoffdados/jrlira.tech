@@ -97,7 +97,7 @@ async function syncMaterial(cd, cli) {
         rows.map(x => String(x.MAT_DESC || '').trim() || null),
         rows.map(x => String(x.MAT_REFE || '').trim() || null),
         rows.map(x => String(x.MAT_SITU || '').trim() || null),
-        rows.map(x => String(x.EAN_CODI || '').trim() || null),
+        rows.map(x => (String(x.EAN_CODI || '').trim().replace(/^0+/, '')) || null),
         rows.map(x => 'MAT_PSLI' in x && x.MAT_PSLI != null ? Number(x.MAT_PSLI) : null),
         rows.map(x => 'MAT_PSBR' in x && x.MAT_PSBR != null ? Number(x.MAT_PSBR) : null),
         rows.map(x => 'GRU_CODI' in x && x.GRU_CODI != null ? String(x.GRU_CODI).trim() || null : null),
@@ -229,7 +229,7 @@ async function syncEan(cd, cli) {
     const uniq = [];
     for (const r of rows) {
       const m = String(r.MAT_CODI || '').trim();
-      const e = String(r.EAN_CODI || '').trim();
+      const e = String(r.EAN_CODI || '').trim().replace(/^0+/, '');
       if (!m || !e) continue;
       const k = `${m}|${e}`;
       if (seen.has(k)) continue;
