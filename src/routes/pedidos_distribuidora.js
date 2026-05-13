@@ -285,23 +285,31 @@ router.get('/grade', adminOuCeo, async (req, res) => {
     // 5-bis) Expande via produtos_externo.produtoprincipal das lojas.
     // Cada loja agrega múltiplos EANs sob o mesmo produtoprincipal — usar isso pra
     // descobrir EAN equivalente que cd_ean do origem não tem (cadastro divergente CD↔CD).
-    const eansExpandidosPP = eansNorm.length ? await dbQuery(
-      `WITH pp AS (
-         SELECT DISTINCT produtoprincipal
+    // Retorna PARES (ean_origem, ean_equivalente) pra montar lookup no JS.
+    const ppEquivPairs = eansNorm.length ? await dbQuery(
+      `WITH pp_origem AS (
+         SELECT DISTINCT NULLIF(LTRIM(codigobarra,'0'),'') AS ean_origem, produtoprincipal
            FROM produtos_externo
           WHERE produtoprincipal IS NOT NULL AND produtoprincipal <> ''
             AND NULLIF(LTRIM(codigobarra,'0'),'') = ANY($1::text[])
        )
-       SELECT DISTINCT NULLIF(LTRIM(pe.codigobarra,'0'),'') AS ean
-         FROM produtos_externo pe
-         JOIN pp ON pp.produtoprincipal = pe.produtoprincipal
+       SELECT DISTINCT po.ean_origem, NULLIF(LTRIM(pe.codigobarra,'0'),'') AS ean_eq
+         FROM pp_origem po
+         JOIN produtos_externo pe ON pe.produtoprincipal = po.produtoprincipal
         WHERE pe.codigobarra IS NOT NULL`,
       [eansNorm]
     ) : [];
+    // ppEqMap: ean_origem → Set<eans equivalentes>
+    const ppEqMap = new Map();
+    for (const r of ppEquivPairs) {
+      if (!r.ean_origem || !r.ean_eq) continue;
+      if (!ppEqMap.has(r.ean_origem)) ppEqMap.set(r.ean_origem, new Set([r.ean_origem]));
+      ppEqMap.get(r.ean_origem).add(r.ean_eq);
+    }
     const eansAmpliados = [...new Set([
       ...eansNorm,
       ...eansExpandidosCdOrigem.map(x => x.ean_codi).filter(Boolean),
-      ...eansExpandidosPP.map(x => x.ean).filter(Boolean),
+      ...ppEquivPairs.map(x => x.ean_eq).filter(Boolean),
     ])];
 
     // 5a) FALLBACK CANÔNICO: produto_canonico_match resolve casos onde EAN não cruza
@@ -619,10 +627,15 @@ router.get('/grade', adminOuCeo, async (req, res) => {
           }
         } else if (d.tipo === 'CD' && d.cd_codigo) {
           // CDs destino controlam estoque na MESMA unidade do CD origem (CX) — não dividir por qtd_embalagem
-          // Match por EAN primeiro; se não tiver, usa canônico (mat_codi do destino mapeado).
-          let e = estCdMap.get(`${d.cd_codigo}|${eanN}`);
-          let v = vendasCdMap.get(`${d.cd_codigo}|${eanN}`);
-          let t = transitoCdMap.get(`${d.cd_codigo}|${eanN}`) || 0;
+          // Match por EAN primeiro; se não tiver, tenta EANs equivalentes via produtoprincipal das lojas;
+          // último fallback: canônico (mat_codi do destino mapeado).
+          const eansTentar = ppEqMap.get(eanN) || new Set([eanN]);
+          let e = null, v = null, t = 0;
+          for (const eq of eansTentar) {
+            if (!e || !e.est_quan) e = estCdMap.get(`${d.cd_codigo}|${eq}`) || e;
+            if (!v) v = vendasCdMap.get(`${d.cd_codigo}|${eq}`) || v;
+            if (!t) t = transitoCdMap.get(`${d.cd_codigo}|${eq}`) || 0;
+          }
           if (!e || !e.est_quan) e = estCdMapCanon.get(`${d.cd_codigo}|${p.mat_codi}`) || e;
           if (!v) v = vendasCdMapCanon.get(`${d.cd_codigo}|${p.mat_codi}`) || v;
           if (!t) t = transitoCdMapCanon.get(`${d.cd_codigo}|${p.mat_codi}`) || 0;
