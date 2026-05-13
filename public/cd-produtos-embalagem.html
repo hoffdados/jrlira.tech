@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Embalagens por CD — JR Lira</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/shared.css">
+<style>
+  body { font-family: system-ui, -apple-system, sans-serif; margin: 0; background: #0b0f1a; color: #e7eaf3; }
+  header { padding: 12px 20px; background: #111827; border-bottom: 1px solid #1f2937; display: flex; gap: 12px; align-items: center; }
+  header h1 { font-size: 17px; margin: 0; }
+  header .stats { font-size: 12px; color: #94a3b8; }
+  .toolbar { padding: 10px 20px; background: #0f172a; border-bottom: 1px solid #1f2937; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .toolbar select, .toolbar input { background: #1e293b; color: #e7eaf3; border: 1px solid #334155; border-radius: 6px; padding: 6px 10px; font-size: 13px; }
+  .toolbar button { background: #2563eb; color: #fff; border: 0; border-radius: 6px; padding: 7px 14px; font-size: 13px; cursor: pointer; }
+  .toolbar button:hover { background: #1d4ed8; }
+  .toolbar button.secondary { background: #475569; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { background: #1e293b; padding: 8px; text-align: left; position: sticky; top: 0; border-bottom: 1px solid #334155; }
+  td { padding: 4px 8px; border-bottom: 1px solid #1f2937; }
+  tr:hover { background: #111827; }
+  td.cod { font-family: monospace; color: #94a3b8; }
+  td.desc { color: #e7eaf3; font-weight: 500; min-width: 280px; }
+  input.inline { background: #0f172a; color: #e7eaf3; border: 1px solid #334155; border-radius: 4px; padding: 3px 6px; font-size: 12px; width: 100%; box-sizing: border-box; }
+  input.inline:focus { background: #1e293b; border-color: #3b82f6; outline: none; }
+  td.qtd input { width: 70px; }
+  td.peso input { width: 70px; }
+  td.ean input { width: 130px; }
+  .row-dirty { background: #1e3a8a !important; }
+  .row-saving { background: #ca8a04 !important; }
+  .row-error { background: #b91c1c !important; }
+  .row-saved { background: #166534; animation: fade 1.2s ease-out forwards; }
+  @keyframes fade { to { background: transparent; } }
+  td.pv { text-align: center; }
+  td.pv input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
+  .empty { padding: 40px; text-align: center; color: #64748b; }
+  .totais { padding: 8px 20px; font-size: 12px; color: #94a3b8; background: #0f172a; border-top: 1px solid #1f2937; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Embalagens por CD</h1>
+  <span class="stats" id="stats"></span>
+</header>
+<div class="toolbar">
+  <select id="cdCodigo">
+    <option value="srv2-asafrio">srv2-asafrio — ASA FRIO ITAITUBA</option>
+    <option value="srv2-asasantarem">srv2-asasantarem — ASA FRIO SANTAREM</option>
+    <option value="srv1-itautuba">srv1-itautuba — ASA BRANCA ITAITUBA</option>
+    <option value="srv1-nprogresso">srv1-nprogresso — ASA BRANCA N_PROGRESSO</option>
+  </select>
+  <input id="busca" placeholder="Buscar por código / descrição / EAN..." style="flex:1; min-width: 220px">
+  <select id="filtroPeso">
+    <option value="">Todos</option>
+    <option value="pv">Só peso variável</option>
+    <option value="fixo">Só embalagem fixa</option>
+    <option value="sem">Sem embalagem cadastrada</option>
+  </select>
+  <button onclick="carregar()">Carregar</button>
+  <button class="secondary" onclick="salvarTudo()">Salvar pendências</button>
+</div>
+<div id="conteudo"></div>
+<div class="totais" id="totais"></div>
+
+<script>
+const token = localStorage.getItem('token');
+if (!token) location.href = '/login.html';
+const api = (path, opts={}) => fetch('/api/cd-produtos-embalagem' + path, {
+  ...opts,
+  headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json', ...(opts.headers||{}) }
+});
+let dados = [];
+let dirtyMap = new Map();
+
+async function carregar() {
+  const cd = document.getElementById('cdCodigo').value;
+  const busca = document.getElementById('busca').value.trim();
+  document.getElementById('conteudo').innerHTML = '<div class="empty">Carregando...</div>';
+  const url = `?cd_codigo=${encodeURIComponent(cd)}&incluir_sem_cadastro=1` + (busca ? `&busca=${encodeURIComponent(busca)}` : '');
+  const r = await api(url);
+  const j = await r.json();
+  if (!r.ok) { document.getElementById('conteudo').innerHTML = `<div class="empty">Erro: ${j.erro}</div>`; return; }
+  dados = (j.itens || []).map(c => ({
+    mat_codi: c.mat_codi,
+    mat_desc: c.mat_desc || '',
+    ean_principal: c.ean_principal || '',
+    ean_secundario: c.ean_secundario || '',
+    qtd_embalagem: c.qtd_embalagem != null ? String(c.qtd_embalagem) : '',
+    peso_unidade_kg: c.peso_unidade_kg != null ? String(c.peso_unidade_kg) : '',
+    peso_variavel: !!c.peso_variavel,
+    _existe: !!c.tem_cadastro,
+  }));
+  dirtyMap.clear();
+  renderizar();
+}
+
+function aplicarFiltroPeso(itens) {
+  const f = document.getElementById('filtroPeso').value;
+  if (!f) return itens;
+  if (f === 'pv') return itens.filter(i => i.peso_variavel);
+  if (f === 'fixo') return itens.filter(i => !i.peso_variavel && i.qtd_embalagem);
+  if (f === 'sem') return itens.filter(i => !i.qtd_embalagem);
+  return itens;
+}
+
+function renderizar() {
+  const itens = aplicarFiltroPeso(dados);
+  if (!itens.length) {
+    document.getElementById('conteudo').innerHTML = '<div class="empty">Nenhum produto.</div>';
+    document.getElementById('stats').textContent = '';
+    return;
+  }
+  const html = ['<table><thead><tr>',
+    '<th>Código</th>',
+    '<th>Descrição</th>',
+    '<th>EAN principal</th>',
+    '<th>cod_barra (ponte loja)</th>',
+    '<th>Peso (kg)</th>',
+    '<th>Embalagem (qtd)</th>',
+    '<th>P.Var?</th>',
+    '</tr></thead><tbody>'];
+  for (const it of itens) {
+    html.push(`<tr id="row-${it.mat_codi}">`);
+    html.push(`<td class="cod">${it.mat_codi}</td>`);
+    html.push(`<td class="desc">${escape(it.mat_desc)}</td>`);
+    html.push(`<td class="ean"><input class="inline" data-mat="${it.mat_codi}" data-campo="ean_principal" value="${escape(it.ean_principal)}" oninput="marcarDirty(this)"></td>`);
+    html.push(`<td class="ean"><input class="inline" data-mat="${it.mat_codi}" data-campo="ean_secundario" value="${escape(it.ean_secundario)}" oninput="marcarDirty(this)"></td>`);
+    html.push(`<td class="peso"><input class="inline" data-mat="${it.mat_codi}" data-campo="peso_unidade_kg" value="${escape(it.peso_unidade_kg)}" oninput="marcarDirty(this)" inputmode="decimal"></td>`);
+    html.push(`<td class="qtd"><input class="inline" data-mat="${it.mat_codi}" data-campo="qtd_embalagem" value="${escape(it.qtd_embalagem)}" oninput="marcarDirty(this)" inputmode="decimal"></td>`);
+    html.push(`<td class="pv"><input type="checkbox" data-mat="${it.mat_codi}" data-campo="peso_variavel" ${it.peso_variavel ? 'checked' : ''} onchange="marcarDirty(this)"></td>`);
+    html.push('</tr>');
+  }
+  html.push('</tbody></table>');
+  document.getElementById('conteudo').innerHTML = html.join('');
+  document.getElementById('stats').textContent = `${itens.length} produto(s) · ${dados.filter(d => d._existe).length} cadastrados`;
+  document.getElementById('totais').textContent = `Pendentes pra salvar: ${dirtyMap.size}`;
+}
+
+function escape(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function marcarDirty(el) {
+  const mat = el.dataset.mat;
+  const campo = el.dataset.campo;
+  const valor = el.type === 'checkbox' ? el.checked : el.value;
+  if (!dirtyMap.has(mat)) {
+    const orig = dados.find(d => d.mat_codi === mat) || {};
+    dirtyMap.set(mat, { ...orig });
+  }
+  dirtyMap.get(mat)[campo] = valor;
+  const row = document.getElementById('row-' + mat);
+  if (row) row.classList.add('row-dirty');
+  document.getElementById('totais').textContent = `Pendentes pra salvar: ${dirtyMap.size}`;
+}
+
+async function salvarTudo() {
+  if (!dirtyMap.size) { alert('Nada pra salvar'); return; }
+  const cd = document.getElementById('cdCodigo').value;
+  const total = dirtyMap.size;
+  let ok = 0, erros = 0;
+  const entradas = [...dirtyMap.entries()];
+  for (const [mat, payload] of entradas) {
+    const row = document.getElementById('row-' + mat);
+    if (row) { row.classList.remove('row-dirty', 'row-error'); row.classList.add('row-saving'); }
+    try {
+      const body = {
+        cd_codigo: cd,
+        mat_codi: mat,
+        ean_principal: payload.ean_principal || null,
+        ean_secundario: payload.ean_secundario || null,
+        qtd_embalagem: payload.qtd_embalagem ? parseFloat(payload.qtd_embalagem) : 1,
+        peso_unidade_kg: payload.peso_unidade_kg ? parseFloat(payload.peso_unidade_kg) : null,
+        peso_variavel: !!payload.peso_variavel,
+      };
+      const r = await api('', { method: 'POST', body: JSON.stringify(body) });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.erro || 'falha');
+      // Atualiza dados locais
+      const dest = dados.find(d => d.mat_codi === mat);
+      if (dest) Object.assign(dest, payload, { _existe: true });
+      if (row) { row.classList.remove('row-saving'); row.classList.add('row-saved'); setTimeout(() => row.classList.remove('row-saved'), 1200); }
+      ok++;
+    } catch (e) {
+      if (row) { row.classList.remove('row-saving'); row.classList.add('row-error'); }
+      console.error(mat, e);
+      erros++;
+    }
+  }
+  dirtyMap.clear();
+  document.getElementById('totais').textContent = `Salvos: ${ok} · Erros: ${erros}`;
+}
+
+document.getElementById('cdCodigo').addEventListener('change', carregar);
+document.getElementById('busca').addEventListener('keydown', e => { if (e.key === 'Enter') carregar(); });
+document.getElementById('filtroPeso').addEventListener('change', renderizar);
+carregar();
+</script>
+</body>
+</html>

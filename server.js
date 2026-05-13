@@ -85,6 +85,7 @@ app.get('/precos-otimizados-status', (req, res) => res.sendFile(path.join(__dirn
 app.get('/admin-cds', (req, res) => res.sendFile(path.join(__dirname, 'public/admin-cds.html')));
 app.get('/pedidos-distribuidora', (req, res) => res.sendFile(path.join(__dirname, 'public/pedidos-distribuidora.html')));
 app.get('/produto-canonico', (req, res) => res.sendFile(path.join(__dirname, 'public/produto-canonico.html')));
+app.get('/cd-produtos-embalagem', (req, res) => res.sendFile(path.join(__dirname, 'public/cd-produtos-embalagem.html')));
 app.get('/notas-avaria-reprocessar', (req, res) => res.sendFile(path.join(__dirname, 'public/notas-avaria-reprocessar.html')));
 app.get('/notas-avaria-cobrancas', (req, res) => res.sendFile(path.join(__dirname, 'public/notas-avaria-cobrancas.html')));
 // Telas CD destino — parametrizadas (mesma página, ?cd= no URL)

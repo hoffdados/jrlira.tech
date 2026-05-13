@@ -19,11 +19,40 @@ function normEan(v) {
   return s || null;
 }
 
-// GET /api/cd-produtos-embalagem?cd_codigo=&busca=
+// GET /api/cd-produtos-embalagem?cd_codigo=&busca=&incluir_sem_cadastro=1
+// Quando incluir_sem_cadastro=1, retorna TODOS os mat_codi do cd_material (LEFT JOIN), não só os já cadastrados.
 router.get('/', autenticar, async (req, res) => {
   try {
     const cdCodigo = String(req.query.cd_codigo || '').trim();
     const busca = String(req.query.busca || '').trim();
+    const incluirSem = req.query.incluir_sem_cadastro === '1';
+    if (incluirSem && !cdCodigo) return res.status(400).json({ erro: 'cd_codigo obrigatorio com incluir_sem_cadastro' });
+
+    if (incluirSem) {
+      const where = [`cm.cd_codigo = $1`];
+      const params = [cdCodigo];
+      if (busca) {
+        params.push(`%${busca}%`);
+        where.push(`(cm.mat_codi ILIKE $${params.length} OR cm.mat_desc ILIKE $${params.length}
+                  OR cpe.ean_principal LIKE $${params.length} OR cpe.ean_secundario LIKE $${params.length})`);
+      }
+      const rows = await dbQuery(
+        `SELECT cm.cd_codigo, cm.mat_codi, cm.mat_desc,
+                cpe.ean_principal, cpe.ean_secundario, cpe.qtd_embalagem,
+                cpe.peso_unidade_kg, cpe.peso_variavel,
+                cpe.atualizado_em, cpe.atualizado_por,
+                (cpe.mat_codi IS NOT NULL) AS tem_cadastro
+           FROM cd_material cm
+           LEFT JOIN cd_produtos_embalagem cpe
+                  ON cpe.cd_codigo = cm.cd_codigo AND cpe.mat_codi = cm.mat_codi
+          WHERE ${where.join(' AND ')}
+          ORDER BY cm.mat_codi
+          LIMIT 5000`,
+        params
+      );
+      return res.json({ total: rows.length, itens: rows });
+    }
+
     const where = ['1=1'];
     const params = [];
     if (cdCodigo) { params.push(cdCodigo); where.push(`cpe.cd_codigo = $${params.length}`); }
@@ -36,12 +65,12 @@ router.get('/', autenticar, async (req, res) => {
       `SELECT cpe.cd_codigo, cpe.mat_codi, cpe.ean_principal, cpe.ean_secundario,
               cpe.qtd_embalagem, cpe.peso_unidade_kg, cpe.peso_variavel,
               cpe.atualizado_em, cpe.atualizado_por,
-              cm.mat_desc
+              cm.mat_desc, TRUE AS tem_cadastro
          FROM cd_produtos_embalagem cpe
          LEFT JOIN cd_material cm ON cm.cd_codigo = cpe.cd_codigo AND cm.mat_codi = cpe.mat_codi
         WHERE ${where.join(' AND ')}
         ORDER BY cpe.cd_codigo, cpe.mat_codi
-        LIMIT 2000`,
+        LIMIT 5000`,
       params
     );
     res.json({ total: rows.length, itens: rows });
