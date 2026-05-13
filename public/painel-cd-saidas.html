@@ -17,9 +17,10 @@ h1{font-size:18px;margin-bottom:12px}
 .toolbar{display:flex;gap:10px;align-items:center;margin-bottom:14px;padding:10px;background:#1e293b;border:1px solid #334155;border-radius:5px}
 label{font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.04em}
 select,input{background:#0f172a;border:1px solid #334155;color:#e2e8f0;padding:6px 10px;font-size:12px;border-radius:4px}
-.cards{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:14px}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px}
 .card{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:14px}
 .card.transito{border-left:4px solid #fbbf24}
+.card.tratamento{border-left:4px solid #fb923c}
 .card.recebida{border-left:4px solid #34d399}
 .card h2{font-size:13px;color:#94a3b8;text-transform:uppercase;font-weight:600;margin-bottom:8px}
 .card .num{font-size:22px;font-weight:700;color:#fde047;margin-bottom:6px}
@@ -109,59 +110,74 @@ async function carregar() {
   if (j.erro) { root.innerHTML = '<div class="empty">Erro: '+j.erro+'</div>'; return; }
 
   const t = j.totais.em_transito;
+  const tr = j.totais.em_tratamento || {qtd:0,valor:0,peso:0};
   const r = j.totais.recebidas_mes;
-  // Evita timezone shift: usa construtor com ano/mês explícito
   const [anoStr, mesStr] = mes.split('-');
   const mesLabel = new Date(parseInt(anoStr), parseInt(mesStr)-1, 1).toLocaleDateString('pt-BR', {month:'long', year:'numeric'});
 
   let html = `
     <div class="cards">
       <div class="card transito">
-        <h2>⏳ Em Trânsito (todas as pendentes)</h2>
+        <h2>⏳ Em Trânsito</h2>
         <div class="num">${fmtN(t.qtd)} <span style="font-size:13px;color:#94a3b8">nota(s)</span></div>
-        <div class="sub-line"><span>Valor total:</span><strong>${fmtBRL(t.valor)}</strong></div>
-        <div class="sub-line"><span>Peso total:</span><strong>${fmtKg(t.peso)}</strong></div>
+        <div class="sub-line"><span>Valor:</span><strong>${fmtBRL(t.valor)}</strong></div>
+        <div class="sub-line"><span>Peso:</span><strong>${fmtKg(t.peso)}</strong></div>
+      </div>
+      <div class="card tratamento">
+        <h2>🔧 Em Tratamento</h2>
+        <div class="num">${fmtN(tr.qtd)} <span style="font-size:13px;color:#94a3b8">nota(s)</span></div>
+        <div class="sub-line"><span>Valor:</span><strong>${fmtBRL(tr.valor)}</strong></div>
+        <div class="sub-line"><span>Peso:</span><strong>${fmtKg(tr.peso)}</strong></div>
       </div>
       <div class="card recebida">
         <h2>✓ Recebidas em ${mesLabel}</h2>
         <div class="num">${fmtN(r.qtd)} <span style="font-size:13px;color:#94a3b8">nota(s)</span></div>
-        <div class="sub-line"><span>Valor total:</span><strong>${fmtBRL(r.valor)}</strong></div>
-        <div class="sub-line"><span>Peso total:</span><strong>${fmtKg(r.peso)}</strong></div>
+        <div class="sub-line"><span>Valor:</span><strong>${fmtBRL(r.valor)}</strong></div>
+        <div class="sub-line"><span>Peso:</span><strong>${fmtKg(r.peso)}</strong></div>
       </div>
     </div>
 
     <h2 style="font-size:14px;color:#fde047;margin:18px 0 8px">Detalhamento por Loja</h2>
     <table>
       <thead><tr>
-        <th>Loja</th>
-        <th class="num">⏳ Trânsito</th>
-        <th class="num">⏳ Valor</th>
-        <th class="num">⏳ Peso (kg)</th>
-        <th class="num">✓ Recebidas no mês</th>
-        <th class="num">✓ Valor</th>
-        <th class="num">✓ Peso (kg)</th>
+        <th rowspan="2" style="vertical-align:bottom">Loja</th>
+        <th class="num" colspan="3" style="border-left:1px solid #334155">⏳ Em Trânsito</th>
+        <th class="num" colspan="3" style="border-left:1px solid #334155">🔧 Em Tratamento</th>
+        <th class="num" colspan="3" style="border-left:1px solid #334155">✓ Recebidas no mês</th>
+      </tr><tr>
+        <th class="num" style="border-left:1px solid #334155">Qtd</th><th class="num">Valor</th><th class="num">Peso</th>
+        <th class="num" style="border-left:1px solid #334155">Qtd</th><th class="num">Valor</th><th class="num">Peso</th>
+        <th class="num" style="border-left:1px solid #334155">Qtd</th><th class="num">Valor</th><th class="num">Peso</th>
       </tr></thead>
       <tbody>`;
-  // Combina lojas que aparecem em ambas
-  const lojas = new Set([...j.por_loja.em_transito.map(x=>x.loja_id), ...j.por_loja.recebidas_mes.map(x=>x.loja_id)]);
+  const lojas = new Set([
+    ...j.por_loja.em_transito.map(x=>x.loja_id),
+    ...(j.por_loja.em_tratamento||[]).map(x=>x.loja_id),
+    ...j.por_loja.recebidas_mes.map(x=>x.loja_id)
+  ]);
   const transMap = new Map(j.por_loja.em_transito.map(x=>[x.loja_id,x]));
-  const rebMap = new Map(j.por_loja.recebidas_mes.map(x=>[x.loja_id,x]));
+  const tratMap  = new Map((j.por_loja.em_tratamento||[]).map(x=>[x.loja_id,x]));
+  const rebMap   = new Map(j.por_loja.recebidas_mes.map(x=>[x.loja_id,x]));
   if (lojas.size === 0) {
-    html += '<tr><td colspan="7" style="text-align:center;color:#64748b;padding:24px">Sem dados pra esse filtro</td></tr>';
+    html += '<tr><td colspan="10" style="text-align:center;color:#64748b;padding:24px">Sem dados pra esse filtro</td></tr>';
   } else {
     [...lojas].sort().forEach(loja => {
-      const tt = transMap.get(loja) || {qtd_notas:0,valor_total:0,peso_kg:0};
-      const rr = rebMap.get(loja) || {qtd_notas:0,valor_total:0,peso_kg:0};
+      const tt  = transMap.get(loja) || {qtd_notas:0,valor_total:0,peso_kg:0};
+      const trt = tratMap.get(loja)  || {qtd_notas:0,valor_total:0,peso_kg:0};
+      const rr  = rebMap.get(loja)   || {qtd_notas:0,valor_total:0,peso_kg:0};
       html += `<tr data-loja="${loja}">
         <td><strong>${NOMES_LOJA[loja]||'L'+loja}</strong></td>
-        <td class="num" style="color:#fbbf24" onclick="abrirDet(${loja},'em_transito')">${fmtN(tt.qtd_notas)}</td>
+        <td class="num" style="color:#fbbf24;border-left:1px solid #334155" onclick="abrirDet(${loja},'em_transito')">${fmtN(tt.qtd_notas)}</td>
         <td class="num" onclick="abrirDet(${loja},'em_transito')">${fmtBRL(tt.valor_total)}</td>
         <td class="num" onclick="abrirDet(${loja},'em_transito')">${fmtKg(tt.peso_kg)}</td>
-        <td class="num" style="color:#34d399" onclick="abrirDet(${loja},'recebidas')">${fmtN(rr.qtd_notas)}</td>
+        <td class="num" style="color:#fb923c;border-left:1px solid #334155" onclick="abrirDet(${loja},'em_tratamento')">${fmtN(trt.qtd_notas)}</td>
+        <td class="num" onclick="abrirDet(${loja},'em_tratamento')">${fmtBRL(trt.valor_total)}</td>
+        <td class="num" onclick="abrirDet(${loja},'em_tratamento')">${fmtKg(trt.peso_kg)}</td>
+        <td class="num" style="color:#34d399;border-left:1px solid #334155" onclick="abrirDet(${loja},'recebidas')">${fmtN(rr.qtd_notas)}</td>
         <td class="num" onclick="abrirDet(${loja},'recebidas')">${fmtBRL(rr.valor_total)}</td>
         <td class="num" onclick="abrirDet(${loja},'recebidas')">${fmtKg(rr.peso_kg)}</td>
       </tr>
-      <tr class="detalhe-row" id="det-${loja}" style="display:none"><td colspan="7" id="det-cont-${loja}"></td></tr>`;
+      <tr class="detalhe-row" id="det-${loja}" style="display:none"><td colspan="10" id="det-cont-${loja}"></td></tr>`;
     });
   }
   html += '</tbody></table>';
