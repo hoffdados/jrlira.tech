@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Avarias & Devoluções — Classificar</title>
+<link rel="stylesheet" href="/shared.css">
+<script src="/shared.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f172a;color:#e2e8f0;font-size:12px}
+nav{background:#1e293b;padding:10px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #334155}
+.brand{font-family:'Segoe UI Black',sans-serif;font-weight:900;font-size:16px;color:#fde047}
+.btn-nav{background:#0ea5e9;color:#fff;border:none;padding:5px 10px;border-radius:4px;font-size:11px;cursor:pointer;text-decoration:none}
+.main{padding:14px 20px;max-width:1500px;margin:0 auto}
+h1{font-size:18px;margin-bottom:6px}
+.sub{color:#64748b;font-size:11px;margin-bottom:12px}
+.toolbar{display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+button{cursor:pointer;border:none;border-radius:4px;font-size:11px;padding:6px 12px;font-weight:600}
+.btn-primary{background:#fbbf24;color:#1a1a1a}.btn-primary:hover{background:#f59e0b}
+.btn-ghost{background:#1e293b;color:#94a3b8;border:1px solid #334155}.btn-ghost:hover{background:#273549}
+.btn-success{background:#16a34a;color:#fff}.btn-success:hover{background:#15803d}
+.btn-danger{background:#dc2626;color:#fff}.btn-danger:hover{background:#b91c1c}
+.btn-sm{padding:4px 8px;font-size:10px}
+.card{background:#1e293b;border:1px solid #334155;border-radius:6px;padding:12px;margin-bottom:10px}
+.card.semforn{border-color:#dc2626;background:#27151a}
+.card-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px}
+.forn-info{flex:1;min-width:0}
+.forn-nome{font-size:13px;font-weight:700;color:#fde047}
+.forn-cnpj{font-family:monospace;font-size:10px;color:#94a3b8}
+.totalizadores{display:flex;gap:8px;font-size:11px}
+.tot-box{background:#0c1628;padding:4px 8px;border-radius:3px;color:#cbd5e1}
+.tot-box.valor{color:#fbbf24;font-weight:700}
+.acoes{display:flex;gap:6px}
+table.evts{width:100%;border-collapse:collapse;font-size:11px;margin-top:6px}
+table.evts th{background:#0c1628;padding:5px 7px;text-align:left;color:#94a3b8;font-size:10px;font-weight:600;text-transform:uppercase}
+table.evts td{padding:5px 7px;border-top:1px solid #334155}
+.tipo-tag{display:inline-block;padding:1px 6px;border-radius:3px;font-size:9px;font-weight:700;text-transform:uppercase}
+.tipo-avaria{background:#451a03;color:#fbbf24}
+.tipo-devolucao{background:#0c1a2e;color:#7dd3fc}
+.fonte-tag{display:inline-block;padding:1px 5px;border-radius:2px;font-size:8px;background:#1e3a5f;color:#bae6fd}
+.empty{text-align:center;padding:40px;color:#64748b}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid #334155;border-top-color:#fbbf24;border-radius:50%;animation:spin 0.8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.checkbox{accent-color:#fbbf24}
+</style>
+</head>
+<body>
+
+<nav>
+  <span class="brand">JR Lira Tech</span>
+  <a href="/" class="btn-nav" style="background:#475569">Início</a>
+  <a href="/notas-avaria-cobrancas" class="btn-nav">Cobranças</a>
+  <span id="userInfo" style="margin-left:auto;color:#94a3b8;font-size:11px"></span>
+</nav>
+
+<div class="main">
+  <h1>Avarias & Devoluções — Classificar</h1>
+  <div class="sub">Eventos detectados automaticamente desde 01/04. Comprador confirma o fornecedor e o destino: cobrar, perda interna ou já tratada.</div>
+
+  <div class="toolbar">
+    <button class="btn-ghost" id="btnRefresh">↻ Atualizar</button>
+    <button class="btn-ghost" id="btnDetectar">⟳ Forçar detecção (admin)</button>
+    <select id="filtroTipo" style="background:#0f172a;border:1px solid #334155;color:#e2e8f0;padding:5px 8px;font-size:11px;border-radius:4px">
+      <option value="">Todos os tipos</option>
+      <option value="avaria">Só avarias</option>
+      <option value="devolucao">Só devoluções</option>
+    </select>
+    <select id="filtroLoja" style="background:#0f172a;border:1px solid #334155;color:#e2e8f0;padding:5px 8px;font-size:11px;border-radius:4px">
+      <option value="">Todas as lojas</option>
+      <option value="1">L1 — Econômico</option>
+      <option value="2">L2 — BR</option>
+      <option value="3">L3 — João Pessoa</option>
+      <option value="4">L4 — Floresta</option>
+      <option value="5">L5 — São José</option>
+      <option value="6">L6 — Santarém</option>
+    </select>
+    <span id="contador" style="color:#94a3b8;font-size:11px;margin-left:auto"></span>
+  </div>
+
+  <div id="conteudo"><div class="empty"><span class="spinner"></span> Carregando…</div></div>
+</div>
+
+<script>
+const token = localStorage.jrlira_token;
+const perfil = localStorage.jrlira_perfil;
+document.getElementById('userInfo').textContent = `${localStorage.jrlira_nome||''} (${perfil})`;
+if (!token || !['admin','comprador','cadastro','ceo'].includes(perfil)) location.href = '/';
+
+function api(path, opts={}) {
+  return fetch('/api/notas-avaria'+path, {
+    headers:{Authorization:'Bearer '+token, 'Content-Type':'application/json', ...(opts.headers||{})},
+    ...opts
+  }).then(r => r.json());
+}
+const fmtBRL = v => 'R$ ' + Number(v||0).toFixed(2).replace('.', ',');
+
+let dataCache = null;
+
+const NOMES_LOJAS = {1:'L1 Econômico',2:'L2 BR',3:'L3 João Pessoa',4:'L4 Floresta',5:'L5 São José',6:'L6 Santarém'};
+
+async function carregar() {
+  const root = document.getElementById('conteudo');
+  root.innerHTML = '<div class="empty"><span class="spinner"></span> Carregando…</div>';
+  const tipo = document.getElementById('filtroTipo').value;
+  const lojaF = document.getElementById('filtroLoja').value;
+  const qs = [];
+  if (tipo) qs.push('tipo='+tipo);
+  if (lojaF) qs.push('loja_id='+lojaF);
+  const r = await api('/pendentes'+(qs.length ? '?'+qs.join('&') : ''));
+  dataCache = r;
+  document.getElementById('contador').textContent = `${r.total} evento(s) pendente(s)`;
+  if (!r.total) { root.innerHTML = '<div class="empty">🎉 Sem pendências.</div>'; return; }
+
+  // Agrupa cards por loja pra exibição
+  const porLoja = {};
+  for (const g of r.por_loja_fornecedor) {
+    if (!porLoja[g.loja_id]) porLoja[g.loja_id] = [];
+    porLoja[g.loja_id].push(g);
+  }
+
+  let html = '';
+  for (const loja_id of Object.keys(porLoja).sort()) {
+    const grupos = porLoja[loja_id];
+    const totLoja = grupos.reduce((s,g) => s + g.total_valor, 0);
+    const evtLoja = grupos.reduce((s,g) => s + g.qtd_eventos, 0);
+    html += `<div style="margin:14px 0 8px;display:flex;align-items:center;gap:10px;padding:6px 12px;background:#0c1628;border-radius:5px;border-left:3px solid #fbbf24">
+      <strong style="font-size:14px;color:#fde047">${NOMES_LOJAS[loja_id]||('Loja '+loja_id)}</strong>
+      <span style="color:#94a3b8;font-size:11px">${grupos.length} fornecedor(es) · ${evtLoja} eventos · ${fmtBRL(totLoja)}</span>
+    </div>`;
+    for (const g of grupos) html += renderGrupo(g);
+  }
+  if (r.sem_fornecedor?.length) html += renderSemFornecedor(r.sem_fornecedor);
+  root.innerHTML = html;
+}
+
+function renderGrupo(g) {
+  const idSafe = `${g.loja_id}_${g.cnpj.replace(/\D/g,'')}`;
+  const fonteTag = g.fonte === 'cd_fornecedor' ? '<span class="fonte-tag">CD</span>' : '<span class="fonte-tag">LOJA</span>';
+  return `<div class="card" data-grp="${idSafe}">
+    <div class="card-head">
+      <div style="display:flex;align-items:center;gap:8px">
+        <input type="checkbox" class="checkbox" onchange="toggleTodos('${idSafe}', this.checked)">
+      </div>
+      <div class="forn-info">
+        <div class="forn-nome">${g.nome||'(sem nome)'} ${fonteTag}</div>
+        <div class="forn-cnpj">${g.cnpj} · ${NOMES_LOJAS[g.loja_id]||'Loja '+g.loja_id}</div>
+      </div>
+      <div class="totalizadores">
+        <div class="tot-box">${g.qtd_eventos} eventos</div>
+        <div class="tot-box valor">${fmtBRL(g.total_valor)}</div>
+      </div>
+      <div class="acoes">
+        <button class="btn-success btn-sm" onclick="classificarBulk('${idSafe}', 'cobrar_fornecedor')">Cobrar fornecedor</button>
+        <button class="btn-ghost btn-sm" onclick="classificarBulk('${idSafe}', 'tratado_cadastro')">Já tratado</button>
+        <button class="btn-danger btn-sm" onclick="classificarBulk('${idSafe}', 'perda_interna')">Perda interna</button>
+      </div>
+    </div>
+    <table class="evts" id="tab-${idSafe}">
+      <thead><tr><th></th><th>Data</th><th>Tipo</th><th>EAN</th><th>Produto</th><th>Qtd</th><th>Vlr unit</th><th>Total</th><th>Origem preço</th></tr></thead>
+      <tbody>
+        ${g.eventos.map(e => `<tr data-id="${e.id}">
+          <td><input type="checkbox" class="checkbox ev-${idSafe}" value="${e.id}" checked></td>
+          <td>${e.data_evento.slice(0,10).split('-').reverse().join('/')}</td>
+          <td><span class="tipo-tag tipo-${e.tipo}">${e.tipo}</span></td>
+          <td><code>${e.codigobarra}</code></td>
+          <td>${(e.descricao_produto||'').slice(0,50)}</td>
+          <td style="text-align:right">${Number(e.qtd).toFixed(2)}</td>
+          <td style="text-align:right">${e.valor_unitario ? fmtBRL(e.valor_unitario) : '—'}</td>
+          <td style="text-align:right">${fmtBRL(e.valor_total)}</td>
+          <td style="font-size:9px;color:#94a3b8">${e.preco_origem||'—'}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>`;
+}
+
+function renderSemFornecedor(evts) {
+  let html = `<div class="card semforn">
+    <div class="card-head">
+      <div class="forn-info">
+        <div class="forn-nome">⚠️ Sem fornecedor identificado (${evts.length})</div>
+        <div class="forn-cnpj">Comprador precisa indicar manualmente o fornecedor antes de cobrar.</div>
+      </div>
+    </div>
+    <table class="evts"><thead><tr><th>Data</th><th>Loja</th><th>Tipo</th><th>EAN</th><th>Produto</th><th>Qtd</th><th>Ação</th></tr></thead>
+    <tbody>${evts.map(e => `<tr>
+      <td>${e.data_evento.slice(0,10).split('-').reverse().join('/')}</td>
+      <td>L${e.loja_id}</td>
+      <td><span class="tipo-tag tipo-${e.tipo}">${e.tipo}</span></td>
+      <td><code>${e.codigobarra}</code></td>
+      <td>${(e.descricao_produto||'').slice(0,50)}</td>
+      <td style="text-align:right">${Number(e.qtd).toFixed(2)}</td>
+      <td>
+        <button class="btn-ghost btn-sm" onclick="indicarForn(${e.id})">Indicar fornecedor</button>
+        <button class="btn-danger btn-sm" onclick="classificarUm(${e.id}, 'perda_interna')">Descartar</button>
+      </td></tr>`).join('')}</tbody></table>
+  </div>`;
+  return html;
+}
+
+function toggleTodos(idSafe, checked) {
+  document.querySelectorAll('.ev-'+idSafe).forEach(c => c.checked = checked);
+}
+
+async function classificarBulk(idSafe, status) {
+  const ids = [...document.querySelectorAll('.ev-'+idSafe+':checked')].map(c => parseInt(c.value));
+  if (!ids.length) { alert('Nenhum evento selecionado.'); return; }
+  const msg = status === 'cobrar_fornecedor'
+    ? `Confirmar cobrança de ${ids.length} evento(s) ao fornecedor?`
+    : status === 'tratado_cadastro'
+      ? `Marcar ${ids.length} como já tratados no recebimento (sem cobrança)?`
+      : `Marcar ${ids.length} como perda interna (sem cobrança)?`;
+  if (!confirm(msg)) return;
+  const r = await api('/classificar', {method:'POST', body: JSON.stringify({ evento_ids: ids, status })});
+  if (r.erro) { alert(r.erro); return; }
+  if (r.cobrancas?.length) alert(`✓ ${r.cobrancas.length} cobrança(s) criada(s)/atualizada(s).`);
+  carregar();
+}
+
+async function classificarUm(id, status) {
+  if (!confirm(`Marcar evento como ${status}?`)) return;
+  await api('/classificar', {method:'POST', body: JSON.stringify({ evento_ids:[id], status })});
+  carregar();
+}
+
+async function indicarForn(id) {
+  const cnpj = prompt('CNPJ do fornecedor (somente números):');
+  if (!cnpj) return;
+  const nome = prompt('Nome do fornecedor:');
+  await api('/classificar', {method:'POST', body: JSON.stringify({
+    evento_ids:[id], status:'cobrar_fornecedor',
+    fornecedor_cnpj: cnpj.replace(/\D/g,''), fornecedor_nome: nome || null
+  })});
+  carregar();
+}
+
+document.getElementById('btnRefresh').onclick = carregar;
+document.getElementById('filtroTipo').onchange = carregar;
+document.getElementById('filtroLoja').onchange = carregar;
+document.getElementById('btnDetectar').onclick = async () => {
+  if (!['admin','ceo'].includes(perfil)) { alert('Apenas admin'); return; }
+  const btn = document.getElementById('btnDetectar');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Detectando…';
+  try {
+    const r = await api('/detectar-agora', {method:'POST'});
+    alert(`${r.avarias_novas||0} avarias e ${r.devolucoes_novas||0} devoluções novas.`);
+    carregar();
+  } finally { btn.disabled = false; btn.textContent = '⟳ Forçar detecção (admin)'; }
+};
+
+carregar();
+</script>
+</body>
+</html>

@@ -13,9 +13,13 @@ async function atualizarSaldo(client, debito_id) {
   const { rows: [{ soma }] } = await client.query(
     'SELECT COALESCE(SUM(valor),0) AS soma FROM cr_creditos WHERE debito_id=$1', [debito_id]
   );
-  const { rows: [deb] } = await client.query('SELECT valor_total FROM cr_debitos WHERE id=$1', [debito_id]);
-  const status = parseFloat(soma) >= parseFloat(deb.valor_total) ? 'baixado'
-               : parseFloat(soma) > 0 ? 'parcial' : 'aberto';
+  const { rows: [deb] } = await client.query('SELECT valor_total, status FROM cr_debitos WHERE id=$1', [debito_id]);
+  // Crédito total → baixado; parcial → parcial; zero → mantém aberto/cobrado anterior
+  let status;
+  const s = parseFloat(soma);
+  if (s >= parseFloat(deb.valor_total)) status = 'baixado';
+  else if (s > 0) status = 'parcial';
+  else status = (deb.status === 'cobrado' ? 'cobrado' : 'aberto');
   await client.query(
     'UPDATE cr_debitos SET valor_creditos=$1, status=$2 WHERE id=$3',
     [soma, status, debito_id]
@@ -128,7 +132,189 @@ router.get('/debitos/:id', compradorOuAdmin, async (req, res) => {
     const { rows: creditos } = await pool.query(
       'SELECT * FROM cr_creditos WHERE debito_id=$1 ORDER BY registrado_em', [req.params.id]
     );
-    res.json({ ...deb, itens, creditos });
+
+    // Se é cobrança de avaria/devolução, carrega notas de origem + email/telefone do CD
+    let notas_origem = [];
+    let contato = {};
+    const { rows: [avariaCob] } = await pool.query(
+      `SELECT id FROM avarias_cobrancas WHERE cr_debito_id=$1 LIMIT 1`, [req.params.id]);
+    if (avariaCob) {
+      const { rows } = await pool.query(`
+        SELECT ae.tipo,
+               dch.numero_nfe AS numero_nota,
+               COALESCE(dch.data_devolucao, dch.data_nfe) AS data_nota,
+               dch.valor_total::numeric(14,2) AS valor_nota,
+               COUNT(*)::int AS qtd_itens,
+               SUM(ae.valor_total)::numeric(14,2) AS valor_cobrado
+          FROM avaria_eventos ae
+          LEFT JOIN devolucoes_compra_itens_historico dci
+            ON ae.fonte='devolucoes_compra_historico' AND dci.id = ae.fonte_id
+          LEFT JOIN devolucoes_compra_historico dch
+            ON dch.loja_id = dci.loja_id AND dch.devolucao_codigo = dci.devolucao_codigo
+         WHERE ae.avaria_cobranca_id = $1
+         GROUP BY ae.tipo, dch.numero_nfe, COALESCE(dch.data_devolucao, dch.data_nfe), dch.valor_total
+         ORDER BY data_nota NULLS LAST`, [avariaCob.id]);
+      notas_origem = rows;
+    }
+    // Vendedores credenciados do fornecedor (tabela vendedores do app)
+    let vendedores = [];
+    if (deb.fornecedor_id) {
+      vendedores = (await pool.query(
+        `SELECT id, nome, email, telefone, nome_gerente, telefone_gerente
+           FROM vendedores
+          WHERE fornecedor_id = $1 AND status = 'aprovado'
+          ORDER BY nome`, [deb.fornecedor_id])).rows;
+    }
+    if (!vendedores.length && deb.fornecedor_cnpj) {
+      vendedores = (await pool.query(
+        `SELECT id, nome, email, telefone, nome_gerente, telefone_gerente
+           FROM vendedores
+          WHERE REGEXP_REPLACE(COALESCE(fornecedor_cnpj,''),'\\D','','g')
+              = REGEXP_REPLACE($1,'\\D','','g')
+            AND status = 'aprovado'
+          ORDER BY nome`, [deb.fornecedor_cnpj])).rows;
+    }
+    // Fallback: cd_fornecedor (UltraSyst) se nenhum vendedor cadastrado
+    if (!vendedores.length && deb.fornecedor_cnpj) {
+      const { rows: [c] } = await pool.query(
+        `SELECT DISTINCT for_email, for_telefone FROM cd_fornecedor
+          WHERE REGEXP_REPLACE(COALESCE(for_cgc,''),'\\D','','g') = REGEXP_REPLACE($1,'\\D','','g')
+            AND (for_email IS NOT NULL OR for_telefone IS NOT NULL) LIMIT 1`, [deb.fornecedor_cnpj]);
+      if (c) contato = { email: c.for_email, telefone: c.for_telefone, fonte: 'ultrasyst' };
+    }
+
+    res.json({ ...deb, itens, creditos, notas_origem, vendedores, contato });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
+// POST /api/cr/debitos/:id/marcar-cobrado — sinaliza que o débito foi cobrado do fornecedor
+// (não baixa: pagamento entra via crédito). Propaga pra avarias_cobrancas.
+router.post('/debitos/:id/marcar-cobrado', compradorOuAdmin, async (req, res) => {
+  const id = parseInt(req.params.id);
+  const por = req.usuario.email || req.usuario.usuario || `id:${req.usuario.id}`;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // Só muda pra cobrado se ainda está aberto (ou re-marca quando voltou). Não sobrepõe parcial/baixado.
+    await client.query(
+      `UPDATE cr_debitos SET status='cobrado' WHERE id=$1 AND status='aberto'`, [id]);
+    await client.query(`
+      UPDATE avarias_cobrancas
+         SET status='cobrado', cobrado_em=NOW(), cobrado_por=$2
+       WHERE cr_debito_id=$1 AND status='pendente'`, [id, por]);
+    await client.query(`
+      UPDATE avaria_eventos
+         SET status='cobrado'
+       WHERE avaria_cobranca_id IN (SELECT id FROM avarias_cobrancas WHERE cr_debito_id=$1)`, [id]);
+    await client.query('COMMIT');
+    res.json({ ok: true });
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch {}
+    res.status(500).json({ erro: e.message });
+  } finally { client.release(); }
+});
+
+// POST /api/cr/debitos/:id/enviar — manda cobrança por email e/ou WhatsApp
+// body: { canais: ['email','whatsapp'], vendedor_id?, email_override?, telefone_override? }
+router.post('/debitos/:id/enviar', compradorOuAdmin, async (req, res) => {
+  const { canais, vendedor_id, email_override, telefone_override } = req.body || {};
+  if (!Array.isArray(canais) || !canais.length) return res.status(400).json({ erro: 'canais obrigatorio' });
+  try {
+    const { rows: [deb] } = await pool.query(
+      `SELECT d.*, l.nome AS loja_nome FROM cr_debitos d
+         LEFT JOIN lojas l ON l.id=d.loja_id WHERE d.id=$1`, [req.params.id]);
+    if (!deb) return res.status(404).json({ erro: 'débito não encontrado' });
+    const { rows: itens } = await pool.query(
+      `SELECT * FROM cr_debito_itens WHERE debito_id=$1 ORDER BY id`, [req.params.id]);
+
+    // Notas origem (se for avaria/devolução)
+    let notas = [];
+    const { rows: [cob] } = await pool.query(
+      `SELECT id FROM avarias_cobrancas WHERE cr_debito_id=$1 LIMIT 1`, [req.params.id]);
+    if (cob) {
+      const { rows } = await pool.query(`
+        SELECT dch.numero_nfe, COALESCE(dch.data_devolucao, dch.data_nfe) AS data_nota, dch.valor_total
+          FROM avaria_eventos ae
+          LEFT JOIN devolucoes_compra_itens_historico dci ON ae.fonte='devolucoes_compra_historico' AND dci.id=ae.fonte_id
+          LEFT JOIN devolucoes_compra_historico dch ON dch.loja_id=dci.loja_id AND dch.devolucao_codigo=dci.devolucao_codigo
+         WHERE ae.avaria_cobranca_id=$1 AND dch.numero_nfe IS NOT NULL
+         GROUP BY dch.numero_nfe, COALESCE(dch.data_devolucao, dch.data_nfe), dch.valor_total`, [cob.id]);
+      notas = rows;
+    }
+
+    // Destino: prioridade vendedor_id > overrides > cd_fornecedor
+    let email = email_override || null, telefone = telefone_override || null;
+    if (vendedor_id) {
+      const { rows: [v] } = await pool.query(
+        `SELECT email, telefone FROM vendedores WHERE id=$1`, [vendedor_id]);
+      if (v) { email = v.email || email; telefone = v.telefone || telefone; }
+    } else if (!email && !telefone && deb.fornecedor_cnpj) {
+      const { rows: [c] } = await pool.query(
+        `SELECT DISTINCT for_email, for_telefone FROM cd_fornecedor
+          WHERE REGEXP_REPLACE(COALESCE(for_cgc,''),'\\D','','g') = REGEXP_REPLACE($1,'\\D','','g')
+            AND (for_email IS NOT NULL OR for_telefone IS NOT NULL) LIMIT 1`,
+        [deb.fornecedor_cnpj]);
+      if (c) { email = c.for_email; telefone = c.for_telefone; }
+    }
+
+    const fmtBRL = v => 'R$ ' + Number(v||0).toLocaleString('pt-BR', {minimumFractionDigits:2});
+    const fmtD = d => d ? new Date(d).toLocaleDateString('pt-BR') : '—';
+    const resultado = { email: null, whatsapp: null };
+
+    // EMAIL via Resend
+    if (canais.includes('email')) {
+      if (!email) { resultado.email = { erro: 'fornecedor sem email no cd_fornecedor' }; }
+      else {
+        const linhasItens = itens.map(it => `
+          <tr><td>${(it.codigo_barras||'').toString().slice(0,14)}</td>
+              <td>${(it.descricao||'').replace(/</g,'&lt;')}</td>
+              <td style="text-align:right">${Number(it.quantidade).toFixed(0)}</td>
+              <td style="text-align:right">${fmtBRL(it.valor_unitario)}</td>
+              <td style="text-align:right">${fmtBRL(it.valor_total)}</td></tr>`).join('');
+        const linhasNotas = notas.map(n => `
+          <tr><td>${n.numero_nfe}</td><td>${fmtD(n.data_nota)}</td><td style="text-align:right">${fmtBRL(n.valor_total)}</td></tr>`).join('');
+        const html = `
+          <h2>Cobrança JR Lira — ${deb.numero_nota}</h2>
+          <p><b>Loja:</b> ${deb.loja_nome || '—'}<br>
+             <b>Natureza:</b> ${deb.natureza_operacao || '—'}<br>
+             <b>Data:</b> ${fmtD(deb.data_emissao)}</p>
+          <h3>Produtos (${itens.length})</h3>
+          <table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;font-family:Arial;font-size:12px;width:100%">
+            <thead style="background:#f1f5f9"><tr><th>Cód.Barras</th><th>Descrição</th><th>Qtd</th><th>Unit.</th><th>Total</th></tr></thead>
+            <tbody>${linhasItens}</tbody>
+            <tfoot><tr><td colspan="4" style="text-align:right"><b>TOTAL</b></td><td style="text-align:right"><b>${fmtBRL(deb.valor_total)}</b></td></tr></tfoot>
+          </table>
+          ${notas.length ? `<h3>Notas referentes</h3>
+            <table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;font-family:Arial;font-size:12px">
+              <thead style="background:#f1f5f9"><tr><th>NF</th><th>Data</th><th>Valor</th></tr></thead>
+              <tbody>${linhasNotas}</tbody>
+            </table>` : ''}
+          <p style="margin-top:20px;color:#475569;font-size:11px">Cobrança gerada automaticamente em ${new Date().toLocaleDateString('pt-BR')}.</p>`;
+        try {
+          const { enviarEmail } = require('../mailer');
+          await enviarEmail(email,
+            `Cobrança JR Lira — ${deb.numero_nota} — ${fmtBRL(deb.valor_total)}`,
+            html);
+          resultado.email = { ok: true, para: email };
+        } catch (e) { resultado.email = { erro: e.message }; }
+      }
+    }
+
+    // WhatsApp
+    if (canais.includes('whatsapp')) {
+      if (!telefone) { resultado.whatsapp = { erro: 'fornecedor sem telefone no cd_fornecedor' }; }
+      else {
+        const linhasN = notas.length ? '\nNotas: ' + notas.map(n => `${n.numero_nfe} (${fmtD(n.data_nota)} ${fmtBRL(n.valor_total)})`).join('; ') : '';
+        const msg = `*Cobrança JR Lira*\n${deb.numero_nota}\nLoja: ${deb.loja_nome||'—'}\n${deb.natureza_operacao||''}\nItens: ${itens.length}\nTotal: *${fmtBRL(deb.valor_total)}*${linhasN}`;
+        try {
+          const { enviarWhatsapp } = require('../whatsapp');
+          await enviarWhatsapp(telefone, msg);
+          resultado.whatsapp = { ok: true, para: telefone };
+        } catch (e) { resultado.whatsapp = { erro: e.message }; }
+      }
+    }
+
+    res.json(resultado);
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 

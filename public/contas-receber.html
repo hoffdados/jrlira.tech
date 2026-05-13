@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>Contas a Receber — JR Lira</title>
 <link rel="stylesheet" href="/shared.css">
 <script src="/shared.js"></script>
@@ -64,6 +67,7 @@ tbody tr.ativo{background:#0c2040;outline:2px solid #0ea5e9}
 /* BADGES */
 .badge{padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;white-space:nowrap}
 .badge-aberto{background:#1a0505;color:#f87171}
+.badge-cobrado{background:#0a1a2e;color:#7dd3fc}
 .badge-parcial{background:#1a1200;color:#fbbf24}
 .badge-baixado{background:#0a2010;color:#4ade80}
 .badge-bonif{background:#0c1a30;color:#60a5fa}
@@ -117,14 +121,14 @@ tbody tr.ativo{background:#0c2040;outline:2px solid #0ea5e9}
     <select id="fStatus" onchange="carregar()">
       <option value="">Todos</option>
       <option value="aberto">Aberto</option>
+      <option value="cobrado">Cobrado</option>
       <option value="parcial">Parcial</option>
-      <option value="baixado">Baixado</option>
+      <option value="baixado">Pago</option>
     </select>
   </div>
   <div class="fg"><label>Data de</label><input type="date" id="fDe" onchange="carregar()"></div>
   <div class="fg"><label>Data até</label><input type="date" id="fAte" onchange="carregar()"></div>
   <div class="fg"><label>Buscar</label><input type="text" id="fBusca" placeholder="Fornecedor / Nº nota" oninput="renderLista()" style="min-width:200px"></div>
-  <button class="btn-primary" onclick="abrirImportar()" style="align-self:flex-end">+ Importar Devolução XML</button>
 </div>
 
 <div class="main">
@@ -196,23 +200,7 @@ tbody tr.ativo{background:#0c2040;outline:2px solid #0ea5e9}
   </div>
 </div>
 
-<!-- Modal importar devolução -->
-<div class="overlay" id="modalImportar" style="display:none">
-  <div class="modal">
-    <h3>Importar Nota de Devolução / Avaria</h3>
-    <div class="form-row"><label>Loja</label>
-      <select id="impLoja"><option value="">— Selecione —</option></select>
-    </div>
-    <div class="form-row"><label>Arquivo XML</label>
-      <input type="file" id="impXml" accept=".xml" style="padding:6px">
-    </div>
-    <div id="impMsg"></div>
-    <div style="display:flex;gap:10px;justify-content:flex-end">
-      <button class="btn-ghost" onclick="fecharModal('modalImportar')">Cancelar</button>
-      <button class="btn-primary" onclick="importarDebito(this)">Importar</button>
-    </div>
-  </div>
-</div>
+<!-- Modal importar devolução removido — cobrança vem da importação automática -->
 
 <!-- Modal bonificação -->
 <div class="overlay" id="modalBonif" style="display:none">
@@ -272,10 +260,9 @@ async function init() {
   const lojasSalvas = JSON.parse(localStorage.getItem('jrlira_lojas') || 'null');
   const visiveis = perfil === 'admin' || !lojasSalvas ? lojas : lojas.filter(l => lojasSalvas.includes(l.id));
 
-  [document.getElementById('fLoja'), document.getElementById('impLoja')].forEach(sel => {
-    sel.innerHTML = (sel.id === 'fLoja' ? '<option value="">Todas</option>' : '<option value="">— Selecione —</option>') +
-      visiveis.map(l => `<option value="${l.id}">${l.nome}</option>`).join('');
-  });
+  const fLoja = document.getElementById('fLoja');
+  fLoja.innerHTML = '<option value="">Todas</option>' +
+    visiveis.map(l => `<option value="${l.id}">${l.nome}</option>`).join('');
   await carregar();
 }
 
@@ -320,8 +307,9 @@ function renderLista() {
 
   const statusBadge = s => ({
     aberto:  '<span class="badge badge-aberto">Aberto</span>',
+    cobrado: '<span class="badge badge-cobrado">Cobrado</span>',
     parcial: '<span class="badge badge-parcial">Parcial</span>',
-    baixado: '<span class="badge badge-baixado">Baixado</span>',
+    baixado: '<span class="badge badge-baixado">Pago</span>',
   }[s] || s);
 
   document.getElementById('tabelaDebitos').innerHTML = `
@@ -398,6 +386,48 @@ async function abrirDetalhe(id) {
       </table>
     </div>
 
+    ${d.notas_origem && d.notas_origem.length ? `
+    <div>
+      <div class="sec-title">Notas referentes (${d.notas_origem.length})</div>
+      <table class="itens-tbl">
+        <thead><tr><th>Tipo</th><th>NF</th><th>Data</th><th style="text-align:right">Itens</th><th style="text-align:right">Valor NF</th><th style="text-align:right">Cobrado</th></tr></thead>
+        <tbody>
+        ${d.notas_origem.map(n=>`<tr>
+          <td>${n.tipo==='devolucao'?'<span class="badge badge-bonif">DEV</span>':'<span class="badge badge-desc">AVARIA</span>'}</td>
+          <td style="font-family:monospace;font-size:11px">${escapeHtml(n.numero_nota||'—')}</td>
+          <td>${fmtD(n.data_nota)}</td>
+          <td style="text-align:right">${n.qtd_itens||0}</td>
+          <td style="text-align:right;color:#94a3b8">${n.valor_nota?fmtR(n.valor_nota):'—'}</td>
+          <td style="text-align:right">${fmtR(n.valor_cobrado)}</td>
+        </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>` : ''}
+
+    ${d.status!=='baixado' ? `
+    <div style="background:#0c1628;padding:12px;border-radius:6px;margin:10px 0">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <span style="font-size:12px;color:#94a3b8">Cobrar fornecedor:</span>
+        ${d.status==='aberto' ? `<button class="btn-success btn-sm" onclick="marcarBaixado(${d.id})" style="background:#0ea5e9">✓ Marcar Cobrado</button>` : `<span class="badge badge-parcial" style="font-size:10px">${escapeHtml(d.status)}</span>`}
+        <span id="envioMsg-${d.id}" style="font-size:11px;color:#94a3b8;margin-left:auto"></span>
+      </div>
+      ${d.vendedores && d.vendedores.length ? `
+        <div style="font-size:11px;color:#64748b;margin:6px 0 4px">${d.vendedores.length} vendedor(es) credenciado(s):</div>
+        ${d.vendedores.map(v => `
+          <div style="display:flex;align-items:center;gap:8px;padding:6px;background:#1e293b;border-radius:5px;margin-bottom:4px;flex-wrap:wrap">
+            <strong style="font-size:12px;color:#fde047;flex:1;min-width:120px">${escapeHtml(v.nome||'—')}</strong>
+            ${v.email ? `<button class="btn-primary btn-sm" onclick="enviarCobrancaVend(${d.id},${v.id},'email',this)">✉ ${escapeHtml(v.email)}</button>` : '<span style="font-size:10px;color:#64748b">sem email</span>'}
+            ${v.telefone ? `<button class="btn-green btn-sm" onclick="enviarCobrancaVend(${d.id},${v.id},'whatsapp',this)">💬 ${escapeHtml(v.telefone)}</button>` : '<span style="font-size:10px;color:#64748b">sem telefone</span>'}
+          </div>`).join('')}
+      ` : (d.contato?.email || d.contato?.telefone) ? `
+        <div style="font-size:11px;color:#64748b;margin:6px 0 4px">Sem vendedor credenciado, usando contato do UltraSyst:</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          ${d.contato.email ? `<button class="btn-primary btn-sm" onclick="enviarCobranca(${d.id},'email',this)">✉ ${escapeHtml(d.contato.email)}</button>` : ''}
+          ${d.contato.telefone ? `<button class="btn-green btn-sm" onclick="enviarCobranca(${d.id},'whatsapp',this)">💬 ${escapeHtml(d.contato.telefone)}</button>` : ''}
+        </div>
+      ` : `<div style="font-size:11px;color:#64748b;padding:6px">Nenhum contato cadastrado para envio automático. Cadastre vendedor em /fornecedores ou atualize email/telefone no UltraSyst.</div>`}
+    </div>` : ''}
+
     <div>
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
         <div class="sec-title" style="margin-bottom:0">Créditos / Baixas (${d.creditos.length})</div>
@@ -439,32 +469,7 @@ function fecharDetalhe() {
   renderLista();
 }
 
-// ── IMPORTAR DEVOLUÇÃO ─────────────────────────────────────────────
-function abrirImportar() {
-  document.getElementById('impMsg').innerHTML = '';
-  document.getElementById('impXml').value = '';
-  document.getElementById('modalImportar').style.display = 'flex';
-}
-
-async function importarDebito(btn) {
-  const loja_id = document.getElementById('impLoja').value;
-  const file = document.getElementById('impXml').files[0];
-  const msg = document.getElementById('impMsg');
-  if (!loja_id) { msg.innerHTML = '<div class="msg-err">Selecione a loja</div>'; return; }
-  if (!file)    { msg.innerHTML = '<div class="msg-err">Selecione o arquivo XML</div>'; return; }
-
-  const fd = new FormData();
-  fd.append('loja_id', loja_id);
-  fd.append('xml', file);
-
-  await withLoading(btn, async () => {
-    const r = await apiFetch(`${API}/api/cr/debitos/importar`, { method: 'POST', body: fd });
-    const d = await r.json();
-    if (!r.ok) { msg.innerHTML = `<div class="msg-err">${escapeHtml(d.erro)}</div>`; return; }
-    msg.innerHTML = `<div class="msg-ok">NF ${escapeHtml(d.numero_nota)} importada — ${fmtR(d.valor_total)}</div>`;
-    setTimeout(() => { fecharModal('modalImportar'); carregar(); }, 1500);
-  }, 'Importando...');
-}
+// ── IMPORTAR DEVOLUÇÃO XML removido — cobrança vem da importação automática ──
 
 // ── BONIFICAÇÃO ────────────────────────────────────────────────────
 let debitoBonif = null;
@@ -491,6 +496,55 @@ async function importarBonif(btn) {
     msg.innerHTML = '<div class="msg-ok">Bonificação registrada com sucesso</div>';
     setTimeout(() => { fecharModal('modalBonif'); carregar(); abrirDetalhe(debitoBonif); }, 1200);
   }, 'Registrando...');
+}
+
+// ── MARCAR COBRADO (sinaliza que cobrança foi feita; pagamento entra via crédito) ──
+async function marcarBaixado(debId) {
+  if (!confirm('Marcar este débito como COBRADO?\n\nO pagamento (parcial ou total) entra depois via Bonificação XML ou Desconto Boleto, e o status muda automaticamente para parcial/baixado.')) return;
+  const r = await apiFetch(`${API}/api/cr/debitos/${debId}/marcar-cobrado`, { method: 'POST' });
+  const d = await r.json();
+  if (!r.ok) { alert('Erro: ' + (d.erro||'falha')); return; }
+  carregar(); abrirDetalhe(debId);
+}
+
+// ── ENVIO DE COBRANÇA PARA VENDEDOR ESPECÍFICO ─────────────────────
+async function enviarCobrancaVend(debId, vendId, canal, btn) {
+  if (!confirm(`Enviar cobrança por ${canal==='email'?'EMAIL':'WHATSAPP'} ao vendedor?`)) return;
+  btn.disabled = true;
+  const original = btn.textContent;
+  btn.textContent = 'Enviando...';
+  try {
+    const r = await apiFetch(`${API}/api/cr/debitos/${debId}/enviar`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ canais: [canal], vendedor_id: vendId })
+    });
+    const d = await r.json();
+    const res = d[canal];
+    const msg = document.getElementById('envioMsg-'+debId);
+    if (res?.ok) msg.innerHTML = `<span style="color:#4ade80">✓ ${escapeHtml(res.para)}</span>`;
+    else msg.innerHTML = `<span style="color:#f87171">✗ ${escapeHtml(res?.erro || d.erro || 'erro')}</span>`;
+  } finally { btn.disabled = false; btn.textContent = original; }
+}
+
+// ── ENVIO DE COBRANÇA (email/whatsapp) ─────────────────────────────
+async function enviarCobranca(debId, canal, btn) {
+  if (!confirm(`Enviar cobrança por ${canal==='email'?'EMAIL':'WHATSAPP'} agora?`)) return;
+  btn.disabled = true;
+  const original = btn.textContent;
+  btn.textContent = 'Enviando...';
+  try {
+    const r = await apiFetch(`${API}/api/cr/debitos/${debId}/enviar`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ canais: [canal] })
+    });
+    const d = await r.json();
+    const res = d[canal];
+    const msg = document.getElementById('envioMsg-'+debId);
+    if (res?.ok) msg.innerHTML = `<span style="color:#4ade80">✓ Enviado pra ${escapeHtml(res.para)}</span>`;
+    else msg.innerHTML = `<span style="color:#f87171">✗ ${escapeHtml(res?.erro || d.erro || 'erro')}</span>`;
+  } finally {
+    btn.disabled = false; btn.textContent = original;
+  }
 }
 
 // ── DESCONTO BOLETO ────────────────────────────────────────────────
@@ -760,6 +814,19 @@ function renderDetalheAcordo() {
         <div class="det-item"><label>Débito apurado (até agora)</label><span style="color:#f87171;font-weight:700">${fmtR(a.valor_debito_atual)}</span></div>
       </div>
     </div>
+
+    ${a.validade_info && a.validade_info.data_coleta ? `
+    <div>
+      <div class="sec-title">Controle de validade</div>
+      <div class="det-grid">
+        <div class="det-item"><label>Data da coleta</label><span>${fmtDT(a.validade_info.data_coleta)}</span></div>
+        <div class="det-item"><label>Estoque na coleta</label><span>${a.validade_info.estoque_atual.toFixed(0)} un</span></div>
+        <div class="det-item"><label>Vendas/dia (média)</label><span>${a.validade_info.vendas_media_dia.toFixed(2)} un</span></div>
+        <div class="det-item"><label>Vendas pós-coleta</label><span style="color:#4ade80">${a.validade_info.vendas_pos_coleta.toFixed(0)} un</span></div>
+        <div class="det-item"><label>Consumível até vencer</label><span>${a.validade_info.qtd_consumivel_ate_vencer.toFixed(0)} un</span></div>
+        <div class="det-item"><label>Sobra estimada</label><span style="color:${a.validade_info.vai_sobrar?'#f87171':'#4ade80'};font-weight:700">${a.validade_info.vai_sobrar?(a.validade_info.sobra_estimada.toFixed(0)+' un'):'NÃO sobra'}</span></div>
+      </div>
+    </div>` : ''}
 
     <div>
       <div class="sec-title">Origem (NF-e)</div>

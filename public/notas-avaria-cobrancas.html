@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>Débitos por Fornecedor</title>
+<link rel="stylesheet" href="/shared.css">
+<script src="/shared.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f172a;color:#e2e8f0;font-size:12px}
+nav{background:#1e293b;padding:10px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #334155}
+.brand{font-family:'Segoe UI Black',sans-serif;font-weight:900;font-size:16px;color:#fde047}
+.btn-nav{background:#0ea5e9;color:#fff;border:none;padding:5px 10px;border-radius:4px;font-size:11px;cursor:pointer;text-decoration:none}
+.main{padding:14px 20px;max-width:1500px;margin:0 auto}
+h1{font-size:18px;margin-bottom:6px}
+.sub{color:#64748b;font-size:11px;margin-bottom:12px}
+.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
+.card{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:14px;border-left:4px solid #334155}
+.card.av{border-left-color:#fbbf24}
+.card.dev{border-left-color:#38bdf8}
+.card.ac{border-left-color:#a855f7}
+.card.tot{border-left-color:#34d399}
+.card h2{font-size:11px;color:#94a3b8;text-transform:uppercase;margin-bottom:6px}
+.card .big{font-size:22px;font-weight:700;color:#fde047}
+table{width:100%;border-collapse:collapse;font-size:11px;background:#1e293b;border-radius:6px;overflow:hidden}
+th{background:#0c1628;padding:8px;text-align:left;color:#94a3b8;font-size:10px;font-weight:600;text-transform:uppercase;position:sticky;top:0}
+td{padding:7px 8px;border-top:1px solid #334155}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+.av{color:#fbbf24}
+.dev{color:#7dd3fc}
+.ac{color:#c4b5fd}
+.tot{color:#34d399;font-weight:700}
+.empty{text-align:center;padding:40px;color:#64748b}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid #334155;border-top-color:#fbbf24;border-radius:50%;animation:spin 0.8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<nav>
+  <span class="brand">JR Lira Tech</span>
+  <a href="/" class="btn-nav" style="background:#475569">Início</a>
+  <a href="/contas-receber" class="btn-nav">Contas a Receber</a>
+  <span id="userInfo" style="margin-left:auto;color:#94a3b8;font-size:11px"></span>
+</nav>
+
+<div class="main">
+  <h1>Débitos por Fornecedor</h1>
+  <div class="sub">Relatório consolidado: avarias + devoluções + acordos comerciais. Cobrança final é feita em <a href="/contas-receber" style="color:#38bdf8">Contas a Receber</a>.</div>
+
+  <div id="conteudo"><div class="empty"><span class="spinner"></span> Carregando…</div></div>
+</div>
+
+<script>
+const token = localStorage.jrlira_token;
+const perfil = localStorage.jrlira_perfil;
+document.getElementById('userInfo').textContent = `${localStorage.jrlira_nome||''} (${perfil})`;
+if (!token || !['admin','comprador','ceo'].includes(perfil)) location.href = '/';
+
+async function api(path) {
+  const r = await fetch('/api/notas-avaria'+path, { headers:{Authorization:'Bearer '+token} });
+  if (r.status === 401) { alert('Sessão expirada'); localStorage.clear(); location.href='/'; return {}; }
+  return r.json();
+}
+const fmtBRL = v => 'R$ ' + Number(v||0).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+const fmtN = v => Number(v||0).toLocaleString('pt-BR', {maximumFractionDigits:0});
+
+async function carregar() {
+  const root = document.getElementById('conteudo');
+  const d = await api('/cobrancas/relatorio-completo');
+  if (d.erro) { root.innerHTML = `<div class="empty">Erro: ${d.erro}</div>`; return; }
+  if (!d.fornecedores.length) { root.innerHTML = '<div class="empty">Sem débitos.</div>'; return; }
+
+  const t = d.totais;
+  const linhas = d.fornecedores.map(r => `
+    <tr>
+      <td><code style="font-size:10px;color:#94a3b8">${r.fornecedor_cnpj}</code></td>
+      <td>${r.fornecedor_nome || '—'}</td>
+      <td class="n av">${parseFloat(r.valor_avaria)>0?fmtBRL(r.valor_avaria):'—'}</td>
+      <td class="n dev">${parseFloat(r.valor_devolucao)>0?fmtBRL(r.valor_devolucao):'—'}</td>
+      <td class="n ac">${parseFloat(r.valor_acordo)>0?fmtBRL(r.valor_acordo):'—'}</td>
+      <td class="n tot">${fmtBRL(r.total_geral)}</td>
+    </tr>`).join('');
+
+  root.innerHTML = `
+    <div class="cards">
+      <div class="card av"><h2>Avarias</h2><div class="big">${fmtBRL(t.avaria)}</div></div>
+      <div class="card dev"><h2>Devoluções</h2><div class="big">${fmtBRL(t.devolucao)}</div></div>
+      <div class="card ac"><h2>Acordos</h2><div class="big">${fmtBRL(t.acordo)}</div></div>
+      <div class="card tot"><h2>Total Geral</h2><div class="big">${fmtBRL(t.total)}</div></div>
+    </div>
+    <table>
+      <thead><tr>
+        <th>CNPJ</th><th>Fornecedor</th>
+        <th class="n">Avaria</th><th class="n">Devolução</th><th class="n">Acordo</th><th class="n">Total</th>
+      </tr></thead>
+      <tbody>${linhas}</tbody>
+    </table>
+    <p style="color:#64748b;font-size:11px;margin-top:10px">${d.fornecedores.length} fornecedor(es). Apenas débitos não cancelados.</p>`;
+}
+carregar();
+</script>
+</body>
+</html>
