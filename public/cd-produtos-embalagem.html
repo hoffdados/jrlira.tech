@@ -63,7 +63,7 @@
 <div class="totais" id="totais"></div>
 
 <script>
-const token = localStorage.getItem('token');
+const token = localStorage.getItem('jrlira_token');
 if (!token) location.href = '/';
 const api = (path, opts={}) => fetch('/api/cd-produtos-embalagem' + path, {
   ...opts,
