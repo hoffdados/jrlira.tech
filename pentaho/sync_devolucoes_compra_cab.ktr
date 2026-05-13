@@ -96,7 +96,9 @@
   D.NOTANFE             AS numero_nfe,
   D.SERIENFE            AS serie_nfe,
   D.VALOR               AS valor_total,
-  D.CHAVENFEFORNECEDOR  AS chave_nfe_compra_original
+  D.CHAVENFEFORNECEDOR  AS chave_nfe_compra_original,
+  D.OBSERVACAO          AS observacao,
+  D.USUARIO             AS usuario
 FROM TESTDEVOLUCAO D
 JOIN TPAGFORNECEDOR F ON F.CODIGO = D.IDFORNECEDOR
 WHERE D.EMPRESA = 01
@@ -193,6 +195,8 @@ if (isNaN(loja_id) || loja_id &lt; 1 || loja_id &gt; 100) {
       <field><column_name>serie_nfe</column_name><stream_name>serie_nfe</stream_name></field>
       <field><column_name>valor_total</column_name><stream_name>valor_total</stream_name></field>
       <field><column_name>chave_nfe_compra_original</column_name><stream_name>chave_nfe_compra_original</stream_name></field>
+      <field><column_name>observacao</column_name><stream_name>observacao</stream_name></field>
+      <field><column_name>usuario</column_name><stream_name>usuario</stream_name></field>
       <field><column_name>loja_id</column_name><stream_name>loja_id</stream_name></field>
     </fields>
     <attributes/>

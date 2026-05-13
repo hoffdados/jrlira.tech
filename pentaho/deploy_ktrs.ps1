@@ -17,7 +17,9 @@ $arquivos = @(
     "sync_fornecedores.ktr",
     "sync_delete_vendas_loja.ktr",
     "sync_delete_compras_loja.ktr",
-    "sync_delete_fornecedores_loja.ktr"
+    "sync_delete_fornecedores_loja.ktr",
+    "sync_devolucoes_compra_cab.ktr",
+    "sync_devolucoes_compra_itens.ktr"
 )
 
 foreach ($arq in $arquivos) {
