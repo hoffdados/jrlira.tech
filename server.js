@@ -109,6 +109,7 @@ app.get('/dashboard-notas', (req, res) => res.sendFile(path.join(__dirname, 'pub
 app.get('/divergencias-preco', (req, res) => res.sendFile(path.join(__dirname, 'public/divergencias-preco.html')));
 app.get('/produtos-novos', (req, res) => res.sendFile(path.join(__dirname, 'public/produtos-novos.html')));
 app.get('/emergenciais', (req, res) => res.sendFile(path.join(__dirname, 'public/emergenciais.html')));
+app.get('/aprovacoes', (req, res) => res.sendFile(path.join(__dirname, 'public/aprovacoes.html')));
 app.get('/sla-notas', (req, res) => res.sendFile(path.join(__dirname, 'public/sla-notas.html')));
 app.get('/divergencias-estoque', (req, res) => res.sendFile(path.join(__dirname, 'public/divergencias-estoque.html')));
 app.get('/pedidos-fornecedor', (req, res) => res.sendFile(path.join(__dirname, 'public/pedidos-fornecedor.html')));

@@ -28,14 +28,22 @@ router.get('/badges', autenticar, async (req, res) => {
       query(`SELECT COUNT(*)::int AS n FROM vendedores WHERE status IN ('pendente','aguardando_cadastro')`),
     ]);
 
+    const aud_ped = auditoria_pedidos[0]?.n || 0;
+    const n_aud = notas_auditoria[0]?.n || 0;
+    const ag_dev = aguardando_devolucao[0]?.n || 0;
+    const vr = validades_em_risco[0]?.n || 0;
+    const div_cd = divergencias_cd[0]?.n || 0;
+    const ac = acordos_pendentes[0]?.n || 0;
+    const f_pend = fornecedores_pendentes[0]?.n || 0;
     res.json({
-      auditoria_pedidos: auditoria_pedidos[0]?.n || 0,
-      notas_auditoria: notas_auditoria[0]?.n || 0,
-      aguardando_devolucao: aguardando_devolucao[0]?.n || 0,
-      validades_em_risco: validades_em_risco[0]?.n || 0,
-      divergencias_cd: divergencias_cd[0]?.n || 0,
-      auditoria_acordos: acordos_pendentes[0]?.n || 0,
-      fornecedores_pendentes: fornecedores_pendentes[0]?.n || 0,
+      auditoria_pedidos: aud_ped,
+      notas_auditoria: n_aud,
+      aguardando_devolucao: ag_dev,
+      validades_em_risco: vr,
+      divergencias_cd: div_cd,
+      auditoria_acordos: ac,
+      fornecedores_pendentes: f_pend,
+      aprovacoes_pendentes: aud_ped + vr + ac + f_pend + ag_dev,
     });
   } catch (err) {
     console.error('[dashboard/badges]', err.message);
@@ -868,6 +876,173 @@ router.get('/pedidos-fornecedor', autenticar, async (req, res) => {
     });
   } catch (err) {
     console.error('[dashboard/pedidos-fornecedor]', err.message);
+    res.status(500).json({ erro: err.message });
+  }
+});
+
+// GET /api/dashboard/aprovacoes
+// Painel de aprovações pendentes (admin) — agregado por categoria × loja com lista detalhada.
+// Categorias:
+//   - Emergenciais aguardando aprovação (notas_entrada emergencial_pendente)
+//   - Validades em risco (notas_entrada aguardando_admin_validade)
+//   - Acordos comerciais (acordos_comerciais pendente_compras)
+//   - Vendedores aguardando cadastro (vendedores pendente/aguardando_cadastro)
+//   - Devoluções aguardando XML (devolucoes aguardando)
+//   - Pedidos B2B em auditoria (pedidos aguardando_auditoria)
+router.get('/aprovacoes', autenticar, async (req, res) => {
+  try {
+    const lojaUsr = req.usuario.loja_id;
+    const lojaParam = req.query.loja ? parseInt(req.query.loja) : null;
+    const lojaId = lojaUsr || lojaParam;
+    const filtroLoja = lojaId ? `AND loja_id = $1` : '';
+    const filtroLojaN = lojaId ? `AND n.loja_id = $1` : '';
+    const filtroLojaA = lojaId ? `AND a.loja_id = $1` : '';
+    const filtroLojaP = lojaId ? `AND p.loja_id = $1` : '';
+    const filtroLojaD = lojaId ? `AND d.loja_id = $1` : '';
+    const lp = lojaId ? [lojaId] : [];
+
+    const [emergRows, validadeRows, acordoRows, vendedorRows, devolucaoRows, pedidoRows, lojas] = await Promise.all([
+      query(`
+        SELECT n.id, n.numero_nota, n.fornecedor_nome, n.fornecedor_cnpj,
+               n.valor_total, n.data_emissao, n.importado_em, n.importado_por,
+               n.loja_id, COALESCE(l.nome,'Sem loja') AS loja_nome,
+               EXTRACT(EPOCH FROM (NOW() - n.importado_em))/3600 AS horas_pendente
+          FROM notas_entrada n
+          LEFT JOIN lojas l ON l.id = n.loja_id
+         WHERE n.status = 'emergencial_pendente' ${filtroLojaN}
+         ORDER BY n.importado_em ASC
+         LIMIT 500
+      `, lp),
+      query(`
+        SELECT n.id, n.numero_nota, n.fornecedor_nome, n.fornecedor_cnpj,
+               n.valor_total, n.data_emissao, n.fechado_em,
+               n.loja_id, COALESCE(l.nome,'Sem loja') AS loja_nome,
+               EXTRACT(EPOCH FROM (NOW() - n.fechado_em))/3600 AS horas_pendente
+          FROM notas_entrada n
+          LEFT JOIN lojas l ON l.id = n.loja_id
+         WHERE n.status = 'aguardando_admin_validade' ${filtroLojaN}
+         ORDER BY n.fechado_em ASC NULLS LAST, n.id ASC
+         LIMIT 500
+      `, lp),
+      query(`
+        SELECT a.id,
+               COALESCE(a.fornecedor_nome, f.fantasia, f.razao_social) AS fornecedor_nome,
+               a.fornecedor_cnpj,
+               a.preco_atual, a.preco_acordo, a.qtde_acordada,
+               a.valor_confessado,
+               a.solicitado_em AS criado_em,
+               a.solicitado_por_nome AS criado_por,
+               a.loja_id, COALESCE(l.nome,'Sem loja') AS loja_nome,
+               EXTRACT(EPOCH FROM (NOW() - a.solicitado_em))/3600 AS horas_pendente
+          FROM acordos_comerciais a
+          LEFT JOIN lojas l ON l.id = a.loja_id
+          LEFT JOIN fornecedores f ON f.id = a.fornecedor_id
+         WHERE a.status = 'pendente_compras' ${filtroLojaA}
+         ORDER BY a.solicitado_em ASC
+         LIMIT 500
+      `, lp),
+      query(`
+        SELECT v.id, v.nome, v.email, v.telefone,
+               COALESCE(f.cnpj, '') AS fornecedor_cnpj,
+               COALESCE(f.fantasia, f.razao_social, '') AS fornecedor_nome,
+               v.status, v.criado_em,
+               EXTRACT(EPOCH FROM (NOW() - v.criado_em))/3600 AS horas_pendente
+          FROM vendedores v
+          LEFT JOIN fornecedores f ON f.id = v.fornecedor_id
+         WHERE v.status IN ('pendente','aguardando_cadastro')
+         ORDER BY v.criado_em ASC
+         LIMIT 500
+      `),
+      query(`
+        SELECT d.id, n.numero_nota,
+               d.destinatario_nome AS fornecedor_nome,
+               d.destinatario_cnpj AS fornecedor_cnpj,
+               d.valor_total, d.criado_em, d.criado_por,
+               d.loja_id, COALESCE(l.nome,'Sem loja') AS loja_nome,
+               EXTRACT(EPOCH FROM (NOW() - d.criado_em))/3600 AS horas_pendente
+          FROM devolucoes d
+          LEFT JOIN lojas l ON l.id = d.loja_id
+          LEFT JOIN notas_entrada n ON n.id = d.nota_id
+         WHERE d.status = 'aguardando' ${filtroLojaD}
+         ORDER BY d.criado_em ASC
+         LIMIT 500
+      `, lp),
+      query(`
+        SELECT p.id, p.numero_pedido,
+               COALESCE(f.fantasia, f.razao_social, '') AS fornecedor_nome,
+               COALESCE(f.cnpj, '') AS fornecedor_cnpj,
+               p.valor_total, p.criado_em,
+               COALESCE(v.nome, '') AS vendedor_nome,
+               p.loja_id, COALESCE(l.nome,'Sem loja') AS loja_nome,
+               EXTRACT(EPOCH FROM (NOW() - p.criado_em))/3600 AS horas_pendente
+          FROM pedidos p
+          LEFT JOIN lojas l ON l.id = p.loja_id
+          LEFT JOIN fornecedores f ON f.id = p.fornecedor_id
+          LEFT JOIN vendedores v ON v.id = p.vendedor_id
+         WHERE p.status = 'aguardando_auditoria' ${filtroLojaP}
+         ORDER BY p.criado_em ASC
+         LIMIT 500
+      `, lp),
+      query(`SELECT id, nome FROM lojas ORDER BY id`),
+    ]);
+
+    // KPIs por categoria
+    const sumValor = (rows, col = 'valor_total') => rows.reduce((s, r) => s + (parseFloat(r[col]) || 0), 0);
+    const kpis = {
+      emergenciais: { qtd: emergRows.length, valor: sumValor(emergRows) },
+      validades_em_risco: { qtd: validadeRows.length, valor: sumValor(validadeRows) },
+      acordos: { qtd: acordoRows.length, valor: sumValor(acordoRows, 'valor_confessado') },
+      vendedores: { qtd: vendedorRows.length },
+      devolucoes: { qtd: devolucaoRows.length, valor: sumValor(devolucaoRows) },
+      pedidos_b2b: { qtd: pedidoRows.length, valor: sumValor(pedidoRows) },
+    };
+    kpis.total_pendencias = kpis.emergenciais.qtd + kpis.validades_em_risco.qtd
+      + kpis.acordos.qtd + kpis.vendedores.qtd + kpis.devolucoes.qtd + kpis.pedidos_b2b.qtd;
+
+    // Por loja
+    const porLojaMap = new Map();
+    const acc = (lojaId, lojaNome, cat) => {
+      if (!lojaId && !lojaNome) return;
+      const k = lojaId || 0;
+      if (!porLojaMap.has(k)) {
+        porLojaMap.set(k, { loja_id: lojaId, loja_nome: lojaNome,
+          emergenciais: 0, validades: 0, acordos: 0, devolucoes: 0, pedidos: 0 });
+      }
+      porLojaMap.get(k)[cat]++;
+    };
+    emergRows.forEach(r => acc(r.loja_id, r.loja_nome, 'emergenciais'));
+    validadeRows.forEach(r => acc(r.loja_id, r.loja_nome, 'validades'));
+    acordoRows.forEach(r => acc(r.loja_id, r.loja_nome, 'acordos'));
+    devolucaoRows.forEach(r => acc(r.loja_id, r.loja_nome, 'devolucoes'));
+    pedidoRows.forEach(r => acc(r.loja_id, r.loja_nome, 'pedidos'));
+    const por_loja = [...porLojaMap.values()].sort((a, b) => (a.loja_id || 999) - (b.loja_id || 999));
+
+    // Top mais antigas por categoria (horas pendente DESC)
+    const topAntigas = (rows, n = 5) => [...rows]
+      .sort((a, b) => (parseFloat(b.horas_pendente) || 0) - (parseFloat(a.horas_pendente) || 0))
+      .slice(0, n);
+
+    res.json({
+      kpis,
+      por_loja,
+      lojas,
+      filtros: { loja: lojaId },
+      emergenciais: emergRows,
+      validades_em_risco: validadeRows,
+      acordos: acordoRows,
+      vendedores: vendedorRows,
+      devolucoes: devolucaoRows,
+      pedidos_b2b: pedidoRows,
+      mais_antigas: {
+        emergenciais: topAntigas(emergRows),
+        validades_em_risco: topAntigas(validadeRows),
+        acordos: topAntigas(acordoRows),
+        devolucoes: topAntigas(devolucaoRows),
+        pedidos_b2b: topAntigas(pedidoRows),
+      },
+    });
+  } catch (err) {
+    console.error('[dashboard/aprovacoes]', err.message);
     res.status(500).json({ erro: err.message });
   }
 });

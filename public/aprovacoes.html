@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Painel de Aprovações Pendentes</title>
+<link rel="stylesheet" href="/shared.css">
+<script src="/shared.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+nav{background:#1e293b;padding:12px 20px;display:flex;align-items:center;gap:14px;border-bottom:1px solid #334155}
+.brand{font-family:'Segoe UI Black','Segoe UI',sans-serif;font-weight:900;font-size:18px;color:#38bdf8}
+.nav-user{margin-left:auto;font-size:12px;color:#475569}
+.btn-nav{background:#0ea5e9;color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:12px;cursor:pointer}
+.main{padding:18px 20px;max-width:1500px;margin:0 auto}
+input,select{background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;padding:7px 11px;font-size:13px}
+input:focus,select:focus{outline:none;border-color:#38bdf8}
+button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 14px;font-weight:600}
+.btn-primary{background:#0ea5e9;color:#fff}.btn-primary:hover{background:#0284c7}
+.btn-ghost{background:#1e293b;color:#94a3b8;border:1px solid #334155}.btn-ghost:hover{background:#273549}
+.filtros{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:18px;padding:14px;background:#1e293b;border-radius:10px}
+.filtros label{font-size:11px;color:#64748b;display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:18px}
+.kpi{background:#1e293b;border-radius:10px;padding:14px 16px;border-left:4px solid #475569;cursor:pointer;transition:transform .12s,background .12s}
+.kpi:hover{transform:translateY(-2px);background:#273549}
+.kpi.emergenciais{border-left-color:#f59e0b}
+.kpi.validades{border-left-color:#ef4444}
+.kpi.acordos{border-left-color:#a78bfa}
+.kpi.vendedores{border-left-color:#06b6d4}
+.kpi.devolucoes{border-left-color:#fbbf24}
+.kpi.pedidos{border-left-color:#22c55e}
+.kpi.total{border-left-color:#38bdf8;background:#0c4a6e}
+.kpi .label{font-size:11px;color:#94a3b8;text-transform:uppercase;font-weight:700;letter-spacing:.04em}
+.kpi .v{font-size:28px;font-weight:900;color:#e2e8f0;margin-top:6px;line-height:1}
+.kpi .extra{font-size:11px;color:#64748b;margin-top:4px}
+.painel{background:#1e293b;border-radius:10px;padding:16px;margin-bottom:18px}
+.painel-titulo{font-size:13px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead th{background:#0f172a;padding:8px 10px;text-align:center;color:#64748b;font-weight:600;border-bottom:1px solid #334155;white-space:nowrap;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+thead th.left{text-align:left}
+tbody td{padding:7px 10px;border-bottom:1px solid #1e293b;vertical-align:middle}
+tbody td.right{text-align:right;font-variant-numeric:tabular-nums}
+tbody td.center{text-align:center}
+tbody tr:hover{background:#1a2744;cursor:pointer}
+.empty{text-align:center;color:#475569;padding:40px;font-size:13px}
+.hrs{font-weight:700}
+.hrs.urgente{color:#f87171}
+.hrs.atraso{color:#fbbf24}
+.hrs.ok{color:#64748b}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:1000px){.row2{grid-template-columns:1fr}}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.tab{padding:8px 14px;background:#1e293b;color:#94a3b8;border:1px solid #334155;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600}
+.tab.ativa{background:#0ea5e9;color:#fff;border-color:#0ea5e9}
+.tab .ct{display:inline-block;background:#0f172a;padding:1px 6px;margin-left:6px;border-radius:10px;font-size:10px}
+.tab.ativa .ct{background:#fff;color:#0ea5e9}
+.pill{display:inline-block;padding:2px 8px;background:#0f172a;border:1px solid #334155;border-radius:10px;font-size:10px;color:#94a3b8}
+</style>
+</head>
+<body>
+<nav>
+  <span class="brand">JR Lira Tech</span>
+  <span style="color:#475569">/</span>
+  <span style="font-size:13px;color:#94a3b8">Painel de Aprovações</span>
+  <span class="nav-user" id="nomeUsuario"></span>
+  <button class="btn-nav" onclick="location.href='/'">← Início</button>
+</nav>
+
+<div class="main">
+  <div class="filtros">
+    <div>
+      <label>Loja</label>
+      <select id="filtroLoja"><option value="">Todas</option></select>
+    </div>
+    <button class="btn-primary" onclick="carregar()">Atualizar</button>
+    <span style="margin-left:auto;color:#64748b;font-size:11px;align-self:center">Atualiza automaticamente a cada 60s</span>
+  </div>
+
+  <div id="kpis" class="kpis"></div>
+
+  <div class="painel">
+    <div class="painel-titulo">⏰ Mais Antigas — top 5 por categoria</div>
+    <div id="mais-antigas"></div>
+  </div>
+
+  <div class="painel">
+    <div class="painel-titulo">🏢 Por Loja</div>
+    <div id="por-loja"></div>
+  </div>
+
+  <div class="tabs" id="tabs"></div>
+  <div id="conteudo"></div>
+</div>
+
+<script>
+const token = localStorage.getItem('jrlira_token') || localStorage.getItem('token');
+if (!token) location.href = '/';
+let DADOS = null;
+let abaAtiva = 'emergenciais';
+
+function fmtBRL(v) { return Number(v||0).toLocaleString('pt-BR', { style:'currency', currency:'BRL' }); }
+function fmtN(v) { return Number(v||0).toLocaleString('pt-BR'); }
+function fmtHrs(h) {
+  h = Number(h||0);
+  if (h < 24) return h.toFixed(1) + 'h';
+  return Math.floor(h/24) + 'd ' + Math.floor(h%24) + 'h';
+}
+function corHrs(h) {
+  h = Number(h||0);
+  if (h > 72) return 'urgente';
+  if (h > 24) return 'atraso';
+  return 'ok';
+}
+function esc(s){return String(s||'').replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'})[c]);}
+function dtPt(s){ if(!s) return '—'; return new Date(s).toLocaleDateString('pt-BR'); }
+
+async function carregar() {
+  const loja = document.getElementById('filtroLoja').value;
+  const url = '/api/dashboard/aprovacoes' + (loja ? '?loja=' + loja : '');
+  try {
+    const r = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
+    if (r.status === 401) { localStorage.clear(); location.href='/'; return; }
+    if (!r.ok) {
+      const e = await r.json().catch(()=>({}));
+      document.getElementById('conteudo').innerHTML = '<div class="empty">Erro: ' + (e.erro||r.status) + '</div>';
+      return;
+    }
+    DADOS = await r.json();
+    renderKPIs();
+    renderPorLoja();
+    renderMaisAntigas();
+    renderTabs();
+    renderConteudo();
+    popularLojas();
+  } catch (e) {
+    document.getElementById('conteudo').innerHTML = '<div class="empty">Erro: ' + esc(e.message) + '</div>';
+  }
+}
+
+function popularLojas() {
+  const sel = document.getElementById('filtroLoja');
+  const atual = sel.value;
+  if (sel.options.length > 1) return; // já populado
+  (DADOS.lojas||[]).forEach(l => {
+    const o = document.createElement('option');
+    o.value = l.id; o.textContent = l.nome;
+    sel.appendChild(o);
+  });
+  if (atual) sel.value = atual;
+}
+
+function renderKPIs() {
+  const k = DADOS.kpis;
+  document.getElementById('kpis').innerHTML = `
+    <div class="kpi total">
+      <div class="label">Total Pendências</div>
+      <div class="v">${fmtN(k.total_pendencias)}</div>
+      <div class="extra">aguardando ação</div>
+    </div>
+    <div class="kpi emergenciais" onclick="ativarAba('emergenciais')">
+      <div class="label">🚨 Emergenciais</div>
+      <div class="v">${fmtN(k.emergenciais.qtd)}</div>
+      <div class="extra">${fmtBRL(k.emergenciais.valor)}</div>
+    </div>
+    <div class="kpi validades" onclick="ativarAba('validades_em_risco')">
+      <div class="label">⏳ Validade em Risco</div>
+      <div class="v">${fmtN(k.validades_em_risco.qtd)}</div>
+      <div class="extra">${fmtBRL(k.validades_em_risco.valor)}</div>
+    </div>
+    <div class="kpi acordos" onclick="ativarAba('acordos')">
+      <div class="label">📝 Acordos Comerciais</div>
+      <div class="v">${fmtN(k.acordos.qtd)}</div>
+      <div class="extra">${fmtBRL(k.acordos.valor)} confessado</div>
+    </div>
+    <div class="kpi devolucoes" onclick="ativarAba('devolucoes')">
+      <div class="label">🔄 Devoluções</div>
+      <div class="v">${fmtN(k.devolucoes.qtd)}</div>
+      <div class="extra">${fmtBRL(k.devolucoes.valor)} · aguard. XML</div>
+    </div>
+    <div class="kpi pedidos" onclick="ativarAba('pedidos_b2b')">
+      <div class="label">📦 Pedidos B2B</div>
+      <div class="v">${fmtN(k.pedidos_b2b.qtd)}</div>
+      <div class="extra">${fmtBRL(k.pedidos_b2b.valor)} · auditoria</div>
+    </div>
+    <div class="kpi vendedores" onclick="ativarAba('vendedores')">
+      <div class="label">👤 Vendedores</div>
+      <div class="v">${fmtN(k.vendedores.qtd)}</div>
+      <div class="extra">aguardando cadastro</div>
+    </div>
+  `;
+}
+
+function renderPorLoja() {
+  const rows = DADOS.por_loja || [];
+  if (rows.length === 0) {
+    document.getElementById('por-loja').innerHTML = '<div class="empty">Nenhuma pendência</div>';
+    return;
+  }
+  const html = `
+    <table>
+      <thead><tr>
+        <th class="left">Loja</th>
+        <th>🚨 Emerg.</th><th>⏳ Validade</th><th>📝 Acordos</th>
+        <th>🔄 Devol.</th><th>📦 Pedidos</th><th>Total</th>
+      </tr></thead>
+      <tbody>
+        ${rows.map(r => {
+          const total = (r.emergenciais||0)+(r.validades||0)+(r.acordos||0)+(r.devolucoes||0)+(r.pedidos||0);
+          return `<tr>
+            <td><strong>${esc(r.loja_nome)}</strong></td>
+            <td class="center">${r.emergenciais||0}</td>
+            <td class="center">${r.validades||0}</td>
+            <td class="center">${r.acordos||0}</td>
+            <td class="center">${r.devolucoes||0}</td>
+            <td class="center">${r.pedidos||0}</td>
+            <td class="center"><strong>${total}</strong></td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+  document.getElementById('por-loja').innerHTML = html;
+}
+
+function renderMaisAntigas() {
+  const ma = DADOS.mais_antigas || {};
+  const labels = {
+    emergenciais: '🚨 Emergenciais', validades_em_risco: '⏳ Validade em Risco',
+    acordos: '📝 Acordos', devolucoes: '🔄 Devoluções', pedidos_b2b: '📦 Pedidos B2B'
+  };
+  let html = '<div class="row2">';
+  for (const cat of ['emergenciais','validades_em_risco','acordos','devolucoes','pedidos_b2b']) {
+    const linhas = (ma[cat] || []).map(r => `
+      <tr onclick="abrirDetalhe('${cat}', ${r.id})">
+        <td>${esc(r.fornecedor_nome || r.nome || '—').substring(0,40)}</td>
+        <td class="center"><span class="pill">${esc(r.loja_nome||'')}</span></td>
+        <td class="right"><span class="hrs ${corHrs(r.horas_pendente)}">${fmtHrs(r.horas_pendente)}</span></td>
+      </tr>`).join('') || '<tr><td colspan="3" style="text-align:center;color:#475569;padding:14px">Nenhuma</td></tr>';
+    html += `
+      <div>
+        <div style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700;margin-bottom:6px">${labels[cat]}</div>
+        <table>
+          <thead><tr><th class="left">Fornecedor/Nome</th><th>Loja</th><th>Pendente há</th></tr></thead>
+          <tbody>${linhas}</tbody>
+        </table>
+      </div>`;
+  }
+  html += '</div>';
+  document.getElementById('mais-antigas').innerHTML = html;
+}
+
+function renderTabs() {
+  const k = DADOS.kpis;
+  const abas = [
+    ['emergenciais',       '🚨 Emergenciais',       k.emergenciais.qtd],
+    ['validades_em_risco', '⏳ Validade',           k.validades_em_risco.qtd],
+    ['acordos',            '📝 Acordos',            k.acordos.qtd],
+    ['devolucoes',         '🔄 Devoluções',         k.devolucoes.qtd],
+    ['pedidos_b2b',        '📦 Pedidos B2B',        k.pedidos_b2b.qtd],
+    ['vendedores',         '👤 Vendedores',         k.vendedores.qtd],
+  ];
+  document.getElementById('tabs').innerHTML = abas.map(([k,lbl,n]) =>
+    `<div class="tab ${k===abaAtiva?'ativa':''}" onclick="ativarAba('${k}')">${lbl} <span class="ct">${n}</span></div>`
+  ).join('');
+}
+
+function ativarAba(k) { abaAtiva = k; renderTabs(); renderConteudo(); }
+
+function abrirDetalhe(cat, id) {
+  if (cat === 'emergenciais') location.href = '/emergenciais';
+  else if (cat === 'validades_em_risco') location.href = '/validades-em-risco';
+  else if (cat === 'acordos') location.href = '/auditoria-acordos';
+  else if (cat === 'devolucoes') location.href = '/aguardando-devolucao';
+  else if (cat === 'pedidos_b2b') location.href = '/pedidos-comprador';
+  else if (cat === 'vendedores') location.href = '/fornecedores';
+}
+
+function renderConteudo() {
+  const cat = abaAtiva;
+  const rows = DADOS[cat] || [];
+  if (rows.length === 0) {
+    document.getElementById('conteudo').innerHTML = '<div class="empty">Nenhuma pendência</div>';
+    return;
+  }
+  let cabecalho, corpo;
+  if (cat === 'vendedores') {
+    cabecalho = '<th class="left">Vendedor</th><th class="left">Fornecedor</th><th>Email</th><th>Telefone</th><th>Status</th><th>Pendente há</th>';
+    corpo = rows.map(r => `
+      <tr onclick="abrirDetalhe('${cat}', ${r.id})">
+        <td><strong>${esc(r.nome)}</strong></td>
+        <td>${esc(r.fornecedor_nome||'—')}</td>
+        <td>${esc(r.email||'—')}</td>
+        <td>${esc(r.telefone||'—')}</td>
+        <td class="center"><span class="pill">${esc(r.status)}</span></td>
+        <td class="center"><span class="hrs ${corHrs(r.horas_pendente)}">${fmtHrs(r.horas_pendente)}</span></td>
+      </tr>`).join('');
+  } else if (cat === 'acordos') {
+    cabecalho = '<th class="left">Fornecedor</th><th class="left">Loja</th><th>Preço Atual → Acordo</th><th>Qtde</th><th>Valor Confessado</th><th>Pendente há</th>';
+    corpo = rows.map(r => `
+      <tr onclick="abrirDetalhe('${cat}', ${r.id})">
+        <td><strong>${esc(r.fornecedor_nome||'—')}</strong></td>
+        <td>${esc(r.loja_nome)}</td>
+        <td class="center">${fmtBRL(r.preco_atual)} → <strong>${fmtBRL(r.preco_acordo)}</strong></td>
+        <td class="center">${fmtN(r.qtde_acordada)}</td>
+        <td class="right"><strong>${fmtBRL(r.valor_confessado)}</strong></td>
+        <td class="center"><span class="hrs ${corHrs(r.horas_pendente)}">${fmtHrs(r.horas_pendente)}</span></td>
+      </tr>`).join('');
+  } else if (cat === 'pedidos_b2b') {
+    cabecalho = '<th class="left">Pedido</th><th class="left">Fornecedor</th><th class="left">Vendedor</th><th>Loja</th><th class="right">Valor</th><th>Pendente há</th>';
+    corpo = rows.map(r => `
+      <tr onclick="abrirDetalhe('${cat}', ${r.id})">
+        <td><strong>${esc(r.numero_pedido||'#'+r.id)}</strong></td>
+        <td>${esc(r.fornecedor_nome||'—')}</td>
+        <td>${esc(r.vendedor_nome||'—')}</td>
+        <td class="center">${esc(r.loja_nome)}</td>
+        <td class="right">${fmtBRL(r.valor_total)}</td>
+        <td class="center"><span class="hrs ${corHrs(r.horas_pendente)}">${fmtHrs(r.horas_pendente)}</span></td>
+      </tr>`).join('');
+  } else {
+    // emergenciais / validades_em_risco / devolucoes
+    cabecalho = '<th class="left">Nota</th><th class="left">Fornecedor</th><th>Loja</th><th>Emissão</th><th class="right">Valor</th><th>Pendente há</th>';
+    corpo = rows.map(r => `
+      <tr onclick="abrirDetalhe('${cat}', ${r.id})">
+        <td><strong>${esc(r.numero_nota||'#'+r.id)}</strong></td>
+        <td>${esc(r.fornecedor_nome||'—')}</td>
+        <td class="center">${esc(r.loja_nome||'—')}</td>
+        <td class="center">${dtPt(r.data_emissao||r.criado_em)}</td>
+        <td class="right">${fmtBRL(r.valor_total)}</td>
+        <td class="center"><span class="hrs ${corHrs(r.horas_pendente)}">${fmtHrs(r.horas_pendente)}</span></td>
+      </tr>`).join('');
+  }
+  document.getElementById('conteudo').innerHTML = `
+    <div class="painel">
+      <table>
+        <thead><tr>${cabecalho}</tr></thead>
+        <tbody>${corpo}</tbody>
+      </table>
+    </div>`;
+}
+
+document.getElementById('filtroLoja').addEventListener('change', carregar);
+document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || localStorage.getItem('nome') || '';
+
+carregar();
+setInterval(carregar, 60_000);
+</script>
+</body>
+</html>
