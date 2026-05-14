@@ -884,8 +884,8 @@ router.get('/:id', autenticar, async (req, res) => {
     const itens = await query(`
       SELECT i.*,
         ${isTransfCD ? `
-          pe.ean_principal_jrlira AS cod_barra_loja,
-          pe.qtd_embalagem        AS qtd_embalagem_loja,
+          COALESCE(cpe.ean_secundario, cpe.ean_principal, pe.ean_principal_jrlira) AS cod_barra_loja,
+          COALESCE(cpe.qtd_embalagem, pe.qtd_embalagem) AS qtd_embalagem_loja,
           pe.descricao_atual      AS descricao_cadastro_cd,
           (SELECT i2.preco_unitario_nota
              FROM itens_nota i2
@@ -925,10 +925,13 @@ router.get('/:id', autenticar, async (req, res) => {
             AND dv.status NOT IN ('cancelada','enviada','concluida')
           ORDER BY di.id DESC LIMIT 1) AS devolucao_pendente
       FROM itens_nota i
-      ${isTransfCD ? `LEFT JOIN produtos_embalagem pe ON pe.mat_codi = i.cd_pro_codi` : ''}
+      ${isTransfCD ? `
+        LEFT JOIN cd_produtos_embalagem cpe
+               ON cpe.cd_codigo = $3 AND cpe.mat_codi = i.cd_pro_codi
+        LEFT JOIN produtos_embalagem pe ON pe.mat_codi = i.cd_pro_codi` : ''}
       WHERE i.nota_id = $1
       ORDER BY i.numero_item
-    `, isTransfCD ? [req.params.id, nota.loja_id] : [req.params.id]);
+    `, isTransfCD ? [req.params.id, nota.loja_id, nota.origem_cd_codigo || ''] : [req.params.id]);
     res.json({ nota, itens });
   } catch (err) {
     res.status(500).json({ erro: err.message });
@@ -1246,7 +1249,7 @@ router.post('/:id/resync-cd', autenticar, async (req, res) => {
 router.patch('/:id/finalizar-conferencia-transf', autenticar, async (req, res) => {
   try {
     const itensInput = Array.isArray(req.body?.itens) ? req.body.itens : [];
-    const [nota] = await query('SELECT status, origem FROM notas_entrada WHERE id=$1', [req.params.id]);
+    const [nota] = await query('SELECT status, origem, origem_cd_codigo FROM notas_entrada WHERE id=$1', [req.params.id]);
     if (!nota) return res.status(404).json({ erro: 'Nota não encontrada' });
     if (nota.origem !== 'cd' && nota.origem !== 'transferencia_loja') {
       return res.status(400).json({ erro: 'Fluxo apenas para transferências' });
@@ -1256,11 +1259,14 @@ router.patch('/:id/finalizar-conferencia-transf', autenticar, async (req, res) =
     // Carrega itens da nota com qtd_embalagem + dados pra registrar divergências
     const itensNota = await query(
       `SELECT i.id, i.cd_pro_codi, i.quantidade, i.descricao_nota, i.ean_nota,
-              i.preco_unitario_nota, COALESCE(pe.qtd_embalagem,1)::numeric AS emb
+              i.preco_unitario_nota,
+              COALESCE(cpe.qtd_embalagem, pe.qtd_embalagem, 1)::numeric AS emb
          FROM itens_nota i
+         LEFT JOIN cd_produtos_embalagem cpe
+                ON cpe.cd_codigo = $2 AND cpe.mat_codi = i.cd_pro_codi
          LEFT JOIN produtos_embalagem pe ON pe.mat_codi = i.cd_pro_codi
         WHERE i.nota_id=$1`,
-      [req.params.id]
+      [req.params.id, nota.origem_cd_codigo || '']
     );
     const mapaItens = Object.fromEntries(itensNota.map(i => [i.id, i]));
     const [notaInfo] = await query('SELECT loja_id FROM notas_entrada WHERE id=$1', [req.params.id]);
@@ -1308,8 +1314,12 @@ router.patch('/:id/finalizar-conferencia-transf', autenticar, async (req, res) =
         // ── Análise de validade em risco (por validade do item) ──
         if (validadesItem.length) {
           const eanLojaRow = await client.query(
-            `SELECT ean_principal_jrlira FROM produtos_embalagem WHERE mat_codi = $1`,
-            [it.cd_pro_codi]
+            `SELECT COALESCE(
+                      (SELECT COALESCE(ean_secundario, ean_principal) FROM cd_produtos_embalagem
+                        WHERE cd_codigo = $2 AND mat_codi = $1 LIMIT 1),
+                      (SELECT ean_principal_jrlira FROM produtos_embalagem WHERE mat_codi = $1 LIMIT 1)
+                    ) AS ean_principal_jrlira`,
+            [it.cd_pro_codi, nota.origem_cd_codigo || '']
           );
           const eanRef = eanLojaRow.rows[0]?.ean_principal_jrlira || it.ean_nota;
           let estoqueAtual = 0, vendasMedia = 0;
@@ -1431,8 +1441,8 @@ router.get('/:id/historico', autenticar, async (req, res) => {
     const itens = await query(
       isCD
         ? `SELECT i.*,
-                  pe.qtd_embalagem AS qtd_embalagem_loja,
-                  pe.ean_principal_jrlira AS cod_barra_loja,
+                  COALESCE(cpe.qtd_embalagem, pe.qtd_embalagem) AS qtd_embalagem_loja,
+                  COALESCE(cpe.ean_secundario, cpe.ean_principal, pe.ean_principal_jrlira) AS cod_barra_loja,
                   (SELECT json_agg(json_build_object(
                     'lote_idx', lc.lote_idx, 'qtd_caixas', lc.qtd_caixas,
                     'qtd_unidades', lc.qtd_unidades, 'qtd_total', lc.qtd_total,
@@ -1455,6 +1465,8 @@ router.get('/:id/historico', autenticar, async (req, res) => {
                     'decidido_em', v.decidido_em, 'decidido_por', v.decidido_por
                   )) FROM validades_em_risco v WHERE v.item_id = i.id) AS validades_risco
              FROM itens_nota i
+             LEFT JOIN cd_produtos_embalagem cpe
+                    ON cpe.cd_codigo = $2 AND cpe.mat_codi = i.cd_pro_codi
              LEFT JOIN produtos_embalagem pe ON pe.mat_codi = i.cd_pro_codi
             WHERE i.nota_id = $1
             ORDER BY i.numero_item`
@@ -1486,7 +1498,7 @@ router.get('/:id/historico', autenticar, async (req, res) => {
                   ) ORDER BY l.alterado_em) FROM embalagens_fornecedor_log l
                     WHERE l.item_nota_id = i.id) AS log_embalagem
              FROM itens_nota i WHERE i.nota_id = $1 ORDER BY i.numero_item`,
-      [req.params.id]
+      isCD ? [req.params.id, nota.origem_cd_codigo || ''] : [req.params.id]
     );
 
     // Último preço pago do mesmo fornecedor pra cada EAN ANTES desta nota — pra calcular diff de ganho/perda
@@ -1732,8 +1744,14 @@ router.post('/:id/auditoria', autenticar, async (req, res) => {
     let devolucaoId = null;
     for (const aud of itens_auditados) {
       const { rows: [item] } = await client.query(
-        'SELECT i.*, COALESCE(pe.qtd_embalagem,1)::numeric AS emb FROM itens_nota i LEFT JOIN produtos_embalagem pe ON pe.mat_codi = i.cd_pro_codi WHERE i.id = $1 AND i.nota_id = $2',
-        [aud.item_id, req.params.id]
+        `SELECT i.*,
+                COALESCE(cpe.qtd_embalagem, pe.qtd_embalagem, 1)::numeric AS emb
+           FROM itens_nota i
+           LEFT JOIN cd_produtos_embalagem cpe
+                  ON cpe.cd_codigo = $3 AND cpe.mat_codi = i.cd_pro_codi
+           LEFT JOIN produtos_embalagem pe ON pe.mat_codi = i.cd_pro_codi
+          WHERE i.id = $1 AND i.nota_id = $2`,
+        [aud.item_id, req.params.id, nota.origem_cd_codigo || '']
       );
       if (!item) continue;
       const qtdEsperada = n(item.quantidade);
