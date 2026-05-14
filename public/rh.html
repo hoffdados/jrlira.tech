@@ -211,11 +211,19 @@ tr:hover td { background: #1a2638; }
       <select id="fTerceirizada"><option value="">—</option></select>
     </div>
     <div class="form-group"><label>Salário</label><input type="number" id="fSalario" step="0.01"></div>
-    <div class="form-group"><label>Status <span style="color:#64748b;font-size:10px">(definido por eventos)</span></label>
-      <input type="text" id="fStatus" readonly style="background:#0a1020;color:#94a3b8;cursor:default">
+    <div class="form-group"><label>Status <span style="color:#64748b;font-size:10px">(eventos podem sobrescrever)</span></label>
+      <select id="fStatus">
+        <option value="ATIVO">ATIVO</option>
+        <option value="ATESTADO">ATESTADO</option>
+        <option value="INSS">INSS</option>
+        <option value="LICENSA MATERNIDADE">LICENÇA MATERNIDADE</option>
+        <option value="AFASTADO">AFASTADO</option>
+        <option value="FERIAS">FÉRIAS</option>
+        <option value="DESLIGADO">DESLIGADO</option>
+      </select>
     </div>
-    <div class="form-group"><label>Data Admissão <span style="color:#64748b;font-size:10px">(via evento)</span></label>
-      <input type="date" id="fAdmissao" readonly style="background:#0a1020;color:#94a3b8;cursor:default">
+    <div class="form-group"><label>Data Admissão</label>
+      <input type="date" id="fAdmissao">
     </div>
     <div class="form-group"><label>Data Demissão <span style="color:#64748b;font-size:10px">(via evento)</span></label>
       <input type="date" id="fDemissao" readonly style="background:#0a1020;color:#94a3b8;cursor:default">
@@ -807,7 +815,7 @@ async function salvar(btn) {
     data_nascimento:'fNascimento', sexo:'fSexo', escolaridade:'fEscolaridade',
     raca:'fRaca', estado_civil:'fEstadoCivil', cargo:'fCargo',
     grupo_cargo:'fGrupoCargo', nivel:'fNivel', loja_id:'fLoja', terceirizada:'fTerceirizada',
-    salario:'fSalario',
+    salario:'fSalario', status:'fStatus', data_admissao:'fAdmissao',
     telefone:'fTelefone', email:'fEmail',
     cep:'fCep', logradouro:'fLogradouro', numero:'fNumero',
     complemento:'fComplemento', bairro:'fBairro', cidade:'fCidade', uf:'fUf'

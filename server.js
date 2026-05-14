@@ -1107,6 +1107,11 @@ async function initDB() {
     await runMigration(client, '20260515_pedidos_fornecedor_cnpj_snapshot',
       `ALTER TABLE pedidos
          ADD COLUMN IF NOT EXISTS fornecedor_cnpj_snapshot VARCHAR(20)`);
+    // Funcionarios com status NULL (bug do PUT antigo que sobrescrevia com null)
+    await runMigration(client, '20260515_funcionarios_status_null_fix',
+      `UPDATE funcionarios
+          SET status = CASE WHEN data_demissao IS NOT NULL THEN 'DESLIGADO' ELSE 'ATIVO' END
+        WHERE status IS NULL`);
     await runMigration(client, '20260504_backfill_criado_por_sug',
       `UPDATE pedidos SET criado_por_comprador = 'sugestao'
          WHERE status='rascunho' AND numero_pedido LIKE 'SUG-%' AND criado_por_comprador IS NULL`);

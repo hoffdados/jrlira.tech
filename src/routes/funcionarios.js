@@ -328,7 +328,8 @@ router.put('/:id', autenticar, upload.single('foto'), async (req, res) => {
     const fotoClause = req.file ? ', foto_data = $30, foto_mime = $31' : '';
     const params = [
       matricula, nome, cpf, pis, data_nascimento||null, sexo, escolaridade, raca, estado_civil,
-      cargo, grupo_cargo, nivel, loja_id||null, terceirizada||null, salario||null, status, data_admissao||null,
+      cargo, grupo_cargo, nivel, loja_id||null, terceirizada||null, salario||null,
+      status || null, data_admissao || null,
       data_demissao||null, causa_afastamento, motivo_afastamento,
       cep, logradouro, numero, complemento, bairro, cidade, uf, telefone, email,
       req.params.id
@@ -336,11 +337,14 @@ router.put('/:id', autenticar, upload.single('foto'), async (req, res) => {
     if (req.file) params.splice(params.length - 1, 0, req.file.buffer, req.file.mimetype);
 
     const idPos = req.file ? 32 : 30;
+    // status e data_admissao usam COALESCE para nao sobrescrever com NULL quando o
+    // form nao envia o campo (era a causa do "status null" reclamado pelo RH).
     await pool.query(`
       UPDATE funcionarios SET
         matricula=$1, nome=$2, cpf=$3, pis=$4, data_nascimento=$5, sexo=$6,
         escolaridade=$7, raca=$8, estado_civil=$9, cargo=$10, grupo_cargo=$11,
-        nivel=$12, loja_id=$13, terceirizada=$14, salario=$15, status=$16, data_admissao=$17,
+        nivel=$12, loja_id=$13, terceirizada=$14, salario=$15,
+        status=COALESCE($16, status), data_admissao=COALESCE($17, data_admissao),
         data_demissao=$18, causa_afastamento=$19, motivo_afastamento=$20,
         cep=$21, logradouro=$22, numero=$23, complemento=$24, bairro=$25,
         cidade=$26, uf=$27, telefone=$28, email=$29${fotoClause},
