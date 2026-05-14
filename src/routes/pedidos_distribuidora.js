@@ -47,7 +47,18 @@ router.get('/destinos', autenticar, async (req, res) => {
       SELECT id, tipo, codigo, nome, cnpj, loja_id, cd_codigo, ativo
         FROM pedidos_distrib_destinos
        WHERE ativo = TRUE
-       ORDER BY tipo, nome
+       ORDER BY
+         CASE tipo WHEN 'LOJA' THEN 0 ELSE 1 END,
+         CASE WHEN tipo = 'LOJA' THEN loja_id END NULLS LAST,
+         CASE cd_codigo
+           WHEN 'srv1-nprogresso'   THEN 1
+           WHEN 'srv2-asafrio'      THEN 2
+           WHEN 'srv2-asasantarem'  THEN 3
+           WHEN 'srv1-itautuba'     THEN 4
+           WHEN 'srv3-casabranca'   THEN 5
+           ELSE 9
+         END,
+         nome
     `);
     res.json(rows);
   } catch (e) { res.status(500).json({ erro: e.message }); }
@@ -144,7 +155,18 @@ router.get('/grade', adminOuCeo, async (req, res) => {
         WHERE ativo = TRUE
           AND cnpj <> $1
           AND (tipo = 'LOJA' OR (tipo = 'CD' AND cd_codigo = ANY($2::text[])))
-        ORDER BY tipo DESC, nome`,
+        ORDER BY
+          CASE tipo WHEN 'LOJA' THEN 0 ELSE 1 END,
+          CASE WHEN tipo = 'LOJA' THEN loja_id END NULLS LAST,
+          CASE cd_codigo
+            WHEN 'srv1-nprogresso'   THEN 1
+            WHEN 'srv2-asafrio'      THEN 2
+            WHEN 'srv2-asasantarem'  THEN 3
+            WHEN 'srv1-itautuba'     THEN 4
+            WHEN 'srv3-casabranca'   THEN 5
+            ELSE 9
+          END,
+          nome`,
       [cnpjOrigem, cdsPermitidos]
     );
     const lojaIds = destinos.filter(d => d.tipo === 'LOJA' && d.loja_id).map(d => d.loja_id);
