@@ -1104,6 +1104,9 @@ async function initDB() {
     await runMigration(client, '20260504_pedidos_criado_por_comprador',
       `ALTER TABLE pedidos
          ADD COLUMN IF NOT EXISTS criado_por_comprador VARCHAR(150)`);
+    await runMigration(client, '20260515_pedidos_fornecedor_cnpj_snapshot',
+      `ALTER TABLE pedidos
+         ADD COLUMN IF NOT EXISTS fornecedor_cnpj_snapshot VARCHAR(20)`);
     await runMigration(client, '20260504_backfill_criado_por_sug',
       `UPDATE pedidos SET criado_por_comprador = 'sugestao'
          WHERE status='rascunho' AND numero_pedido LIKE 'SUG-%' AND criado_por_comprador IS NULL`);
