@@ -79,7 +79,8 @@ router.get('/resumo', adminOuCeo, async (req, res) => {
          AND NOT ${matchSQL}
        GROUP BY ch.loja_id`, [CB_CNPJ, mes, CB_CLI_CODIS]);
 
-    // Em trânsito = saídas CB (capa ou movcompra) sem entrada em compras_historico
+    // Em trânsito = saídas CB com cli_codi de loja sem entrada em compras_historico
+    // Só PDV (cd_capa) — cd_movcompra não tem identificação de destino confiável
     const transito = await dbQuery(`
       WITH saidas AS (
         SELECT cc.cap_sequ AS doc, cc.cap_dtem AS data, cc.cli_codi AS cli,
@@ -91,14 +92,6 @@ router.get('/resumo', adminOuCeo, async (req, res) => {
            AND COALESCE(cc.cap_stvd,'') <> 'C'
            AND cc.cli_codi = ANY($2)
            AND TO_CHAR(cc.cap_dtem, 'YYYY-MM') = $3
-        UNION ALL
-        SELECT mc.mcp_nnotafis AS doc, mc.mcp_dtem AS data, NULL AS cli,
-               mc.mcp_vtot::numeric AS valor
-          FROM cd_movcompra mc
-         WHERE mc.cd_codigo = $1 AND mc.mcp_tipomov = 'S'
-           AND COALESCE(mc.mcp_status,'') <> 'C'
-           AND mc.mcp_nnotafis IS NOT NULL AND mc.mcp_nnotafis <> ''
-           AND TO_CHAR(mc.mcp_dtem, 'YYYY-MM') = $3
       )
       SELECT COUNT(*)::int AS qtd,
              COALESCE(SUM(valor), 0)::numeric(14,2) AS valor
@@ -110,29 +103,17 @@ router.get('/resumo', adminOuCeo, async (req, res) => {
                 REGEXP_REPLACE(COALESCE(s.doc,''),'^0+','')
        )`, [CB_CD_CODIGO, CB_CLI_CODIS, mes, CB_CNPJ]);
 
-    // Saídas CB total no mês (capa+mov)
+    // Saídas CB total no mês (só vendas pras lojas — cli_codi mapeado)
     const saidasCb = await dbQuery(`
-      WITH saidas AS (
-        SELECT cc.cap_sequ AS doc,
-               COALESCE((SELECT SUM(mi.ite_quan * mi.ite_valo)
-                           FROM cd_moviitem mi
-                          WHERE mi.cd_codigo = cc.cd_codigo AND mi.cap_sequ = cc.cap_sequ), 0)::numeric AS valor
-          FROM cd_capa cc
-         WHERE cc.cd_codigo = $1 AND cc.cap_tipo IN ('3','4')
-           AND COALESCE(cc.cap_stvd,'') <> 'C'
-           AND cc.cli_codi = ANY($2)
-           AND TO_CHAR(cc.cap_dtem, 'YYYY-MM') = $3
-        UNION ALL
-        SELECT mc.mcp_nnotafis AS doc, mc.mcp_vtot::numeric AS valor
-          FROM cd_movcompra mc
-         WHERE mc.cd_codigo = $1 AND mc.mcp_tipomov = 'S'
-           AND COALESCE(mc.mcp_status,'') <> 'C'
-           AND mc.mcp_nnotafis IS NOT NULL AND mc.mcp_nnotafis <> ''
-           AND TO_CHAR(mc.mcp_dtem, 'YYYY-MM') = $3
-      )
       SELECT COUNT(*)::int AS qtd,
-             COALESCE(SUM(valor), 0)::numeric(14,2) AS valor
-        FROM saidas`, [CB_CD_CODIGO, CB_CLI_CODIS, mes]);
+             COALESCE(SUM(COALESCE((SELECT SUM(mi.ite_quan * mi.ite_valo)
+                                      FROM cd_moviitem mi
+                                     WHERE mi.cd_codigo = cc.cd_codigo AND mi.cap_sequ = cc.cap_sequ), 0)), 0)::numeric(14,2) AS valor
+        FROM cd_capa cc
+       WHERE cc.cd_codigo = $1 AND cc.cap_tipo IN ('3','4')
+         AND COALESCE(cc.cap_stvd,'') <> 'C'
+         AND cc.cli_codi = ANY($2)
+         AND TO_CHAR(cc.cap_dtem, 'YYYY-MM') = $3`, [CB_CD_CODIGO, CB_CLI_CODIS, mes]);
 
     const lojas = await dbQuery(`SELECT id, nome FROM lojas ORDER BY id`);
 
@@ -223,37 +204,25 @@ router.get('/notas', adminOuCeo, async (req, res) => {
       ? req.query.categoria : 'confirmadas';
 
     if (categoria === 'transito') {
+      // Só PDV (cd_capa) com cli_codi de loja — saídas identificadas sem confirmação
       const rows = await dbQuery(`
-        WITH saidas AS (
-          SELECT cc.cap_sequ AS doc, cc.cap_dtem::date AS data, cc.cli_codi AS cli,
-                 cc.ven_codi AS ven, 'PDV' AS tipo,
-                 COALESCE((SELECT SUM(mi.ite_quan * mi.ite_valo)
-                             FROM cd_moviitem mi
-                            WHERE mi.cd_codigo = cc.cd_codigo AND mi.cap_sequ = cc.cap_sequ), 0)::numeric(14,2) AS valor
-            FROM cd_capa cc
-           WHERE cc.cd_codigo = $1 AND cc.cap_tipo IN ('3','4')
-             AND COALESCE(cc.cap_stvd,'') <> 'C'
-             AND cc.cli_codi = ANY($2)
-             AND TO_CHAR(cc.cap_dtem, 'YYYY-MM') = $3
-          UNION ALL
-          SELECT mc.mcp_nnotafis AS doc, mc.mcp_dtem::date AS data, NULL AS cli,
-                 NULL AS ven, 'NFE' AS tipo,
-                 mc.mcp_vtot::numeric(14,2) AS valor
-            FROM cd_movcompra mc
-           WHERE mc.cd_codigo = $1 AND mc.mcp_tipomov = 'S'
-             AND COALESCE(mc.mcp_status,'') <> 'C'
-             AND mc.mcp_nnotafis IS NOT NULL AND mc.mcp_nnotafis <> ''
-             AND TO_CHAR(mc.mcp_dtem, 'YYYY-MM') = $3
-        )
-        SELECT doc, data, cli, ven, tipo, valor
-          FROM saidas s
-         WHERE NOT EXISTS (
-           SELECT 1 FROM compras_historico ch
-            WHERE REGEXP_REPLACE(ch.fornecedor_cnpj, '\\D', '', 'g') = $4
-              AND REGEXP_REPLACE(COALESCE(ch.numeronfe,''),'^0+','') =
-                  REGEXP_REPLACE(COALESCE(s.doc,''),'^0+','')
-         )
-         ORDER BY data DESC
+        SELECT cc.cap_sequ AS doc, cc.cap_dtem::date AS data, cc.cli_codi AS cli,
+               cc.ven_codi AS ven, cc.cap_tipo AS tipo,
+               COALESCE((SELECT SUM(mi.ite_quan * mi.ite_valo)
+                           FROM cd_moviitem mi
+                          WHERE mi.cd_codigo = cc.cd_codigo AND mi.cap_sequ = cc.cap_sequ), 0)::numeric(14,2) AS valor
+          FROM cd_capa cc
+         WHERE cc.cd_codigo = $1 AND cc.cap_tipo IN ('3','4')
+           AND COALESCE(cc.cap_stvd,'') <> 'C'
+           AND cc.cli_codi = ANY($2)
+           AND TO_CHAR(cc.cap_dtem, 'YYYY-MM') = $3
+           AND NOT EXISTS (
+             SELECT 1 FROM compras_historico ch
+              WHERE REGEXP_REPLACE(ch.fornecedor_cnpj, '\\D', '', 'g') = $4
+                AND REGEXP_REPLACE(COALESCE(ch.numeronfe,''),'^0+','') =
+                    REGEXP_REPLACE(COALESCE(cc.cap_sequ,''),'^0+','')
+           )
+         ORDER BY cc.cap_dtem DESC
          LIMIT 500`, [CB_CD_CODIGO, CB_CLI_CODIS, mes, CB_CNPJ]);
       return res.json({ mes, categoria, total: rows.length, notas: rows });
     }

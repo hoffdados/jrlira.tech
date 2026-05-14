@@ -230,15 +230,16 @@ async function renderConteudo() {
 
     let html;
     if (abaAtiva === 'transito') {
-      const CB_CLI_LOJA = {'0000001495':'L1','0000002610':'L2','0000003308':'L3','0000004342':'L4','0000005153':'L5','0000005271':'L6'};
+      const CB_CLI_LOJA = {'0000001495':'L1 Econômico','0000002610':'L2 BR','0000003308':'L3 J. Pessoa','0000004342':'L4 Floresta','0000005153':'L5 São Jose','0000005271':'L6 Santarém'};
+      const TIPO_LABEL = {'3':'Venda PDV','4':'Faturada'};
       html = `<div class="painel">
         <div class="painel-titulo">⏳ ${fmtN(d.total)} saídas CB sem entrada confirmada</div>
-        <table><thead><tr><th>Data</th><th>Tipo</th><th class="left">Documento</th><th class="left">Cliente</th><th>Vendedor</th><th class="right">Valor</th></tr></thead><tbody>` +
+        <table><thead><tr><th>Data</th><th>Tipo</th><th class="left">CAP_SEQU</th><th class="left">Loja Destino</th><th>Vendedor</th><th class="right">Valor</th></tr></thead><tbody>` +
         d.notas.map(n => `<tr>
           <td>${dtPt(n.data)}</td>
-          <td><span class="pill">${esc(n.tipo)}</span></td>
+          <td><span class="pill">${esc(TIPO_LABEL[n.tipo] || n.tipo)}</span></td>
           <td class="left"><strong>${esc(n.doc)}</strong></td>
-          <td class="left">${esc(n.cli || '—')}${CB_CLI_LOJA[n.cli] ? ' <span class="pill">'+CB_CLI_LOJA[n.cli]+'</span>' : ''}</td>
+          <td class="left">${esc(CB_CLI_LOJA[n.cli] || n.cli || '—')}</td>
           <td>${esc(n.ven || '—')}</td>
           <td class="right"><strong>${fmtBRL(n.valor)}</strong></td>
         </tr>`).join('') + `</tbody></table></div>`;
