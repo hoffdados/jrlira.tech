@@ -480,7 +480,7 @@ async function syncCapa(cd, cli) {
             CAP_STENCER, VEN_CODI, CLI_CODI
        FROM CAPA WITH (NOLOCK)
       WHERE EMP_CODI = '${cd.emp_codi}' AND LOC_CODI = '${cd.loc_codi}'
-        AND CAP_TIPO = '3'
+        AND CAP_TIPO IN ('3','4')
         AND CAP_DTEM >= '${desde}'`,
     'CAP_SEQU'
   );

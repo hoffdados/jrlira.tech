@@ -35,7 +35,7 @@ function matchSaidaCb(chAlias = 'ch') {
   return `(
     EXISTS (
       SELECT 1 FROM cd_capa cc
-       WHERE cc.cd_codigo = '${CB_CD_CODIGO}' AND cc.cap_tipo = '3'
+       WHERE cc.cd_codigo = '${CB_CD_CODIGO}' AND cc.cap_tipo IN ('3','4')
          AND COALESCE(cc.cap_stvd, '') <> 'C'
          AND cc.cli_codi = ANY ($CB_CLIS)
          AND REGEXP_REPLACE(COALESCE(cc.cap_sequ, ''), '^0+', '') =
@@ -87,7 +87,7 @@ router.get('/resumo', adminOuCeo, async (req, res) => {
                            FROM cd_moviitem mi
                           WHERE mi.cd_codigo = cc.cd_codigo AND mi.cap_sequ = cc.cap_sequ), 0)::numeric AS valor
           FROM cd_capa cc
-         WHERE cc.cd_codigo = $1 AND cc.cap_tipo = '3'
+         WHERE cc.cd_codigo = $1 AND cc.cap_tipo IN ('3','4')
            AND COALESCE(cc.cap_stvd,'') <> 'C'
            AND cc.cli_codi = ANY($2)
            AND TO_CHAR(cc.cap_dtem, 'YYYY-MM') = $3
@@ -118,7 +118,7 @@ router.get('/resumo', adminOuCeo, async (req, res) => {
                            FROM cd_moviitem mi
                           WHERE mi.cd_codigo = cc.cd_codigo AND mi.cap_sequ = cc.cap_sequ), 0)::numeric AS valor
           FROM cd_capa cc
-         WHERE cc.cd_codigo = $1 AND cc.cap_tipo = '3'
+         WHERE cc.cd_codigo = $1 AND cc.cap_tipo IN ('3','4')
            AND COALESCE(cc.cap_stvd,'') <> 'C'
            AND cc.cli_codi = ANY($2)
            AND TO_CHAR(cc.cap_dtem, 'YYYY-MM') = $3
@@ -180,7 +180,7 @@ router.get('/produtos', adminOuCeo, async (req, res) => {
       WITH saidas_match AS (
         SELECT cc.cap_sequ AS doc, cc.cd_codigo AS cd_codigo
           FROM cd_capa cc
-         WHERE cc.cd_codigo = $1 AND cc.cap_tipo = '3'
+         WHERE cc.cd_codigo = $1 AND cc.cap_tipo IN ('3','4')
            AND COALESCE(cc.cap_stvd,'') <> 'C'
            AND cc.cli_codi = ANY($2)
            AND TO_CHAR(cc.cap_dtem, 'YYYY-MM') = $3
@@ -231,7 +231,7 @@ router.get('/notas', adminOuCeo, async (req, res) => {
                              FROM cd_moviitem mi
                             WHERE mi.cd_codigo = cc.cd_codigo AND mi.cap_sequ = cc.cap_sequ), 0)::numeric(14,2) AS valor
             FROM cd_capa cc
-           WHERE cc.cd_codigo = $1 AND cc.cap_tipo = '3'
+           WHERE cc.cd_codigo = $1 AND cc.cap_tipo IN ('3','4')
              AND COALESCE(cc.cap_stvd,'') <> 'C'
              AND cc.cli_codi = ANY($2)
              AND TO_CHAR(cc.cap_dtem, 'YYYY-MM') = $3
@@ -268,7 +268,7 @@ router.get('/notas', adminOuCeo, async (req, res) => {
     const matchClause = `(
       EXISTS (
         SELECT 1 FROM cd_capa cc
-         WHERE cc.cd_codigo = '${CB_CD_CODIGO}' AND cc.cap_tipo = '3'
+         WHERE cc.cd_codigo = '${CB_CD_CODIGO}' AND cc.cap_tipo IN ('3','4')
            AND COALESCE(cc.cap_stvd,'') <> 'C'
            AND cc.cli_codi = ANY($${cliIdx})
            AND REGEXP_REPLACE(COALESCE(cc.cap_sequ,''),'^0+','') =
