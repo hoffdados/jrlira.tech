@@ -203,11 +203,15 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 1
 const API = '';
 const token = () => localStorage.getItem('jrlira_token');
 const PERFIL = localStorage.getItem('jrlira_perfil');
-(function(){ if (!token() || (PERFIL !== 'admin' && PERFIL !== 'cadastro' && PERFIL !== 'comprador')) location.href = '/'; })();
+(function(){
+  const aceitos = ['admin','cadastro','comprador','estoque','auditor'];
+  if (!token() || !aceitos.includes(PERFIL)) location.href = '/';
+})();
 document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
 
 // Comprador eh read-only: ve mas nao executa acoes do cadastro
-const READ_ONLY = PERFIL === 'comprador';
+// Comprador e estoque entram em modo leitura. Auditor pode atuar (validar com divergencias).
+const READ_ONLY = ['comprador','estoque'].includes(PERFIL);
 
 // Lojas permitidas (null = sem restricao). Usado pra restringir o filtro/lista
 // quando o usuario tem lojas_ids configuradas (tipico de comprador de loja).
@@ -228,12 +232,18 @@ if (LOJAS_PERMITIDAS) {
   if (LOJAS_PERMITIDAS.length === 1) sel.value = String(LOJAS_PERMITIDAS[0]);
 }
 
-// Pré-seleciona CD origem via ?cd=X no URL
+// Pré-seleciona CD origem e Status via querystring
 (function() {
-  const urlCd = new URLSearchParams(location.search).get('cd');
+  const qs = new URLSearchParams(location.search);
+  const urlCd = qs.get('cd');
   if (urlCd) {
     const sel = document.getElementById('fCdOrigem');
     if (sel) sel.value = urlCd;
+  }
+  const urlStatus = qs.get('status');
+  if (urlStatus) {
+    const sel = document.getElementById('fStatus');
+    if (sel && [...sel.options].some(o => o.value === urlStatus)) sel.value = urlStatus;
   }
 })();
 

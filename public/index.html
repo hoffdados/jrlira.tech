@@ -128,6 +128,7 @@ const GRUPOS = [
     { href: '/notas-cadastro', icon: 'file-text', title: 'Cadastro', desc: 'NF-e dos fornecedores', perfis: ['admin','cadastro'] },
     { href: '/notas-estoque', icon: 'package', title: 'Estoque', desc: 'Conferência às cegas', perfis: ['admin','estoque'] },
     { href: '/notas-auditoria', icon: 'clipboard-check', title: 'Auditoria', desc: 'Fechamento de notas', perfis: ['admin','auditor'], badge: 'notas_auditoria' },
+    { href: '/notas-transferencias-cadastro?status=auditagem', icon: 'clipboard-check', title: 'Auditoria CD', desc: 'Notas CD em auditagem (todos CDs)', perfis: ['admin','auditor','cadastro','estoque','comprador'] },
   ]},
   { id: 'transferencias', titulo: 'Transferências CD / Lojas', classe: 'transferencias', cards: [
     { href: '/notas-transferencias-cadastro?cd=srv1-itautuba', icon: 'truck', title: 'Cadastro · Asa Branca ITB', desc: 'Liberar conferência', perfis: ['admin','cadastro','comprador'] },
@@ -138,11 +139,13 @@ const GRUPOS = [
     { href: '/notas-distribuidora?cd=srv2-asafrio', icon: 'package-plus', title: 'Estoque · Asa Frios', desc: 'Receber e conferir', perfis: ['admin','estoque'] },
     { href: '/notas-distribuidora?cd=srv2-asasantarem', icon: 'package-plus', title: 'Estoque · Asa Frios STM', desc: 'Receber e conferir', perfis: ['admin','estoque'] },
     { href: '/notas-distribuidora?cd=srv1-nprogresso', icon: 'package-plus', title: 'Estoque · N. Progresso', desc: 'Receber e conferir', perfis: ['admin','estoque'] },
+    { href: '/notas-transferencias-cadastro?status=auditagem', icon: 'clipboard-check', title: 'Auditoria CD', desc: 'Notas em auditagem (todos CDs)', perfis: ['admin','auditor','cadastro','estoque','comprador'] },
     { href: '/notas-cd', icon: 'route', title: 'Acompanhar CD', desc: 'Visão comprador', perfis: ['admin','comprador'] },
     { href: '/painel-cd-saidas', icon: 'layout-dashboard', title: 'Painel CD — Saídas', desc: 'Em trânsito × recebidas no mês', perfis: ['admin','comprador','ceo'] },
     { href: '/painel-cd-cd', icon: 'git-compare-arrows', title: 'Painel CD → CD', desc: 'Cross-check entre CDs (SLA 10d)', perfis: ['admin','comprador','ceo'] },
   ]},
   { id: 'auditoria', titulo: 'Auditoria & Qualidade', classe: 'auditoria', cards: [
+    { href: '/notas-transferencias-cadastro?status=auditagem', icon: 'clipboard-check', title: 'Auditoria CD', desc: 'Notas CD em auditagem (todos CDs)', perfis: ['admin','auditor','cadastro','estoque','comprador'] },
     { href: '/auditagem-divergencias', icon: 'alert-triangle', title: 'Divergências CD', desc: 'Faltas/sobras na conferência', perfis: ['admin','auditor'], badge: 'divergencias_cd' },
     { href: '/validades-em-risco', icon: 'calendar-clock', title: 'Validades em Risco', desc: 'Decisão admin', perfis: ['admin','auditor'], badge: 'validades_em_risco' },
     { href: '/aguardando-devolucao', icon: 'undo-2', title: 'Aguardando Devolução', desc: 'Anexar XML', perfis: ['admin','cadastro'], badge: 'aguardando_devolucao' },
