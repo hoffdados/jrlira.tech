@@ -128,7 +128,6 @@ const GRUPOS = [
     { href: '/notas-cadastro', icon: 'file-text', title: 'Cadastro', desc: 'NF-e dos fornecedores', perfis: ['admin','cadastro'] },
     { href: '/notas-estoque', icon: 'package', title: 'Estoque', desc: 'Conferência às cegas', perfis: ['admin','estoque'] },
     { href: '/notas-auditoria', icon: 'clipboard-check', title: 'Auditoria', desc: 'Fechamento de notas', perfis: ['admin','auditor'], badge: 'notas_auditoria' },
-    { href: '/notas-transferencias-cadastro?status=auditagem', icon: 'clipboard-check', title: 'Auditoria CD', desc: 'Notas CD em auditagem (todos CDs)', perfis: ['admin','auditor','cadastro','estoque','comprador'] },
   ]},
   { id: 'transferencias', titulo: 'Transferências CD / Lojas', classe: 'transferencias', cards: [
     { href: '/notas-transferencias-cadastro?cd=srv1-itautuba', icon: 'truck', title: 'Cadastro · Asa Branca ITB', desc: 'Liberar conferência', perfis: ['admin','cadastro','comprador'] },
@@ -152,15 +151,15 @@ const GRUPOS = [
     { href: '/devolucoes-divergencias', icon: 'trending-down', title: 'Divergências Devolução', desc: 'NF devolução vs esperado', perfis: ['admin','auditor'] },
     { href: '/auditoria-acordos', icon: 'handshake', title: 'Auditoria Acordos', desc: 'Resumo aprovações', perfis: ['admin','auditor'], badge: 'auditoria_acordos' },
     { href: '/auditoria-finalizada-f', icon: 'flag-triangle-right', title: 'Finalizada_F', desc: 'Notas que pularam fluxo', perfis: ['admin'] },
+    { href: '/aprovacoes', icon: 'check-circle-2', title: 'Painel de Aprovações', desc: 'Visão admin agregada', perfis: ['admin','ceo'], badge: 'aprovacoes_pendentes' },
+    { href: '/produto-canonico', icon: 'link', title: 'Produto Canônico', desc: 'Match cross-CD', perfis: ['admin','ceo'] },
   ]},
   { id: 'diretoria', titulo: 'Diretoria · formação de preços', classe: 'diretoria', cards: [
     { href: '/precos-otimizados', icon: 'badge-dollar-sign', title: 'Otimizador de Preços', desc: 'Formador L4/L6', perfis: ['admin','ceo'] },
     { href: '/precos-otimizados-status', icon: 'list-checks', title: 'Otimizados — Status', desc: 'Aplicação por loja', perfis: ['admin','ceo'] },
     { href: '/precos-otimizados-pendentes', icon: 'tag', title: 'Otimizados — Pendentes', desc: 'Aplicar no ERP', perfis: ['admin','cadastro','ceo'] },
     { href: '/pedidos-distribuidora', icon: 'truck', title: 'Pedidos Distribuidora', desc: 'Transferência interna', perfis: ['admin','ceo'] },
-    { href: '/produto-canonico', icon: 'link', title: 'Produto Canônico', desc: 'Match cross-CD', perfis: ['admin','ceo'] },
     { href: '/notas-avaria-cobrancas', icon: 'receipt', title: 'Débitos por Fornecedor', desc: 'Avaria + Devolução + Acordo', perfis: ['admin','ceo'] },
-    { href: '/aprovacoes', icon: 'check-circle-2', title: 'Painel de Aprovações', desc: 'Visão admin agregada', perfis: ['admin','ceo'], badge: 'aprovacoes_pendentes' },
     { href: '/cb-auditoria', icon: 'shield-check', title: 'Casa Branca · Auditoria', desc: 'Saídas CB × entradas lojas', perfis: ['admin','ceo','comprador'] },
   ]},
   { id: 'admin', titulo: 'Cadastros / Admin', classe: 'admin', cards: [
