@@ -201,6 +201,7 @@ table.grade tbody tr.prioritario:hover{background:#27220e}
     <div class="actions">
       <input id="obs" placeholder="Observação" style="width:200px">
       <button class="btn-primary" onclick="gerarCsv(this)">Gerar CSVs</button>
+      <button class="btn-primary" onclick="exportarPdf()" style="background:#7c3aed">📄 PDF por Loja</button>
     </div>
   </div>
 
@@ -545,6 +546,13 @@ async function gerarCsv(btn) {
     document.getElementById('downloadArea').style.display = 'block';
   } catch (e) { showMsg('❌ ' + e.message, 'err'); }
   finally { btn.disabled = false; btn.textContent = 'Gerar CSVs'; }
+}
+
+function exportarPdf() {
+  if (!cdOrigemAtual) { showMsg('Selecione o CD origem', 'err'); return; }
+  const t = encodeURIComponent(token());
+  const url = `/api/pedidos-distribuidora/pdf?cd_origem=${encodeURIComponent(cdOrigemAtual)}&token=${t}`;
+  window.open(url, '_blank');
 }
 
 async function debugProduto(matCodi) {

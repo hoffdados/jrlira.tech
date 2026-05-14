@@ -2422,4 +2422,119 @@ router.get('/historico', autenticar, async (req, res) => {
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
+// GET /api/pedidos-distribuidora/pdf?cd_origem=X[&destino_id=Y]
+// PDF do rascunho atual: 1 pagina por destino com qtd>0, listando codigo/descricao/qtd.
+// Aceita token via header OU query (?token=...) pra abrir direto em <a href>.
+router.get('/pdf', autoricar, async (req, res) => {
+  try {
+    const cdOrigem = String(req.query.cd_origem || '').trim();
+    if (!cdOrigem) return res.status(400).json({ erro: 'cd_origem obrigatorio' });
+    const destFilter = req.query.destino_id ? parseInt(req.query.destino_id) : null;
+
+    // Dados do CD origem
+    const [origem] = await dbQuery(
+      `SELECT cd_codigo, nome FROM pedidos_distrib_destinos WHERE cd_codigo = $1 LIMIT 1`,
+      [cdOrigem]
+    );
+    const origemNome = origem?.nome || cdOrigem;
+
+    // Quantidades + descricao + destino
+    const params = [cdOrigem];
+    let extra = '';
+    if (destFilter) { params.push(destFilter); extra = ` AND q.destino_id = $${params.length}`; }
+    const linhas = await dbQuery(
+      `SELECT q.destino_id, q.mat_codi, q.qtd,
+              d.nome AS destino_nome, d.tipo AS destino_tipo, d.loja_id,
+              cm.mat_desc
+         FROM pedidos_distrib_quantidades q
+         JOIN pedidos_distrib_destinos d ON d.id = q.destino_id
+         LEFT JOIN cd_material cm ON cm.cd_codigo = q.cd_origem_codigo AND cm.mat_codi = q.mat_codi
+        WHERE q.cd_origem_codigo = $1 AND q.qtd > 0 ${extra}
+        ORDER BY d.tipo, d.loja_id NULLS LAST, d.nome, cm.mat_desc`,
+      params
+    );
+    if (!linhas.length) return res.status(400).json({ erro: 'Sem quantidades > 0 pra exportar' });
+
+    // Agrupa por destino
+    const porDestino = new Map();
+    for (const l of linhas) {
+      if (!porDestino.has(l.destino_id)) porDestino.set(l.destino_id, { nome: l.destino_nome, tipo: l.destino_tipo, loja_id: l.loja_id, itens: [] });
+      porDestino.get(l.destino_id).itens.push(l);
+    }
+
+    const PDFDocument = require('pdfkit');
+    const doc = new PDFDocument({ size: 'A4', margins: { top: 36, bottom: 36, left: 36, right: 36 } });
+    const chunks = [];
+    doc.on('data', c => chunks.push(c));
+    doc.on('end', () => {
+      const buf = Buffer.concat(chunks);
+      const nome = destFilter
+        ? `pedido_${cdOrigem}_dest_${destFilter}.pdf`
+        : `pedidos_${cdOrigem}_${new Date().toISOString().slice(0,10)}.pdf`;
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="${nome}"`);
+      res.send(buf);
+    });
+    doc.on('error', err => { console.error('[pdf]', err); res.status(500).end(); });
+
+    const hoje = new Date().toLocaleString('pt-BR');
+    let primeiro = true;
+    for (const [, dest] of porDestino) {
+      if (!primeiro) doc.addPage();
+      primeiro = false;
+
+      // Cabecalho
+      doc.fontSize(14).fillColor('#000').text('Pedido — Transferência CD', { align: 'left' });
+      doc.fontSize(10).fillColor('#444').text(`Origem: ${origemNome}    Destino: ${dest.nome}`);
+      doc.text(`Tipo destino: ${dest.tipo}${dest.loja_id ? ` (loja ${dest.loja_id})` : ''}`);
+      doc.text(`Emitido em: ${hoje}    Itens: ${dest.itens.length}`);
+      doc.moveDown(0.6);
+
+      // Tabela header
+      const startX = doc.x;
+      const colCod = 80;
+      const colDesc = 340;
+      const colQtd = 60;
+      const rowH = 16;
+      const drawHeader = (y) => {
+        doc.fontSize(9).fillColor('#fff');
+        doc.rect(startX, y, colCod + colDesc + colQtd, rowH).fill('#222');
+        doc.fillColor('#fff');
+        doc.text('Código', startX + 4, y + 4, { width: colCod - 8 });
+        doc.text('Descrição', startX + colCod + 4, y + 4, { width: colDesc - 8 });
+        doc.text('Qtd', startX + colCod + colDesc + 4, y + 4, { width: colQtd - 8, align: 'right' });
+        doc.fillColor('#000');
+        return y + rowH;
+      };
+      let y = drawHeader(doc.y);
+
+      doc.fontSize(9);
+      let totalQtd = 0;
+      for (const it of dest.itens) {
+        // quebra de pagina manual
+        if (y > doc.page.height - 60) {
+          doc.addPage();
+          y = drawHeader(36);
+        }
+        doc.fillColor('#000').text(it.mat_codi, startX + 4, y + 3, { width: colCod - 8 });
+        doc.text((it.mat_desc || '').slice(0, 70), startX + colCod + 4, y + 3, { width: colDesc - 8 });
+        const q = parseFloat(it.qtd);
+        doc.text(q % 1 === 0 ? q.toFixed(0) : q.toFixed(3), startX + colCod + colDesc + 4, y + 3, { width: colQtd - 8, align: 'right' });
+        doc.strokeColor('#ccc').lineWidth(0.3).moveTo(startX, y + rowH).lineTo(startX + colCod + colDesc + colQtd, y + rowH).stroke();
+        totalQtd += q;
+        y += rowH;
+      }
+
+      // Total
+      y += 6;
+      doc.fontSize(10).fillColor('#000').text(`Total: ${totalQtd % 1 === 0 ? totalQtd.toFixed(0) : totalQtd.toFixed(3)} unidade(s) — ${dest.itens.length} produto(s)`, startX, y);
+    }
+
+    doc.end();
+  } catch (e) {
+    console.error('[pedidos-distrib pdf]', e.message);
+    res.status(500).json({ erro: e.message });
+  }
+});
+
 module.exports = router;
