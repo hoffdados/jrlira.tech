@@ -1130,6 +1130,8 @@ async function initDB() {
     await runMigration(client, '20260515_rh_terceirizadas_ada',
       `INSERT INTO rh_terceirizadas (nome) VALUES ('A D A FERNANDES')
        ON CONFLICT (nome) DO NOTHING`);
+    await runMigration(client, '20260515_funcionarios_usuario_eco',
+      `ALTER TABLE funcionarios ADD COLUMN IF NOT EXISTS usuario_eco VARCHAR(60)`);
     await runMigration(client, '20260504_backfill_criado_por_sug',
       `UPDATE pedidos SET criado_por_comprador = 'sugestao'
          WHERE status='rascunho' AND numero_pedido LIKE 'SUG-%' AND criado_por_comprador IS NULL`);

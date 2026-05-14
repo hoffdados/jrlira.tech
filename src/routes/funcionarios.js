@@ -345,17 +345,18 @@ router.post('/', autenticar, upload.single('foto'), async (req, res) => {
     const {
       matricula, nome, cpf, pis, data_nascimento, sexo, escolaridade, raca, estado_civil,
       cargo, grupo_cargo, nivel, loja_id, terceirizada, salario, status, data_admissao,
-      cep, logradouro, numero, complemento, bairro, cidade, uf, telefone, email
+      cep, logradouro, numero, complemento, bairro, cidade, uf, telefone, email, usuario_eco
     } = req.body;
     const rows = await dbQuery(`
       INSERT INTO funcionarios (matricula, nome, cpf, pis, data_nascimento, sexo, escolaridade, raca, estado_civil,
         cargo, grupo_cargo, nivel, loja_id, terceirizada, salario, status, data_admissao,
-        cep, logradouro, numero, complemento, bairro, cidade, uf, telefone, email, foto_data, foto_mime)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)
+        cep, logradouro, numero, complemento, bairro, cidade, uf, telefone, email, usuario_eco, foto_data, foto_mime)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)
       RETURNING id
     `, [matricula, nome, cpf, pis, data_nascimento||null, sexo, escolaridade, raca, estado_civil,
         cargo, grupo_cargo, nivel, loja_id||null, terceirizada||null, salario||null, status||'ATIVO', data_admissao||null,
         cep, logradouro, numero, complemento, bairro, cidade, uf, telefone, email,
+        usuario_eco || null,
         req.file ? req.file.buffer : null, req.file ? req.file.mimetype : null]);
     res.json({ ok: true, id: rows[0].id });
   } catch (err) { console.error('[funcionarios]', err.message); res.status(500).json({ erro: 'Erro interno' }); }
@@ -368,21 +369,22 @@ router.put('/:id', autenticar, upload.single('foto'), async (req, res) => {
       matricula, nome, cpf, pis, data_nascimento, sexo, escolaridade, raca, estado_civil,
       cargo, grupo_cargo, nivel, loja_id, terceirizada, salario, status, data_admissao, data_demissao,
       causa_afastamento, motivo_afastamento,
-      cep, logradouro, numero, complemento, bairro, cidade, uf, telefone, email
+      cep, logradouro, numero, complemento, bairro, cidade, uf, telefone, email, usuario_eco
     } = req.body;
 
-    const fotoClause = req.file ? ', foto_data = $30, foto_mime = $31' : '';
+    const fotoClause = req.file ? ', foto_data = $31, foto_mime = $32' : '';
     const params = [
       matricula, nome, cpf, pis, data_nascimento||null, sexo, escolaridade, raca, estado_civil,
       cargo, grupo_cargo, nivel, loja_id||null, terceirizada||null, salario||null,
       status || null, data_admissao || null,
       data_demissao||null, causa_afastamento, motivo_afastamento,
       cep, logradouro, numero, complemento, bairro, cidade, uf, telefone, email,
+      usuario_eco || null,
       req.params.id
     ];
     if (req.file) params.splice(params.length - 1, 0, req.file.buffer, req.file.mimetype);
 
-    const idPos = req.file ? 32 : 30;
+    const idPos = req.file ? 33 : 31;
     // status e data_admissao usam COALESCE para nao sobrescrever com NULL quando o
     // form nao envia o campo (era a causa do "status null" reclamado pelo RH).
     await pool.query(`
@@ -393,7 +395,7 @@ router.put('/:id', autenticar, upload.single('foto'), async (req, res) => {
         status=COALESCE($16, status), data_admissao=COALESCE($17, data_admissao),
         data_demissao=$18, causa_afastamento=$19, motivo_afastamento=$20,
         cep=$21, logradouro=$22, numero=$23, complemento=$24, bairro=$25,
-        cidade=$26, uf=$27, telefone=$28, email=$29${fotoClause},
+        cidade=$26, uf=$27, telefone=$28, email=$29, usuario_eco=$30${fotoClause},
         atualizado_em = NOW()
       WHERE id = $${idPos}
     `, params);

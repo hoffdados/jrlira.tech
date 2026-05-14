@@ -226,6 +226,7 @@ tr:hover td { background: #1a2638; }
       <select id="fTerceirizada"><option value="">—</option></select>
     </div>
     <div class="form-group"><label>Salário</label><input type="number" id="fSalario" step="0.01"></div>
+    <div class="form-group"><label>Usuário Eco <span style="color:#64748b;font-size:10px">(opcional)</span></label><input type="text" id="fUsuarioEco" placeholder="Login no EcoCentauro"></div>
     <div class="form-group"><label>Status <span style="color:#64748b;font-size:10px">(eventos podem sobrescrever)</span></label>
       <select id="fStatus">
         <option value="ATIVO">ATIVO</option>
@@ -536,6 +537,7 @@ function preencherForm(f) {
   set('fEstadoCivil', f.estado_civil); set('fEscolaridade', f.escolaridade); set('fRaca', f.raca);
   set('fCargo', f.cargo); set('fGrupoCargo', f.grupo_cargo); set('fNivel', f.nivel);
   set('fLoja', f.loja_id); set('fTerceirizada', f.terceirizada); set('fSalario', f.salario); set('fStatus', f.status);
+  set('fUsuarioEco', f.usuario_eco);
   set('fAdmissao', f.data_admissao?.split('T')[0]); set('fDemissao', f.data_demissao?.split('T')[0]);
   set('fCausaAfastamento', f.causa_afastamento); set('fMotivoAfastamento', f.motivo_afastamento);
   set('fTelefone', f.telefone); set('fEmail', f.email); set('fCep', f.cep);
@@ -548,7 +550,7 @@ function preencherForm(f) {
 
 function limparForm() {
   ['fMatricula','fNome','fCpf','fPis','fNascimento','fSexo','fEstadoCivil','fEscolaridade','fRaca',
-   'fCargo','fGrupoCargo','fNivel','fLoja','fTerceirizada','fSalario','fAdmissao','fDemissao',
+   'fCargo','fGrupoCargo','fNivel','fLoja','fTerceirizada','fSalario','fUsuarioEco','fAdmissao','fDemissao',
    'fCausaAfastamento','fMotivoAfastamento','fTelefone','fEmail','fCep','fLogradouro',
    'fNumero','fComplemento','fBairro','fCidade','fUf'].forEach(id => {
     const el = document.getElementById(id);
@@ -831,6 +833,7 @@ async function salvar(btn) {
     raca:'fRaca', estado_civil:'fEstadoCivil', cargo:'fCargo',
     grupo_cargo:'fGrupoCargo', nivel:'fNivel', loja_id:'fLoja', terceirizada:'fTerceirizada',
     salario:'fSalario', status:'fStatus', data_admissao:'fAdmissao',
+    usuario_eco:'fUsuarioEco',
     telefone:'fTelefone', email:'fEmail',
     cep:'fCep', logradouro:'fLogradouro', numero:'fNumero',
     complemento:'fComplemento', bairro:'fBairro', cidade:'fCidade', uf:'fUf'
@@ -879,7 +882,7 @@ function fecharModal() { document.getElementById('overlayForm').style.display = 
 
 document.getElementById('overlayForm').addEventListener('input', function(e) {
   const el = e.target;
-  if (el.id === 'fCep') return;
+  if (el.id === 'fCep' || el.id === 'fUsuarioEco') return;
   const tipo = (el.type || '').toLowerCase();
   if (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && ['text','email',''].includes(tipo))) {
     const pos = el.selectionStart;
