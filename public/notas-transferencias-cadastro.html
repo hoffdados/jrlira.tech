@@ -143,6 +143,10 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 1
           <option value="6">Loja 6 — SANTAREM</option>
         </select>
       </div>
+      <div>
+        <label>Nº da nota</label>
+        <input id="fNumeroNota" type="search" placeholder="Buscar nº / MCP" oninput="aplicarBuscaNota()">
+      </div>
     </div>
     <h3>Notas <span id="totalNotas" style="color:#475569;font-weight:400"></span></h3>
     <div id="listaNota"><p class="empty">Carregando...</p></div>
@@ -266,31 +270,31 @@ function labelStatus(s) {
   }[s] || s;
 }
 
-async function carregarNotas() {
-  try {
-    const origem = document.getElementById('fOrigem').value;
-    const status = document.getElementById('fStatus').value;
-    const loja = document.getElementById('fLoja').value;
-    const cdOrigem = document.getElementById('fCdOrigem').value;
-    const params = new URLSearchParams();
-    if (origem) params.set('origem', origem);
-    if (cdOrigem) params.set('origem_cd_codigo', cdOrigem);
-    // 'pendentes' e 'todas-incl-validadas' = filtros fake — não vão como status
-    if (status && status !== 'pendentes' && status !== 'todas-incl-validadas') params.set('status', status);
-    if (status === 'todas-incl-validadas') params.set('incluir_validadas_cd', '1');
-    const notas = await fetchApi('/api/notas?' + params.toString());
-    // Esconde transferências CD→CD (destino sem loja) — essas vão pra tela específica
-    let filtradas = notas.filter(n => n.loja_id != null);
-    if (loja) filtradas = filtradas.filter(n => String(n.loja_id) === loja);
-    // Restricao de loja por perfil (front-side, double-check do backend)
-    if (LOJAS_PERMITIDAS) {
-      filtradas = filtradas.filter(n => LOJAS_PERMITIDAS.includes(Number(n.loja_id)));
-    }
-    if (status === 'pendentes') filtradas = filtradas.filter(n => n.status !== 'validada' && n.status !== 'fechada');
-    document.getElementById('totalNotas').textContent = `(${filtradas.length})`;
-    const el = document.getElementById('listaNota');
-    if (!filtradas.length) { el.innerHTML = '<p class="empty" style="padding:24px 0">Nenhuma transferência</p>'; return; }
-    el.innerHTML = filtradas.map(n => {
+let _notasCarregadas = [];
+
+function aplicarBuscaNota() {
+  const status = document.getElementById('fStatus').value;
+  const loja = document.getElementById('fLoja').value;
+  const q = (document.getElementById('fNumeroNota').value || '').trim().toLowerCase();
+  let filtradas = _notasCarregadas.filter(n => n.loja_id != null);
+  if (loja) filtradas = filtradas.filter(n => String(n.loja_id) === loja);
+  if (LOJAS_PERMITIDAS) filtradas = filtradas.filter(n => LOJAS_PERMITIDAS.includes(Number(n.loja_id)));
+  if (status === 'pendentes') filtradas = filtradas.filter(n => n.status !== 'validada' && n.status !== 'fechada');
+  if (q) {
+    filtradas = filtradas.filter(n => {
+      const numero = String(n.numero_nota || '').toLowerCase();
+      const mcp = String(n.cd_mov_codi || '').toLowerCase();
+      return numero.includes(q) || mcp.includes(q);
+    });
+  }
+  renderListaNotas(filtradas);
+}
+
+function renderListaNotas(filtradas) {
+  document.getElementById('totalNotas').textContent = `(${filtradas.length})`;
+  const el = document.getElementById('listaNota');
+  if (!filtradas.length) { el.innerHTML = '<p class="empty" style="padding:24px 0">Nenhuma transferência</p>'; return; }
+  el.innerHTML = filtradas.map(n => {
       const titulo = n.origem === 'cd'
         ? `📦 CD ${n.cd_mov_codi || n.numero_nota}`
         : `🏪 ${n.numero_nota}`;
@@ -306,6 +310,21 @@ async function carregarNotas() {
         </div>
       </div>`;
     }).join('');
+}
+
+async function carregarNotas() {
+  try {
+    const origem = document.getElementById('fOrigem').value;
+    const status = document.getElementById('fStatus').value;
+    const cdOrigem = document.getElementById('fCdOrigem').value;
+    const params = new URLSearchParams();
+    if (origem) params.set('origem', origem);
+    if (cdOrigem) params.set('origem_cd_codigo', cdOrigem);
+    // 'pendentes' e 'todas-incl-validadas' = filtros fake — não vão como status
+    if (status && status !== 'pendentes' && status !== 'todas-incl-validadas') params.set('status', status);
+    if (status === 'todas-incl-validadas') params.set('incluir_validadas_cd', '1');
+    _notasCarregadas = await fetchApi('/api/notas?' + params.toString());
+    aplicarBuscaNota();
   } catch (e) { showMsg(e.message, 'err'); }
 }
 
