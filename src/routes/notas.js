@@ -1287,15 +1287,18 @@ router.patch('/:id/finalizar-conferencia-transf', autenticar, async (req, res) =
 
       let temValidadeEmRisco = false;
 
-      // Valida que nenhum lote tem validade no passado
-      const hojeISO = new Date().toISOString().slice(0, 10);
+      // Valida que nenhum lote vence em menos de 10 dias (regra de aceitacao na coleta)
+      const DIAS_MINIMOS = 10;
+      const dataMinima = new Date(); dataMinima.setHours(0,0,0,0);
+      dataMinima.setDate(dataMinima.getDate() + DIAS_MINIMOS);
+      const minimoISO = dataMinima.toISOString().slice(0, 10);
       for (const ent of itensInput) {
         for (const l of (ent.lotes || [])) {
-          if (l.validade && String(l.validade) < hojeISO) {
+          if (l.validade && String(l.validade) < minimoISO) {
             await client.query('ROLLBACK');
             client.release();
             return res.status(400).json({
-              erro: `Lote com validade vencida (${l.validade}) no item ${ent.item_id}. Produtos vencidos não podem ser aceitos na coleta.`
+              erro: `Lote do item ${ent.item_id} com validade ${l.validade} — minimo ${DIAS_MINIMOS} dias a partir de hoje. Não aceitar produto.`
             });
           }
         }

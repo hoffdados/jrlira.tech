@@ -575,7 +575,12 @@ function montarISODataLote(itemId, idx) {
     return { iso: null, ok: false, erro: 'Data inexistente' };
   }
   const hoje = new Date(); hoje.setHours(0,0,0,0);
-  if (dt < hoje) return { iso: null, ok: false, erro: 'Produto vencido — não aceitar' };
+  const minimo = new Date(hoje); minimo.setDate(minimo.getDate() + 10);
+  if (dt < minimo) {
+    const diff = Math.ceil((dt - hoje) / 86400000);
+    if (diff < 0) return { iso: null, ok: false, erro: 'Produto vencido — não aceitar' };
+    return { iso: null, ok: false, erro: `Validade muito curta (${diff}d) — minimo 10 dias` };
+  }
   const iso = `${String(yy).padStart(4,'0')}-${String(mm).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
   return { iso, ok: true };
 }
