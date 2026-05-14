@@ -1443,7 +1443,10 @@ router.patch('/:id/finalizar-conferencia-transf', autenticar, async (req, res) =
       await client.query('ROLLBACK').catch(() => {});
       throw e;
     } finally { client.release(); }
-  } catch (err) { res.status(500).json({ erro: err.message }); }
+  } catch (err) {
+    console.error('[finalizar-conferencia-transf] erro:', err.message, err.code, err.detail, err.stack);
+    res.status(500).json({ erro: err.message || `${err.code || 'erro'} - ${err.detail || 'sem detalhe'}` });
+  }
 });
 
 // GET /api/notas/:id/historico
