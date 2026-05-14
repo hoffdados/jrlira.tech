@@ -372,7 +372,7 @@ async function ressincronizarTransferenciasMultiAbertas() {
         : `(origem_cd_codigo = $1)`;
       const params = isLegado ? [] : [cd.codigo];
       const notas = await dbQuery(
-        `SELECT id, cd_mov_codi FROM notas_entrada
+        `SELECT id, cd_mov_codi, data_recebimento FROM notas_entrada
           WHERE ${filtroCd}
             AND cd_mov_codi IS NOT NULL
             AND status IN ('em_transito','recebida')
@@ -388,21 +388,26 @@ async function ressincronizarTransferenciasMultiAbertas() {
       const porMcp = {};
       for (const r of remoto.rows || []) porMcp[r.MCP_CODI] = r;
       const canceladas = [];
+      const alertas = []; // notas que loja já recebeu mas CD cancelou — só alerta, não cancela
       for (const n of notas) {
         stats.verificadas++;
         const r = porMcp[n.cd_mov_codi];
+        const jaRecebida = n.data_recebimento != null;
+
         if (!r) {
-          // Sumiu do TBMOVCOMPRA = foi deletada
-          canceladas.push({ id: n.id, motivo: 'Removida do UltraSyst (sync auto)' });
+          if (jaRecebida) alertas.push({ id: n.id, motivo: 'Sumiu do UltraSyst, mas loja já recebeu' });
+          else canceladas.push({ id: n.id, motivo: 'Removida do UltraSyst (sync auto)' });
           continue;
         }
         if (r.MCP_STATUS === 'C') {
-          canceladas.push({ id: n.id, motivo: 'Cancelada no UltraSyst (sync auto)' });
+          if (jaRecebida) alertas.push({ id: n.id, motivo: 'Cancelada no UltraSyst, mas loja já recebeu' });
+          else canceladas.push({ id: n.id, motivo: 'Cancelada no UltraSyst (sync auto)' });
           continue;
         }
         // MCP_STATUS='F' mas sem NF-e emitida → movimento interno que não vai chegar na loja
         if (r.MCP_STATUS === 'F' && !r.MCP_NNOTAFIS) {
-          canceladas.push({ id: n.id, motivo: 'Fechada no CD sem NF-e (sync auto)' });
+          if (jaRecebida) alertas.push({ id: n.id, motivo: 'Fechada no CD sem NF-e, mas loja já recebeu' });
+          else canceladas.push({ id: n.id, motivo: 'Fechada no CD sem NF-e (sync auto)' });
         }
       }
       // Agrupa por motivo e atualiza
@@ -417,9 +422,21 @@ async function ressincronizarTransferenciasMultiAbertas() {
                                     cancelada_motivo=$2
             WHERE id = ANY($1::int[])`, [ids, motivo]);
       }
+      // Cria alertas pras que loja já recebeu — não cancela
+      for (const a of alertas) {
+        await dbQuery(
+          `INSERT INTO alertas_admin (tipo, entidade, entidade_id, titulo, mensagem)
+           VALUES ('cd_cancelou_apos_receber','nota',$1,
+                   'CD cancelou nota mas loja já tinha recebido',$2)
+           ON CONFLICT DO NOTHING`,
+          [a.id, a.motivo]
+        ).catch(() => {});
+      }
       stats.canceladas += canceladas.length;
+      stats.alertas = (stats.alertas || 0) + alertas.length;
       stats.por_cd[cd.codigo].verificadas = notas.length;
       stats.por_cd[cd.codigo].canceladas = canceladas.length;
+      stats.por_cd[cd.codigo].alertas = alertas.length;
     } catch (e) {
       stats.erros++;
       console.error(`[ressync_transf_multi ${cd.codigo}]`, e.message);
