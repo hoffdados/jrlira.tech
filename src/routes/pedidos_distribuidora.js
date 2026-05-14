@@ -2433,9 +2433,13 @@ async function enviarCsv(req, res, coluna, filename) {
     if (!r) return res.status(404).json({ erro: 'geracao nao encontrada' });
     await dbQuery(`UPDATE pedidos_distrib_geracoes SET baixado_em = COALESCE(baixado_em, NOW()) WHERE id = $1`,
       [parseInt(req.params.geracao_id)]);
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    // UltraSyst (Delphi) espera ANSI/Windows-1252, nao UTF-8.
+    // Caracteres acentuados em UTF-8 crashan o importador (exception 0x0eedfade).
+    const iconv = require('iconv-lite');
+    const buf = iconv.encode(r.conteudo, 'win1252');
+    res.setHeader('Content-Type', 'text/csv; charset=windows-1252');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.send(r.conteudo);
+    res.send(buf);
   } catch (e) { res.status(500).json({ erro: e.message }); }
 }
 
