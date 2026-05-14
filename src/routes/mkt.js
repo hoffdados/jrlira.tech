@@ -4,8 +4,13 @@
 
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
 const { pool, query: dbQuery } = require('../db');
 const { autenticar, exigirPerfil } = require('../auth');
+const { enviarEmail } = require('../mailer');
+const { enviarWhatsapp } = require('../whatsapp');
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
 const podeNegociar = [autenticar, exigirPerfil('admin', 'comprador', 'ceo')];
 const adminOuCeo = [autenticar, exigirPerfil('admin', 'ceo')];
@@ -46,7 +51,11 @@ router.get('/pontos', autenticar, async (req, res) => {
     if (req.query.loja_id) { params.push(req.query.loja_id); where += ` AND p.loja_id = $${params.length}`; }
     if (!incluirInativos) where += ` AND p.ativo = TRUE`;
     const rows = await dbQuery(
-      `SELECT p.*, l.nome AS loja_nome,
+      `SELECT p.id, p.loja_id, p.codigo, p.tipo, p.descricao, p.area_m2, p.observacao,
+              p.ativo, p.criado_em, p.criado_por,
+              p.foto_atualizada_em,
+              (p.foto_data IS NOT NULL) AS tem_foto,
+              l.nome AS loja_nome,
               (SELECT COUNT(*)::int FROM mkt_contratos c
                 WHERE c.ponto_id = p.id AND c.status = 'ativo'
                   AND c.data_inicio <= CURRENT_DATE AND c.data_fim >= CURRENT_DATE) AS contratos_ativos
@@ -442,5 +451,285 @@ router.post('/regenerar-cobrancas-mes', ...adminOuCeo, async (req, res) => {
   } catch (err) { res.status(500).json({ erro: err.message }); }
 });
 
+// ── HISTORICO E FOTO DO PONTO ──────────────────────────────────────
+
+// GET /api/mkt/pontos/:id/historico — preco medio e ultimos contratos
+router.get('/pontos/:id/historico', autenticar, async (req, res) => {
+  try {
+    const [stats] = await dbQuery(
+      `SELECT COUNT(*)::int AS contratos_total,
+              COALESCE(AVG(valor_mensal),0)::numeric(12,2) AS preco_medio,
+              COALESCE(MAX(valor_mensal),0)::numeric(12,2) AS preco_max,
+              COALESCE(MIN(valor_mensal),0)::numeric(12,2) AS preco_min,
+              COALESCE(SUM(valor_mensal * GREATEST(1,
+                (EXTRACT(YEAR FROM AGE(data_fim, data_inicio)) * 12 +
+                 EXTRACT(MONTH FROM AGE(data_fim, data_inicio)) + 1)::int)),0)::numeric(14,2) AS receita_total_potencial
+         FROM mkt_contratos
+        WHERE ponto_id = $1`,
+      [req.params.id]
+    );
+    const ultimos = await dbQuery(
+      `SELECT id, fornecedor_nome, data_inicio, data_fim, valor_mensal, status
+         FROM mkt_contratos
+        WHERE ponto_id = $1
+        ORDER BY data_inicio DESC
+        LIMIT 10`,
+      [req.params.id]
+    );
+    res.json({ stats, ultimos });
+  } catch (err) { res.status(500).json({ erro: err.message }); }
+});
+
+// POST /api/mkt/pontos/:id/foto — upload (admin/ceo)
+router.post('/pontos/:id/foto', ...adminOuCeo, upload.single('foto'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ erro: 'Foto obrigatoria' });
+    const r = await dbQuery(
+      `UPDATE pontos_exposicao
+          SET foto_data = $1, foto_mime = $2, foto_atualizada_em = NOW()
+        WHERE id = $3 RETURNING id`,
+      [req.file.buffer, req.file.mimetype, req.params.id]
+    );
+    if (!r.length) return res.status(404).json({ erro: 'Nao encontrado' });
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ erro: err.message }); }
+});
+
+// GET /api/mkt/pontos/:id/foto — serve binary (sem autenticar: <img> usa tag direta)
+router.get('/pontos/:id/foto', async (req, res) => {
+  try {
+    const r = await dbQuery('SELECT foto_data, foto_mime FROM pontos_exposicao WHERE id = $1', [req.params.id]);
+    if (!r.length || !r[0].foto_data) return res.status(404).end();
+    res.setHeader('Content-Type', r[0].foto_mime || 'image/jpeg');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.end(r[0].foto_data);
+  } catch (err) { res.status(500).end(); }
+});
+
+// ── JOBS AUTOMATIZADOS ─────────────────────────────────────────────
+
+// 1) Renovacao automatica — contratos com renovacao_auto=true cujo data_fim < hoje
+//    E ainda nao renovados (renovado_para_contrato_id IS NULL).
+//    Cria novo contrato com mesma duracao (em meses), comecando dia seguinte ao fim.
+async function rodarRenovacaoMkt() {
+  const expirados = await dbQuery(
+    `SELECT * FROM mkt_contratos
+      WHERE renovacao_auto = TRUE
+        AND status = 'ativo'
+        AND data_fim < CURRENT_DATE
+        AND renovado_para_contrato_id IS NULL`
+  );
+  let criados = 0;
+  for (const c of expirados) {
+    try {
+      // Calcula duracao em meses (data_fim - data_inicio + 1)
+      const ini = new Date(c.data_inicio); ini.setUTCHours(12, 0, 0, 0);
+      const fim = new Date(c.data_fim); fim.setUTCHours(12, 0, 0, 0);
+      const meses = (fim.getUTCFullYear() - ini.getUTCFullYear()) * 12
+                  + (fim.getUTCMonth() - ini.getUTCMonth()) + 1;
+      // Novo periodo: dia seguinte ao fim antigo, mesma duracao
+      const novoIni = new Date(fim); novoIni.setUTCDate(novoIni.getUTCDate() + 1);
+      const novoFim = new Date(novoIni);
+      novoFim.setUTCMonth(novoFim.getUTCMonth() + meses);
+      novoFim.setUTCDate(novoFim.getUTCDate() - 1);
+      const niso = novoIni.toISOString().slice(0, 10);
+      const fiso = novoFim.toISOString().slice(0, 10);
+
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const { rows: [novo] } = await client.query(
+          `INSERT INTO mkt_contratos
+             (ponto_id, loja_id, fornecedor_id, fornecedor_cnpj, fornecedor_nome,
+              data_inicio, data_fim, valor_mensal, renovacao_auto, observacao,
+              criado_por, renovado_de_contrato_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+           RETURNING id`,
+          [c.ponto_id, c.loja_id, c.fornecedor_id, c.fornecedor_cnpj, c.fornecedor_nome,
+           niso, fiso, c.valor_mensal, true,
+           `Renovado automaticamente de #${c.id}. ${c.observacao || ''}`.trim(),
+           'sistema-renovacao-auto', c.id]
+        );
+        // Cobrancas do novo contrato
+        const comps = competenciasDoContrato(niso, fiso);
+        for (const comp of comps) {
+          const vencDt = new Date(comp + 'T12:00:00');
+          vencDt.setMonth(vencDt.getMonth() + 1);
+          vencDt.setDate(10);
+          await client.query(
+            `INSERT INTO mkt_cobrancas (contrato_id, competencia, valor, vencimento)
+             VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING`,
+            [novo.id, comp, c.valor_mensal, vencDt.toISOString().slice(0, 10)]
+          );
+        }
+        // Marca o contrato antigo como renovado
+        await client.query(
+          `UPDATE mkt_contratos SET renovado_para_contrato_id = $1, status = 'encerrado' WHERE id = $2`,
+          [novo.id, c.id]
+        );
+        await client.query('COMMIT');
+        criados++;
+      } catch (e) {
+        await client.query('ROLLBACK').catch(() => {});
+        console.error('[mkt renovacao]', c.id, e.message);
+      } finally { client.release(); }
+    } catch (e) { console.error('[mkt renovacao]', e.message); }
+  }
+  if (criados > 0) console.log(`[mkt] ${criados} contrato(s) renovado(s) automaticamente`);
+  return criados;
+}
+
+// 2) Alertas de vencimento — pra cada contrato vigente, 30d e 7d antes de vencer,
+//    avisa compradores (rh_usuarios perfil=comprador, ativo, com email/telefone).
+async function rodarAlertasVencimentoMkt() {
+  const COMPRADORES = await dbQuery(
+    `SELECT nome, email, telefone FROM rh_usuarios
+      WHERE perfil = 'comprador' AND ativo = TRUE`
+  ).catch(() => []);
+  if (!COMPRADORES.length) return 0;
+
+  // 30d
+  const ate30 = await dbQuery(
+    `SELECT c.*, p.codigo AS ponto_codigo, l.nome AS loja_nome
+       FROM mkt_contratos c
+       JOIN pontos_exposicao p ON p.id = c.ponto_id
+       LEFT JOIN lojas l ON l.id = c.loja_id
+      WHERE c.status = 'ativo'
+        AND c.aviso_30d_enviado_em IS NULL
+        AND c.data_fim BETWEEN CURRENT_DATE AND (CURRENT_DATE + INTERVAL '30 days')`
+  );
+  for (const c of ate30) {
+    await notificarVencimentoMkt(c, 30, COMPRADORES);
+    await dbQuery('UPDATE mkt_contratos SET aviso_30d_enviado_em = NOW() WHERE id = $1', [c.id]);
+  }
+  // 7d
+  const ate7 = await dbQuery(
+    `SELECT c.*, p.codigo AS ponto_codigo, l.nome AS loja_nome
+       FROM mkt_contratos c
+       JOIN pontos_exposicao p ON p.id = c.ponto_id
+       LEFT JOIN lojas l ON l.id = c.loja_id
+      WHERE c.status = 'ativo'
+        AND c.aviso_7d_enviado_em IS NULL
+        AND c.data_fim BETWEEN CURRENT_DATE AND (CURRENT_DATE + INTERVAL '7 days')`
+  );
+  for (const c of ate7) {
+    await notificarVencimentoMkt(c, 7, COMPRADORES);
+    await dbQuery('UPDATE mkt_contratos SET aviso_7d_enviado_em = NOW() WHERE id = $1', [c.id]);
+  }
+  const total = ate30.length + ate7.length;
+  if (total > 0) console.log(`[mkt] ${total} alerta(s) de vencimento enviados`);
+  return total;
+}
+
+async function notificarVencimentoMkt(c, dias, compradores) {
+  const fim = new Date(c.data_fim).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+  const valor = parseFloat(c.valor_mensal).toFixed(2);
+  const titulo = `Contrato MKT vence em ${dias}d — ${c.fornecedor_nome}`;
+  const corpoTxt =
+    `Contrato de exposicao #${c.id}\n` +
+    `Fornecedor: ${c.fornecedor_nome}\n` +
+    `Loja: ${c.loja_nome || 'L' + c.loja_id} | Ponto: ${c.ponto_codigo}\n` +
+    `Vencimento: ${fim} (${dias} dias)\n` +
+    `Valor mensal: R$ ${valor}\n` +
+    (c.renovacao_auto ? '\n[Renovacao automatica esta ATIVA — sera renovado sem acao]' : '\nNegocie renovacao ou nao renovar.');
+  const corpoHtml =
+    `<h3>${titulo}</h3>` +
+    `<p><strong>Fornecedor:</strong> ${c.fornecedor_nome}<br>` +
+    `<strong>Loja:</strong> ${c.loja_nome || 'L' + c.loja_id}<br>` +
+    `<strong>Ponto:</strong> ${c.ponto_codigo}<br>` +
+    `<strong>Vencimento:</strong> ${fim} (${dias} dias)<br>` +
+    `<strong>Valor mensal:</strong> R$ ${valor}</p>` +
+    `<p>${c.renovacao_auto ? '✅ <em>Renovacao automatica ATIVA — sera renovado sem acao.</em>' : '⚠ <em>Negocie renovacao ou deixe encerrar.</em>'}</p>`;
+  for (const u of compradores) {
+    if (u.email) enviarEmail(u.email, titulo, corpoHtml).catch(e => console.error('[mkt mail]', e.message));
+    if (u.telefone) enviarWhatsapp(u.telefone, `*${titulo}*\n\n${corpoTxt}`).catch(e => console.error('[mkt wa]', e.message));
+  }
+}
+
+// 3) Cobranca automatica pro fornecedor — quando cobranca atinge vencimento,
+//    manda email pro fornecedor (se tem email cadastrado em fornecedores).
+//    Reenvia a cada 7d de atraso (max 4 avisos = ~30d apos vencimento).
+async function rodarCobrancaAutomaticaMkt() {
+  // Cobranca: vencimento HOJE ou atrasada >= 7d desde ultimo aviso (ou nunca enviada)
+  const cobs = await dbQuery(
+    `SELECT co.*, c.fornecedor_nome, c.fornecedor_cnpj, c.fornecedor_id,
+            p.codigo AS ponto_codigo, p.tipo AS ponto_tipo,
+            l.nome AS loja_nome,
+            f.email AS fornecedor_email, f.telefone AS fornecedor_telefone
+       FROM mkt_cobrancas co
+       JOIN mkt_contratos c ON c.id = co.contrato_id
+       JOIN pontos_exposicao p ON p.id = c.ponto_id
+       LEFT JOIN lojas l ON l.id = c.loja_id
+       LEFT JOIN fornecedores f ON f.id = c.fornecedor_id
+          OR REGEXP_REPLACE(COALESCE(f.cnpj,''),'\\D','','g') = REGEXP_REPLACE(COALESCE(c.fornecedor_cnpj,''),'\\D','','g')
+      WHERE co.status IN ('aberta','parcial')
+        AND co.vencimento <= CURRENT_DATE
+        AND co.avisos_count < 5
+        AND (co.atraso_aviso_em IS NULL OR co.atraso_aviso_em < NOW() - INTERVAL '7 days')`
+  );
+  let enviados = 0;
+  for (const co of cobs) {
+    try {
+      if (!co.fornecedor_email && !co.fornecedor_telefone) continue;
+      const venc = new Date(co.vencimento).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+      const comp = new Date(co.competencia + 'T12:00:00').toLocaleDateString('pt-BR', { month: '2-digit', year: 'numeric', timeZone: 'UTC' });
+      const valor = parseFloat(co.valor).toFixed(2);
+      const dias = Math.max(0, Math.floor((Date.now() - new Date(co.vencimento + 'T12:00:00')) / 86400000));
+      const atraso = dias > 0;
+      const titulo = atraso
+        ? `Cobranca em atraso (${dias}d) — Exposicao ${co.ponto_codigo} ${co.loja_nome || ''}`
+        : `Cobranca de Exposicao — ${comp} (vence ${venc})`;
+      const html =
+        `<h3>${titulo}</h3>` +
+        `<p>Prezado(a) <strong>${co.fornecedor_nome}</strong>,</p>` +
+        `<p>Cobranca referente ao aluguel do ponto de exposicao da marca em nossa loja:</p>` +
+        `<ul>` +
+          `<li><strong>Loja:</strong> ${co.loja_nome || 'L' + co.loja_id}</li>` +
+          `<li><strong>Ponto:</strong> ${co.ponto_codigo} (${co.ponto_tipo})</li>` +
+          `<li><strong>Competencia:</strong> ${comp}</li>` +
+          `<li><strong>Valor:</strong> R$ ${valor}</li>` +
+          `<li><strong>Vencimento:</strong> ${venc}${atraso ? ` <span style="color:red"><strong>(em atraso ${dias} dias)</strong></span>` : ''}</li>` +
+        `</ul>` +
+        `<p>Forma de pagamento: abatimento em proxima NF, deposito ou bonificacao em mercadoria. Entre em contato com nosso comprador para alinhamento.</p>` +
+        `<p style="color:#888;font-size:12px">SuperAsa - JR Lira Tech</p>`;
+      if (co.fornecedor_email) await enviarEmail(co.fornecedor_email, titulo, html).catch(e => console.error('[mkt cob mail]', e.message));
+      const txtWa =
+        `*${titulo}*\n\n` +
+        `Loja ${co.loja_nome || 'L' + co.loja_id} | Ponto ${co.ponto_codigo}\n` +
+        `Competencia ${comp}\nValor R$ ${valor}\nVencimento ${venc}${atraso ? ` (atraso ${dias}d)` : ''}\n\n` +
+        `Combinar pagamento com nosso comprador.`;
+      if (co.fornecedor_telefone) await enviarWhatsapp(co.fornecedor_telefone, txtWa).catch(e => console.error('[mkt cob wa]', e.message));
+      await dbQuery(
+        `UPDATE mkt_cobrancas
+            SET atraso_aviso_em = NOW(),
+                cobranca_enviada_em = COALESCE(cobranca_enviada_em, NOW()),
+                avisos_count = COALESCE(avisos_count,0) + 1
+          WHERE id = $1`,
+        [co.id]
+      );
+      enviados++;
+    } catch (e) { console.error('[mkt cobrar]', co.id, e.message); }
+  }
+  if (enviados > 0) console.log(`[mkt] ${enviados} cobranca(s) enviadas a fornecedor`);
+  return enviados;
+}
+
+// POST endpoints manuais (admin/ceo) — dispara o job sob demanda
+router.post('/jobs/renovacao', ...adminOuCeo, async (req, res) => {
+  try { res.json({ ok: true, renovados: await rodarRenovacaoMkt() }); }
+  catch (e) { res.status(500).json({ erro: e.message }); }
+});
+router.post('/jobs/alertas-vencimento', ...adminOuCeo, async (req, res) => {
+  try { res.json({ ok: true, enviados: await rodarAlertasVencimentoMkt() }); }
+  catch (e) { res.status(500).json({ erro: e.message }); }
+});
+router.post('/jobs/cobranca-automatica', ...adminOuCeo, async (req, res) => {
+  try { res.json({ ok: true, enviados: await rodarCobrancaAutomaticaMkt() }); }
+  catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
 module.exports = router;
 module.exports.gerarCobrancasDoMes = gerarCobrancasDoMes;
+module.exports.rodarRenovacaoMkt = rodarRenovacaoMkt;
+module.exports.rodarAlertasVencimentoMkt = rodarAlertasVencimentoMkt;
+module.exports.rodarCobrancaAutomaticaMkt = rodarCobrancaAutomaticaMkt;

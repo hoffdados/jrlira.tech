@@ -1197,6 +1197,23 @@ async function initDB() {
     await runMigration(client, '20260515_idx_mkt_contratos',
       `CREATE INDEX IF NOT EXISTS idx_mkt_contratos_status ON mkt_contratos(status);
        CREATE INDEX IF NOT EXISTS idx_mkt_contratos_loja ON mkt_contratos(loja_id);`);
+    // Fase 2: alerts/renovacao/cobranca automatica/foto
+    await runMigration(client, '20260516_mkt_contratos_fase2',
+      `ALTER TABLE mkt_contratos
+         ADD COLUMN IF NOT EXISTS aviso_30d_enviado_em TIMESTAMPTZ,
+         ADD COLUMN IF NOT EXISTS aviso_7d_enviado_em TIMESTAMPTZ,
+         ADD COLUMN IF NOT EXISTS renovado_para_contrato_id INTEGER REFERENCES mkt_contratos(id),
+         ADD COLUMN IF NOT EXISTS renovado_de_contrato_id INTEGER REFERENCES mkt_contratos(id)`);
+    await runMigration(client, '20260516_mkt_cobrancas_fase2',
+      `ALTER TABLE mkt_cobrancas
+         ADD COLUMN IF NOT EXISTS cobranca_enviada_em TIMESTAMPTZ,
+         ADD COLUMN IF NOT EXISTS atraso_aviso_em TIMESTAMPTZ,
+         ADD COLUMN IF NOT EXISTS avisos_count INTEGER DEFAULT 0`);
+    await runMigration(client, '20260516_pontos_exposicao_foto',
+      `ALTER TABLE pontos_exposicao
+         ADD COLUMN IF NOT EXISTS foto_data BYTEA,
+         ADD COLUMN IF NOT EXISTS foto_mime VARCHAR(20),
+         ADD COLUMN IF NOT EXISTS foto_atualizada_em TIMESTAMPTZ`);
     await runMigration(client, '20260504_backfill_criado_por_sug',
       `UPDATE pedidos SET criado_por_comprador = 'sugestao'
          WHERE status='rascunho' AND numero_pedido LIKE 'SUG-%' AND criado_por_comprador IS NULL`);
@@ -3379,19 +3396,25 @@ initDB().then(() => {
   setTimeout(detectarEco, 5 * 60 * 1000);
   setInterval(detectarEco, 24 * 60 * 60 * 1000);
 
-  // ── Cron mensal: gera cobrancas MKT do mes corrente ──
-  // Dia 1 todo mes (cobrindo qualquer hora — roda a cada 6h e checa se ja rodou hoje)
-  const { gerarCobrancasDoMes } = require('./src/routes/mkt');
-  const rodarMktMensal = async () => {
+  // ── Cron MKT ──
+  // 1) Cobrancas mensais (idempotente via UNIQUE contrato_id+competencia)
+  // 2) Renovacao automatica (Fase 2)
+  // 3) Alertas de vencimento (Fase 2)
+  // 4) Cobranca automatica pro fornecedor (Fase 2)
+  const mkt = require('./src/routes/mkt');
+  const rodarMktDiario = async () => {
     try {
       const hoje = new Date();
       const comp = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-01`;
-      const criadas = await gerarCobrancasDoMes(comp);
+      const criadas = await mkt.gerarCobrancasDoMes(comp);
       if (criadas > 0) console.log(`[mkt] ${criadas} cobranca(s) geradas para ${comp}`);
-    } catch (e) { console.error('[mkt] erro ao gerar cobrancas:', e.message); }
+      await mkt.rodarRenovacaoMkt();
+      await mkt.rodarAlertasVencimentoMkt();
+      await mkt.rodarCobrancaAutomaticaMkt();
+    } catch (e) { console.error('[mkt cron]', e.message); }
   };
-  setTimeout(rodarMktMensal, 10 * 60 * 1000); // 10min apos start
-  setInterval(rodarMktMensal, 6 * 60 * 60 * 1000); // a cada 6h (idempotente via UNIQUE constraint)
+  setTimeout(rodarMktDiario, 10 * 60 * 1000); // 10min apos start
+  setInterval(rodarMktDiario, 6 * 60 * 60 * 1000); // a cada 6h
 }).catch(err => {
   console.error('[DB] Erro init:', err.message);
   process.exit(1);

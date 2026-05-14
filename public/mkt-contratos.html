@@ -130,6 +130,7 @@ tbody td{padding:10px;vertical-align:top}
     </label>
     <label>Observação</label>
     <textarea id="iObs" placeholder="Detalhes da negociação (campanha, exclusividade, condições especiais)"></textarea>
+    <div id="histPonto" style="background:#0f172a;border-left:3px solid #7c3aed;padding:10px;border-radius:6px;margin-top:14px;font-size:12px;color:#94a3b8;display:none"></div>
     <div id="resumoCobranca" style="background:#0f172a;border-left:3px solid #38bdf8;padding:10px;border-radius:6px;margin-top:14px;font-size:12px;color:#94a3b8;display:none"></div>
     <div class="macts">
       <button class="cancel" onclick="fecharNovo()">Cancelar</button>
@@ -233,6 +234,28 @@ async function recarregarPontos() {
   pontos = lista;
   document.getElementById('iPonto').innerHTML = '<option value="">Selecione</option>' +
     lista.map(p => `<option value="${p.id}">${esc(p.codigo)} — ${TIPOS_LABEL[p.tipo]||p.tipo}${p.descricao?' · '+esc(p.descricao):''}${p.contratos_ativos>0?' [ocupado]':''}</option>`).join('');
+  document.getElementById('iPonto').onchange = carregarHistoricoPonto;
+}
+
+async function carregarHistoricoPonto() {
+  const id = document.getElementById('iPonto').value;
+  const el = document.getElementById('histPonto');
+  if (!id) { el.style.display = 'none'; return; }
+  const r = await apiFetch(`/api/mkt/pontos/${id}/historico`);
+  if (!r.ok) { el.style.display = 'none'; return; }
+  const d = await r.json();
+  if (!d.stats.contratos_total) {
+    el.innerHTML = '📊 <strong>Sem histórico</strong> — primeiro contrato neste ponto.';
+  } else {
+    const ult = d.ultimos.slice(0, 3).map(u =>
+      `<li>${esc(u.fornecedor_nome)} · ${fmtData(u.data_inicio)}→${fmtData(u.data_fim)} · <strong>${fmtR$(u.valor_mensal)}/mês</strong></li>`
+    ).join('');
+    el.innerHTML = `📊 <strong>Histórico do ponto</strong> (${d.stats.contratos_total} contrato(s))<br>` +
+      `Preço médio: <strong>${fmtR$(d.stats.preco_medio)}</strong> · ` +
+      `mín ${fmtR$(d.stats.preco_min)} · máx ${fmtR$(d.stats.preco_max)}` +
+      (ult ? `<br><br>Últimos:<ul style="margin:6px 0 0 18px">${ult}</ul>` : '');
+  }
+  el.style.display = 'block';
 }
 
 function abrirNovo() {

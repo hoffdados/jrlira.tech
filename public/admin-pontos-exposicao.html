@@ -108,6 +108,9 @@ tbody td{padding:10px;vertical-align:middle}
     <input type="text" id="iDesc" placeholder="Ex: Entrada principal, Corredor 5 — Bebidas">
     <label>Observação</label>
     <textarea id="iObs" placeholder="Detalhes adicionais"></textarea>
+    <label>Foto do ponto (opcional)</label>
+    <input type="file" id="iFoto" accept="image/*" style="background:#0f172a;color:#94a3b8;padding:6px">
+    <div id="iFotoPreview" style="margin-top:6px"></div>
     <div class="macts">
       <button class="cancel" onclick="fecharModal()">Cancelar</button>
       <button class="ok" onclick="salvar()">Salvar</button>
@@ -149,7 +152,7 @@ function render() {
     <th>Área m²</th><th>Contratos ativos</th><th>Status</th><th>Ações</th>
   </tr></thead><tbody>
   ${pontos.map(p => `<tr>
-    <td><strong>${LOJAS[p.loja_id]||'L'+p.loja_id}</strong></td>
+    <td><strong>${LOJAS[p.loja_id]||'L'+p.loja_id}</strong>${p.tem_foto?`<br><img src="/api/mkt/pontos/${p.id}/foto" style="max-width:60px;max-height:40px;border-radius:4px;margin-top:4px;cursor:pointer" onclick="window.open(this.src)">`:''}</td>
     <td><span style="font-family:monospace">${esc(p.codigo)}</span></td>
     <td><span class="badge b-${p.tipo}">${TIPOS_LABEL[p.tipo]||p.tipo}</span></td>
     <td>${esc(p.descricao||'—')}</td>
@@ -170,6 +173,8 @@ function abrirNovo() {
   ['iCodigo','iDesc','iObs','iArea'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('iLoja').value = document.getElementById('fLoja').value || '1';
   document.getElementById('iTipo').value = 'ponta_gondola';
+  document.getElementById('iFoto').value = '';
+  document.getElementById('iFotoPreview').innerHTML = '';
   document.getElementById('mPonto').classList.add('show');
 }
 
@@ -184,6 +189,10 @@ function editar(id) {
   document.getElementById('iArea').value = p.area_m2 || '';
   document.getElementById('iDesc').value = p.descricao || '';
   document.getElementById('iObs').value = p.observacao || '';
+  document.getElementById('iFoto').value = '';
+  document.getElementById('iFotoPreview').innerHTML = p.foto_atualizada_em
+    ? `<img src="/api/mkt/pontos/${id}/foto?t=${Date.now()}" style="max-width:200px;max-height:120px;border-radius:6px;border:1px solid #334155">`
+    : '<span style="font-size:11px;color:#64748b">Sem foto ainda</span>';
   document.getElementById('mPonto').classList.add('show');
 }
 
@@ -204,6 +213,15 @@ async function salvar() {
       ? await apiFetch(`/api/mkt/pontos/${editId}`, { method:'PATCH', body: JSON.stringify(body) })
       : await apiFetch('/api/mkt/pontos', { method:'POST', body: JSON.stringify(body) });
     if (!r.ok) throw new Error((await r.json()).erro);
+    const data = await r.json();
+    // Sobe foto se selecionada
+    const foto = document.getElementById('iFoto').files[0];
+    if (foto) {
+      const id = editId || data.id;
+      const fd = new FormData();
+      fd.append('foto', foto);
+      await apiFetch(`/api/mkt/pontos/${id}/foto`, { method:'POST', body: fd });
+    }
     fecharModal();
     carregar();
   } catch (e) { alert(e.message); }
