@@ -1846,6 +1846,9 @@ router.post('/:id/auditoria', autenticar, async (req, res) => {
           const qtdFaltaCx = -diferenca;                     // em caixas (qtd da NF)
           const qtdFaltaUn = qtdFaltaCx * embPorCx;          // em unidades individuais
           const valorFalta = qtdFaltaCx * precoPorQtdNota;   // = qtdFaltaUn × precoUnitInd
+          // qtd_caixas eh INTEGER; arredonda fracoes de caixa (falta de 0.22cx vira 0).
+          // qtd_unidades/qtd_total/valor_total mantem o valor exato.
+          const qtdFaltaCxInt = Math.round(qtdFaltaCx);
           await client.query(
             `INSERT INTO devolucoes_itens
                 (devolucao_id, item_nota_id, cd_pro_codi, ean, descricao,
@@ -1853,7 +1856,7 @@ router.post('/:id/auditoria', autenticar, async (req, res) => {
                  origem_tipo, origem_id)
                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'auditagem_divergencia',NULL)`,
             [devolucaoId, aud.item_id, item.cd_pro_codi, item.ean_nota, item.descricao_nota,
-             qtdFaltaCx, qtdFaltaUn, qtdFaltaUn, precoUnitInd, valorFalta]
+             qtdFaltaCxInt, qtdFaltaUn, qtdFaltaUn, precoUnitInd, valorFalta]
           );
         } else {
           // SOBRA — relatório informativo
