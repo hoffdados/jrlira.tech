@@ -1256,7 +1256,18 @@ router.patch('/:id/finalizar-conferencia-transf', autenticar, async (req, res) =
     if (nota.origem !== 'cd' && nota.origem !== 'transferencia_loja') {
       return res.status(400).json({ erro: 'Fluxo apenas para transferências' });
     }
-    if (nota.status !== 'em_conferencia') return res.status(400).json({ erro: `Status atual ${nota.status} não permite finalizar conferência` });
+    // Status aceitos:
+    //  - em_conferencia (estoque finalizando 1a vez)
+    //  - auditagem (admin/auditor corrigindo erro de digitacao — recalcula divergencias)
+    const podeReauditar = ['admin', 'auditor'].includes(req.usuario.perfil);
+    const statusOk = nota.status === 'em_conferencia' || (podeReauditar && nota.status === 'auditagem');
+    if (!statusOk) {
+      return res.status(400).json({
+        erro: nota.status === 'auditagem'
+          ? 'Correcao em auditagem so admin/auditor pode fazer'
+          : `Status atual ${nota.status} nao permite finalizar conferencia`
+      });
+    }
 
     // Carrega itens da nota com qtd_embalagem + dados pra registrar divergências
     const itensNota = await query(

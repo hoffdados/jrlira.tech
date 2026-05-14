@@ -422,6 +422,8 @@ function renderLotes(lotes) {
 }
 function renderItensCompleto(itens, statusNota) {
   const podeCadastrarEan = !READ_ONLY && ['conferida', 'auditagem', 'em_conferencia', 'recebida'].includes(statusNota);
+  // Auditor/admin pode CORRIGIR lotes quando nota esta em auditagem (erro de digitacao da conferencia)
+  const podeCorrigirAuditagem = statusNota === 'auditagem' && ['admin','auditor'].includes(PERFIL);
   const tbody = document.getElementById('tbodyItens');
   tbody.innerHTML = itens.map(i => {
     const semCod = !!i.sem_codigo_barras;
@@ -489,8 +491,112 @@ function renderItensCompleto(itens, statusNota) {
         <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Lotes conferidos pelo estoque</div>
         ${renderLotes(i.lotes_contados)}
       </td>
-    </tr>` : ''}`;
+    </tr>` : ''}
+    ${podeCorrigirAuditagem ? renderLinhaCorrecaoAuditor(i, emb) : ''}`;
   }).join('');
+}
+
+// Linha de correcao do auditor (status=auditagem). Pre-preenche com os lotes ja conferidos.
+function renderLinhaCorrecaoAuditor(i, emb) {
+  const lotes = i.lotes_contados || [];
+  const linhas = (lotes.length ? lotes : [{qtd_caixas:'',qtd_unidades:'',validade:null}]).map((l, idx) => loteRowAuditor(i.id, idx, l));
+  return `<tr style="background:#1c1300">
+    <td colspan="9" style="padding:8px 16px 12px 16px">
+      <div style="font-size:10px;color:#fcd34d;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">✏ Correcao do auditor (substitui os lotes acima)</div>
+      <div id="auditor-lotes-${i.id}" data-item="${i.id}" data-emb="${emb}">${linhas.join('')}</div>
+      <button onclick="addLoteAuditor(${i.id},${emb})" style="margin-top:4px;background:transparent;border:1px dashed #fcd34d;color:#fcd34d;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px">+ lote</button>
+      <button onclick="salvarCorrecaoItem(${i.id})" style="margin-top:4px;margin-left:6px;background:#0ea5e9;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px;font-weight:700">💾 Salvar e Refazer Conferencia</button>
+    </td>
+  </tr>`;
+}
+
+let _lotesCountAud = {};
+function loteRowAuditor(itemId, idx, lote) {
+  _lotesCountAud[itemId] = Math.max(_lotesCountAud[itemId] || 0, idx + 1);
+  const cx = lote && lote.qtd_caixas != null ? lote.qtd_caixas : '';
+  const un = lote && lote.qtd_unidades != null ? lote.qtd_unidades : '';
+  const val = lote && lote.validade ? String(lote.validade).substring(0,10) : '';
+  const [yy='', mm='', dd=''] = val ? val.split('-') : ['','',''];
+  const inp = 'padding:4px;background:#0f172a;border:1px solid #fcd34d;border-radius:4px;color:#e2e8f0;font-size:12px;text-align:center';
+  return `<div data-aud-lote="${idx}" style="display:flex;gap:4px;align-items:center;margin-bottom:4px">
+    <input type="number" id="aud-cx-${itemId}-${idx}" placeholder="cx" value="${cx}" min="0" step="1" style="${inp};width:60px">
+    <input type="number" id="aud-un-${itemId}-${idx}" placeholder="un" value="${un}" min="0" step="1" style="${inp};width:60px">
+    <span style="display:inline-flex;gap:2px;align-items:center">
+      <input type="number" id="aud-vd-${itemId}-${idx}" placeholder="dd" value="${dd}" min="1" max="31" maxlength="2" style="${inp};width:42px">
+      <span style="color:#475569">/</span>
+      <input type="number" id="aud-vm-${itemId}-${idx}" placeholder="mm" value="${mm}" min="1" max="12" maxlength="2" style="${inp};width:42px">
+      <span style="color:#475569">/</span>
+      <input type="number" id="aud-vy-${itemId}-${idx}" placeholder="aaaa" value="${yy}" min="2000" max="2099" maxlength="4" style="${inp};width:60px">
+    </span>
+    ${idx > 0 ? `<button onclick="removerLoteAuditor(${itemId},${idx})" style="background:transparent;border:none;color:#f87171;cursor:pointer;font-size:14px">×</button>` : ''}
+  </div>`;
+}
+
+function addLoteAuditor(itemId, emb) {
+  const wrap = document.getElementById(`auditor-lotes-${itemId}`);
+  if (!wrap) return;
+  const idx = (_lotesCountAud[itemId] || 0);
+  _lotesCountAud[itemId] = idx + 1;
+  wrap.insertAdjacentHTML('beforeend', loteRowAuditor(itemId, idx, null));
+}
+
+function removerLoteAuditor(itemId, idx) {
+  const linha = document.querySelector(`#auditor-lotes-${itemId} [data-aud-lote="${idx}"]`);
+  if (linha) linha.remove();
+}
+
+function lerCorrecaoItem(itemId) {
+  const wrap = document.getElementById(`auditor-lotes-${itemId}`);
+  if (!wrap) return { lotes: [], erros: [] };
+  const linhas = wrap.querySelectorAll('[data-aud-lote]');
+  const lotes = [];
+  const erros = [];
+  linhas.forEach(l => {
+    const idx = l.dataset.audLote;
+    const cx = parseFloat(document.getElementById(`aud-cx-${itemId}-${idx}`)?.value) || 0;
+    const un = parseFloat(document.getElementById(`aud-un-${itemId}-${idx}`)?.value) || 0;
+    const dd = (document.getElementById(`aud-vd-${itemId}-${idx}`)?.value || '').trim();
+    const mm = (document.getElementById(`aud-vm-${itemId}-${idx}`)?.value || '').trim();
+    const yy = (document.getElementById(`aud-vy-${itemId}-${idx}`)?.value || '').trim();
+    let validade = null;
+    if (dd || mm || yy) {
+      if (!dd || !mm || !yy) { erros.push(`Item ${itemId}: data incompleta`); return; }
+      const d = +dd, m = +mm, y = +yy;
+      if (m < 1 || m > 12 || d < 1 || d > 31 || y < 2000 || y > 2099) { erros.push(`Item ${itemId}: data invalida`); return; }
+      const dt = new Date(y, m-1, d);
+      if (dt.getFullYear() !== y || dt.getMonth() !== m-1 || dt.getDate() !== d) { erros.push(`Item ${itemId}: data inexistente`); return; }
+      validade = `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    }
+    if (cx || un || validade) lotes.push({ qtd_caixas: cx, qtd_unidades: un, validade });
+  });
+  return { lotes, erros };
+}
+
+async function salvarCorrecaoItem(itemId) {
+  const { itens } = await fetchApi(`/api/notas/${notaAtualId}`);
+  // Pega o estado atual do DOM pra TODOS os itens (envia o conjunto completo, igual /finalizar-conferencia-transf espera)
+  const errosTotal = [];
+  const payload = itens.map(it => {
+    if (it.id === itemId) {
+      const r = lerCorrecaoItem(it.id);
+      if (r.erros.length) errosTotal.push(...r.erros);
+      return { item_id: it.id, lotes: r.lotes };
+    }
+    // Demais itens: re-envia os lotes ja conferidos como estao
+    const lotes = (it.lotes_contados || []).map(l => ({
+      qtd_caixas: parseFloat(l.qtd_caixas) || 0,
+      qtd_unidades: parseFloat(l.qtd_unidades) || 0,
+      validade: l.validade ? String(l.validade).substring(0,10) : null,
+    }));
+    return { item_id: it.id, lotes };
+  });
+  if (errosTotal.length) { showMsg(errosTotal[0], 'err'); return; }
+  if (!confirm('Salvar correcao e refazer conferencia desta nota?')) return;
+  try {
+    const r = await fetchApi(`/api/notas/${notaAtualId}/finalizar-conferencia-transf`, 'PATCH', { itens: payload });
+    showMsg(r.com_divergencia ? 'Recalculado - ainda com divergencia' : 'Sem divergencia - pronto pra cadastro validar', 'ok');
+    abrirNota(notaAtualId);
+  } catch (e) { showMsg(e.message, 'err'); }
 }
 
 function voltarLista() {
