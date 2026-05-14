@@ -131,7 +131,7 @@ async function detectarStatusEco() {
      WHERE chegou_no_erp_em IS NOT NULL
        AND chegou_no_erp_em >= $1::date
        AND origem IN ('nfe','cd','transferencia_loja')
-       AND status NOT IN ('fechada','validada','arquivada','cancelada','finalizada_f')
+       AND status NOT IN ('fechada','validada','arquivada','cancelada','finalizada_f','auditagem')
        AND COALESCE(mcp_status_cd, 'A') <> 'C'
      RETURNING id, loja_id, numero_nota, fornecedor_cnpj
   `, [DATA_CORTE_ECO]);
