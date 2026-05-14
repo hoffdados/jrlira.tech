@@ -2155,17 +2155,40 @@ const HEADER_ITENS   = 'COD_PEDIDO;COD_VENDEDOR;COD_PRODUTO;UNIDADE;QUANTIDADE;V
 // Body: { cd_origem_codigo: "srv1-itautuba", observacao?: string }
 // Os destinos e itens vêm das qtds salvas via PUT /qtd (cesta tipo planilha).
 // Pedido é gerado pra cada destino que tem ao menos 1 item com qtd > 0.
+// GET /destinos-com-qtd?cd_origem=X — lista destinos que tem qtd digitada (pra teste)
+router.get('/destinos-com-qtd', autenticar, async (req, res) => {
+  try {
+    const cdOrigem = String(req.query.cd_origem || '').trim();
+    if (!cdOrigem) return res.status(400).json({ erro: 'cd_origem obrigatorio' });
+    const rows = await dbQuery(
+      `SELECT d.id, d.nome, d.tipo, COUNT(q.mat_codi)::int AS itens
+         FROM pedidos_distrib_quantidades q
+         JOIN pedidos_distrib_destinos d ON d.id = q.destino_id
+        WHERE q.cd_origem_codigo = $1 AND q.qtd > 0
+        GROUP BY d.id, d.nome, d.tipo
+        ORDER BY d.tipo, d.loja_id NULLS LAST, d.nome`,
+      [cdOrigem]
+    );
+    res.json(rows);
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
 router.post('/', adminOuCeo, async (req, res) => {
   try {
-    const { cd_origem_codigo, observacao } = req.body || {};
+    const { cd_origem_codigo, observacao, destino_id, max_itens } = req.body || {};
     if (!cd_origem_codigo) return res.status(400).json({ erro: 'cd_origem_codigo obrigatorio' });
     const por = req.usuario.email || req.usuario.usuario || req.usuario.nome || `id:${req.usuario.id}`;
 
-    // Carrega todas as qtds salvas pra esse CD origem
+    // Carrega qtds salvas pra esse CD origem (opcional: filtrar 1 destino e/ou limitar)
+    const params = [cd_origem_codigo];
+    let where = `cd_origem_codigo = $1 AND qtd > 0`;
+    if (destino_id) { params.push(parseInt(destino_id)); where += ` AND destino_id = $${params.length}`; }
+    let limitSql = '';
+    if (max_itens) limitSql = ` LIMIT ${parseInt(max_itens)}`;
     const qtds = await dbQuery(
       `SELECT destino_id, mat_codi, qtd FROM pedidos_distrib_quantidades
-        WHERE cd_origem_codigo = $1 AND qtd > 0`,
-      [cd_origem_codigo]
+        WHERE ${where}${limitSql}`,
+      params
     );
     if (!qtds.length) return res.status(400).json({ erro: 'nenhuma quantidade > 0 salva pra esse CD origem. Edite a grade primeiro.' });
 

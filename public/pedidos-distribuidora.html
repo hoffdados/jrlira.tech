@@ -201,6 +201,7 @@ table.grade tbody tr.prioritario:hover{background:#27220e}
     <div class="actions">
       <input id="obs" placeholder="Observação" style="width:200px">
       <button class="btn-primary" onclick="gerarCsv(this)">Gerar CSVs</button>
+      <button class="btn-primary" onclick="gerarCsvTeste(this)" style="background:#dc2626" title="CSV com 1 destino e 3 itens — pra testar o formato no UltraSyst sem volume">🧪 CSV Teste (1 loja · 3 itens)</button>
       <button class="btn-primary" onclick="exportarPdf()" style="background:#7c3aed">📄 PDF por Loja</button>
     </div>
   </div>
@@ -546,6 +547,33 @@ async function gerarCsv(btn) {
     document.getElementById('downloadArea').style.display = 'block';
   } catch (e) { showMsg('❌ ' + e.message, 'err'); }
   finally { btn.disabled = false; btn.textContent = 'Gerar CSVs'; }
+}
+
+async function gerarCsvTeste(btn) {
+  if (!cdOrigemAtual) { showMsg('Selecione o CD origem', 'err'); return; }
+  // Pega 1 destino que tenha qtd salva
+  const r = await api(`/api/pedidos-distribuidora/destinos-com-qtd?cd_origem=${encodeURIComponent(cdOrigemAtual)}`);
+  if (!r?.length) { showMsg('Nenhum destino com qtds digitadas', 'err'); return; }
+  const lista = r.map(d => `- ${d.nome} (${d.itens} itens)`).join('\n');
+  const escolha = prompt(`Qual destino testar?\n\n${lista}\n\nDigite o ID:`, r[0].id);
+  if (!escolha) return;
+  if (!confirm(`Gerar CSV TESTE com 3 itens do destino ${escolha}?`)) return;
+  btn.disabled = true; btn.textContent = 'Gerando...';
+  document.getElementById('downloadArea').style.display = 'none';
+  try {
+    const resp = await api('/api/pedidos-distribuidora', 'POST', {
+      cd_origem_codigo: cdOrigemAtual,
+      observacao: 'TESTE',
+      destino_id: parseInt(escolha),
+      max_itens: 3,
+    });
+    showMsg(`🧪 CSV teste: ${resp.total_pedidos} pedido(s) · ${resp.total_itens} item(ns)`, 'ok');
+    const t = encodeURIComponent(token());
+    document.getElementById('dlPedidos').href = `/api/pedidos-distribuidora/csv/${resp.geracao_id}/P_PEDIDOS.csv?token=${t}`;
+    document.getElementById('dlItens').href   = `/api/pedidos-distribuidora/csv/${resp.geracao_id}/P_PEDIDOS_ITENS.csv?token=${t}`;
+    document.getElementById('downloadArea').style.display = 'block';
+  } catch (e) { showMsg('❌ ' + e.message, 'err'); }
+  finally { btn.disabled = false; btn.textContent = '🧪 CSV Teste (1 loja · 3 itens)'; }
 }
 
 function exportarPdf() {
