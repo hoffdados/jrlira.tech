@@ -194,6 +194,95 @@ router.post('/importar-excel', autenticar, adminOuCeo, upload.single('arquivo'),
   }
 });
 
+// POST /api/cd-produtos-embalagem/replicar
+// body: { origem, destino, sobrescrever?: false }
+// Replica todas as linhas do CD origem pro CD destino, fazendo match por
+// ean_principal OU ean_secundario via cd_ean E cd_material do destino.
+// Retorna: replicados (novos), atualizados (se sobrescrever), sem_match (lista detalhada).
+router.post('/replicar', autenticar, adminOuCeo, async (req, res) => {
+  try {
+    const { origem, destino } = req.body || {};
+    const sobrescrever = !!req.body?.sobrescrever;
+    if (!origem || !destino) return res.status(400).json({ erro: 'origem e destino obrigatorios' });
+    if (origem === destino) return res.status(400).json({ erro: 'origem e destino devem ser diferentes' });
+    const por = req.usuario.email || req.usuario.usuario || req.usuario.nome || `id:${req.usuario.id}`;
+
+    // 1) Pega tudo da origem com match resolvido pro destino
+    const candidatos = await dbQuery(`
+      WITH src AS (
+        SELECT cpe.mat_codi AS mat_origem,
+               cpe.ean_principal, cpe.ean_secundario,
+               cpe.qtd_embalagem, cpe.peso_unidade_kg, cpe.peso_variavel,
+               NULLIF(LTRIM(COALESCE(cpe.ean_principal,''),'0'),'') AS ep,
+               NULLIF(LTRIM(COALESCE(cpe.ean_secundario,''),'0'),'') AS es,
+               cm.mat_desc AS desc_origem
+          FROM cd_produtos_embalagem cpe
+          LEFT JOIN cd_material cm ON cm.cd_codigo=cpe.cd_codigo AND cm.mat_codi=cpe.mat_codi
+         WHERE cpe.cd_codigo = $1
+      )
+      SELECT src.*,
+             COALESCE(
+               (SELECT mat_codi FROM cd_ean WHERE cd_codigo=$2 AND NULLIF(LTRIM(ean_codi,'0'),'')=src.ep LIMIT 1),
+               (SELECT mat_codi FROM cd_ean WHERE cd_codigo=$2 AND NULLIF(LTRIM(ean_codi,'0'),'')=src.es LIMIT 1),
+               (SELECT mat_codi FROM cd_material WHERE cd_codigo=$2 AND NULLIF(LTRIM(ean_codi,'0'),'')=src.ep LIMIT 1),
+               (SELECT mat_codi FROM cd_material WHERE cd_codigo=$2 AND NULLIF(LTRIM(ean_codi,'0'),'')=src.es LIMIT 1)
+             ) AS mat_destino
+        FROM src`, [origem, destino]);
+
+    const semMatch = [];
+    let replicados = 0, atualizados = 0, ignorados = 0;
+
+    for (const r of candidatos) {
+      if (!r.mat_destino) {
+        semMatch.push({
+          mat_codi_origem: r.mat_origem,
+          descricao: r.desc_origem,
+          ean_principal: r.ean_principal,
+          ean_secundario: r.ean_secundario,
+        });
+        continue;
+      }
+      // Já existe em destino?
+      const exist = await dbQuery(
+        `SELECT 1 FROM cd_produtos_embalagem WHERE cd_codigo=$1 AND mat_codi=$2`,
+        [destino, r.mat_destino]
+      );
+      if (exist.length && !sobrescrever) { ignorados++; continue; }
+
+      await dbQuery(
+        `INSERT INTO cd_produtos_embalagem
+           (cd_codigo, mat_codi, ean_principal, ean_secundario, qtd_embalagem,
+            peso_unidade_kg, peso_variavel, atualizado_em, atualizado_por)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,NOW(),$8)
+         ON CONFLICT (cd_codigo, mat_codi) DO UPDATE SET
+           ean_principal=EXCLUDED.ean_principal,
+           ean_secundario=EXCLUDED.ean_secundario,
+           qtd_embalagem=EXCLUDED.qtd_embalagem,
+           peso_unidade_kg=EXCLUDED.peso_unidade_kg,
+           peso_variavel=EXCLUDED.peso_variavel,
+           atualizado_em=NOW(),
+           atualizado_por=EXCLUDED.atualizado_por`,
+        [destino, r.mat_destino, r.ean_principal, r.ean_secundario,
+         r.qtd_embalagem, r.peso_unidade_kg, !!r.peso_variavel, por]
+      );
+      if (exist.length) atualizados++; else replicados++;
+    }
+
+    res.json({
+      ok: true,
+      origem, destino, sobrescrever,
+      total_origem: candidatos.length,
+      replicados,
+      atualizados,
+      ignorados_ja_existem: ignorados,
+      sem_match: semMatch,
+    });
+  } catch (e) {
+    console.error('[cd-produtos-embalagem replicar]', e);
+    res.status(500).json({ erro: e.message });
+  }
+});
+
 // DELETE /api/cd-produtos-embalagem/:cd_codigo/:mat_codi
 router.delete('/:cd_codigo/:mat_codi', autenticar, adminOuCeo, async (req, res) => {
   try {

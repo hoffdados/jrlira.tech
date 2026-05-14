@@ -58,6 +58,66 @@
   </select>
   <button onclick="carregar()">Carregar</button>
   <button class="secondary" onclick="salvarTudo()">Salvar pendências</button>
+  <button onclick="abrirReplicar()" style="background:#7c3aed">↻ Replicar de outro CD</button>
+</div>
+
+<div id="modalReplicar" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;align-items:center;justify-content:center">
+  <div style="background:#1e293b;border-radius:10px;padding:24px;width:520px;max-width:92vw;border:1px solid #334155">
+    <h2 style="margin:0 0 16px;font-size:17px">Replicar embalagens de outro CD</h2>
+    <div style="margin-bottom:12px">
+      <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px;text-transform:uppercase">Origem (copiar de)</label>
+      <select id="repOrigem" style="width:100%;padding:8px;background:#0f172a;color:#e7eaf3;border:1px solid #334155;border-radius:6px">
+        <option value="srv2-asafrio">srv2-asafrio — ASA FRIO ITAITUBA</option>
+        <option value="srv2-asasantarem">srv2-asasantarem — ASA FRIO SANTAREM</option>
+        <option value="srv1-itautuba">srv1-itautuba — ASA BRANCA ITAITUBA</option>
+        <option value="srv1-nprogresso">srv1-nprogresso — ASA BRANCA N_PROGRESSO</option>
+      </select>
+    </div>
+    <div style="margin-bottom:12px">
+      <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px;text-transform:uppercase">Destino (replicar pra)</label>
+      <select id="repDestino" style="width:100%;padding:8px;background:#0f172a;color:#e7eaf3;border:1px solid #334155;border-radius:6px">
+        <option value="srv2-asasantarem">srv2-asasantarem — ASA FRIO SANTAREM</option>
+        <option value="srv2-asafrio">srv2-asafrio — ASA FRIO ITAITUBA</option>
+        <option value="srv1-itautuba">srv1-itautuba — ASA BRANCA ITAITUBA</option>
+        <option value="srv1-nprogresso">srv1-nprogresso — ASA BRANCA N_PROGRESSO</option>
+      </select>
+    </div>
+    <div style="margin-bottom:14px">
+      <label style="font-size:13px;color:#cbd5e1;display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" id="repSobrescrever"> Sobrescrever cadastros já existentes no destino
+      </label>
+      <div style="font-size:11px;color:#64748b;margin-top:4px">Sem marcar: ignora itens que já têm cadastro no destino. Marcado: sobrepõe.</div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button onclick="fecharReplicar()" style="background:#475569;color:#fff;border:0;border-radius:6px;padding:8px 14px;cursor:pointer">Cancelar</button>
+      <button onclick="executarReplicar()" id="btnReplicar" style="background:#7c3aed;color:#fff;border:0;border-radius:6px;padding:8px 14px;cursor:pointer">Replicar</button>
+    </div>
+    <div id="repResultado" style="margin-top:14px;font-size:13px"></div>
+  </div>
+</div>
+
+<div id="modalSemMatch" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:101;align-items:center;justify-content:center">
+  <div style="background:#1e293b;border-radius:10px;padding:24px;width:880px;max-width:96vw;max-height:88vh;display:flex;flex-direction:column;border:1px solid #334155">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h2 style="margin:0;font-size:17px">⚠️ Itens sem match (cadastrar manualmente)</h2>
+      <button onclick="document.getElementById('modalSemMatch').style.display='none'" style="background:transparent;color:#94a3b8;border:0;font-size:18px;cursor:pointer">✕</button>
+    </div>
+    <div id="semMatchInfo" style="font-size:12px;color:#94a3b8;margin-bottom:8px"></div>
+    <div style="overflow:auto;flex:1">
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr>
+          <th style="background:#0f172a;padding:8px;text-align:left;position:sticky;top:0">MAT origem</th>
+          <th style="background:#0f172a;padding:8px;text-align:left;position:sticky;top:0">Descrição</th>
+          <th style="background:#0f172a;padding:8px;text-align:left;position:sticky;top:0">EAN principal</th>
+          <th style="background:#0f172a;padding:8px;text-align:left;position:sticky;top:0">EAN secundário</th>
+        </tr></thead>
+        <tbody id="semMatchBody"></tbody>
+      </table>
+    </div>
+    <div style="margin-top:10px;text-align:right">
+      <button onclick="exportarSemMatch()" style="background:#0ea5e9;color:#fff;border:0;border-radius:6px;padding:8px 14px;cursor:pointer">📥 Exportar CSV</button>
+    </div>
+  </div>
 </div>
 <div id="conteudo"></div>
 <div class="totais" id="totais"></div>
@@ -192,6 +252,78 @@ async function salvarTudo() {
 document.getElementById('cdCodigo').addEventListener('change', carregar);
 document.getElementById('busca').addEventListener('keydown', e => { if (e.key === 'Enter') carregar(); });
 document.getElementById('filtroPeso').addEventListener('change', renderizar);
+
+let _semMatchAtual = [];
+
+function abrirReplicar() {
+  document.getElementById('repDestino').value = document.getElementById('cdCodigo').value;
+  document.getElementById('repResultado').innerHTML = '';
+  document.getElementById('btnReplicar').disabled = false;
+  document.getElementById('modalReplicar').style.display = 'flex';
+}
+function fecharReplicar() {
+  document.getElementById('modalReplicar').style.display = 'none';
+}
+async function executarReplicar() {
+  const origem = document.getElementById('repOrigem').value;
+  const destino = document.getElementById('repDestino').value;
+  const sobrescrever = document.getElementById('repSobrescrever').checked;
+  if (origem === destino) { alert('Origem e destino devem ser diferentes'); return; }
+  const btn = document.getElementById('btnReplicar');
+  btn.disabled = true; btn.textContent = 'Replicando...';
+  document.getElementById('repResultado').innerHTML = '<div style="color:#94a3b8">Processando...</div>';
+  try {
+    const r = await api('/replicar', { method: 'POST', body: JSON.stringify({ origem, destino, sobrescrever }) });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.erro || 'falha');
+    _semMatchAtual = j.sem_match || [];
+    document.getElementById('repResultado').innerHTML = `
+      <div style="background:#0f172a;border-radius:6px;padding:12px;border:1px solid #166534">
+        <div style="color:#86efac;font-weight:600;margin-bottom:6px">✓ Replicação concluída</div>
+        <div style="font-size:12px;color:#cbd5e1;line-height:1.7">
+          Total na origem: <strong>${j.total_origem}</strong><br>
+          Replicados (novos): <strong style="color:#86efac">${j.replicados}</strong><br>
+          Atualizados: <strong style="color:#fde047">${j.atualizados}</strong><br>
+          Ignorados (já existem): <strong>${j.ignorados_ja_existem}</strong><br>
+          Sem match: <strong style="color:#f87171">${_semMatchAtual.length}</strong>
+        </div>
+        ${_semMatchAtual.length ? `<button onclick="abrirSemMatch()" style="margin-top:10px;background:#dc2626;color:#fff;border:0;border-radius:6px;padding:6px 12px;cursor:pointer">⚠️ Ver ${_semMatchAtual.length} sem match</button>` : ''}
+      </div>`;
+    btn.textContent = 'Replicar';
+    // Recarrega tela com o destino
+    document.getElementById('cdCodigo').value = destino;
+    await carregar();
+  } catch (e) {
+    document.getElementById('repResultado').innerHTML = `<div style="color:#f87171">Erro: ${escape(e.message)}</div>`;
+    btn.disabled = false; btn.textContent = 'Replicar';
+  }
+}
+function abrirSemMatch() {
+  const tb = document.getElementById('semMatchBody');
+  tb.innerHTML = _semMatchAtual.map(r => `<tr>
+    <td style="padding:6px 8px;border-bottom:1px solid #1f2937;font-family:monospace;color:#94a3b8">${escape(r.mat_codi_origem)}</td>
+    <td style="padding:6px 8px;border-bottom:1px solid #1f2937">${escape(r.descricao || '')}</td>
+    <td style="padding:6px 8px;border-bottom:1px solid #1f2937;font-family:monospace">${escape(r.ean_principal || '—')}</td>
+    <td style="padding:6px 8px;border-bottom:1px solid #1f2937;font-family:monospace">${escape(r.ean_secundario || '—')}</td>
+  </tr>`).join('');
+  document.getElementById('semMatchInfo').textContent =
+    `${_semMatchAtual.length} produto(s) da origem não encontraram correspondência por EAN no destino. Cadastre manualmente ou importe.`;
+  document.getElementById('modalSemMatch').style.display = 'flex';
+}
+function exportarSemMatch() {
+  if (!_semMatchAtual.length) return;
+  const linhas = [['mat_codi_origem','descricao','ean_principal','ean_secundario']];
+  _semMatchAtual.forEach(r => linhas.push([
+    r.mat_codi_origem || '', r.descricao || '', r.ean_principal || '', r.ean_secundario || ''
+  ]));
+  const csv = linhas.map(l => l.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `sem_match_replicacao.csv`;
+  a.click();
+}
+
 carregar();
 </script>
 </body>
