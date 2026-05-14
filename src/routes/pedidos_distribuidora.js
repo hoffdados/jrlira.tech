@@ -27,18 +27,19 @@ const REGRAS_CD_DESTINOS = {
   'srv3-casabranca':  ['srv1-itautuba', 'srv1-nprogresso', 'srv2-asafrio', 'srv2-asasantarem'],
 };
 
-// Defaults do CSV de exemplo
+// Defaults alinhados com o modelo oficial fornecido em Downloads/import/P_PEDIDOS.csv
 const EMPRESA_PADRAO        = '1';
 const LOCALIZACAO_PADRAO    = '1';
-const VEN_CODI_PADRAO       = '19';   // IMPORTADOR
-const COD_CONDICAO_PADRAO   = '2';
-const COD_PAGAMENTO_PADRAO  = '9';
-const COD_TIPOVENDA_PADRAO  = '12';
+const VEN_CODI_PADRAO       = '18';   // modelo usa 18 (IMPORTADOR padrao no CD ITAITUBA)
+const COD_CONDICAO_PADRAO   = '3';    // modelo usa 3 invariavel
+const COD_PAGAMENTO_PADRAO  = '2';    // modelo usa 2 invariavel
+const COD_TIPOVENDA_PADRAO  = '1';    // modelo usa 1 invariavel
 const COD_TABELA_PADRAO     = '1';
 const TIPO_CALCULO_PADRAO   = 'E';
 const NOME_EMBALAGEM_PADRAO = 'EMB';
-const UNIDADE_PADRAO        = 'UNI';   // UltraSyst espera UNI mesmo quando e caixa
-const COD_MOTIVO_PADRAO     = '   ';   // 3 espacos (modelo original)
+const UNIDADE_PADRAO        = 'UNI';
+const QTD_EMBALAGEM_PADRAO  = 1;       // modelo usa 1 fixo (qtd ja vem como unidade)
+const COD_MOTIVO_PADRAO     = '   ';
 
 // ── Destinos (lojas + CDs) ──
 
@@ -2338,8 +2339,8 @@ router.post('/', adminOuCeo, async (req, res) => {
           codPedido,               VEN_CODI_PADRAO,        semZeros(it.mat_codi),
           UNIDADE_PADRAO,          fmtNum(qtd),            fmtNum(valor),
           '0',                     '0',                    fmtNum(valor),
-          TIPO_CALCULO_PADRAO,     NOME_EMBALAGEM_PADRAO,  parseInt(cd.qtd_embalagem) || 1,
-          codPedido,  // ID do item: usar codPedido como base (Delphi parece tolerar repetir, mas vou variar com indice abaixo)
+          TIPO_CALCULO_PADRAO,     NOME_EMBALAGEM_PADRAO,  QTD_EMBALAGEM_PADRAO,
+          codPedido,
         ].join(';'));
       }
       // Garante ID unico por linha de item somando indice
