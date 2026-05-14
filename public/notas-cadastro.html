@@ -145,7 +145,15 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 1
 
     <div id="notaDetalhe" style="display:none">
       <div class="nota-header">
-        <h2>Nota Fiscal <span id="nhNumero"></span> — Série <span id="nhSerie"></span></h2>
+        <h2 style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          Nota Fiscal <span id="nhNumero"></span> — Série <span id="nhSerie"></span>
+          <span id="nhChaveWrap" style="display:none;font-size:11px;color:#94a3b8;font-weight:400;font-family:monospace;align-items:center;gap:6px">
+            <span style="color:#64748b">chave:</span>
+            <span id="nhChave" style="background:#0f172a;padding:3px 8px;border-radius:4px;border:1px solid #334155"></span>
+            <button id="btnCopiarChave" type="button" onclick="copiarChaveNfe()" title="Copiar chave"
+                    style="background:#0ea5e9;color:#fff;border:none;border-radius:4px;padding:3px 8px;font-size:11px;cursor:pointer">📋 Copiar</button>
+          </span>
+        </h2>
         <div class="nh-grid">
           <div class="nh-field"><label>Fornecedor</label><span id="nhFornecedor"></span></div>
           <div class="nh-field"><label>CNPJ</label><span id="nhCnpj"></span></div>
@@ -231,6 +239,25 @@ async function fetchApi(url, method = 'GET', body = null) {
 
 function fmtMoeda(v) { return 'R$ ' + parseFloat(v || 0).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.'); }
 function fmtData(d) { if (!d) return '—'; return d.substring(0, 10).split('-').reverse().join('/'); }
+async function copiarChaveNfe() {
+  const chave = document.getElementById('nhChave').textContent;
+  if (!chave) return;
+  const btn = document.getElementById('btnCopiarChave');
+  const txtOriginal = btn.textContent;
+  try {
+    await navigator.clipboard.writeText(chave);
+    btn.textContent = '✓ Copiado';
+    btn.style.background = '#22c55e';
+  } catch {
+    // Fallback pra contextos sem clipboard API (HTTP, browsers antigos)
+    const ta = document.createElement('textarea');
+    ta.value = chave; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); btn.textContent = '✓ Copiado'; btn.style.background = '#22c55e'; }
+    catch { btn.textContent = '✕ Erro'; btn.style.background = '#ef4444'; }
+    document.body.removeChild(ta);
+  }
+  setTimeout(() => { btn.textContent = txtOriginal; btn.style.background = '#0ea5e9'; }, 1500);
+}
 
 function showMsg(txt, tipo = 'ok') {
   const el = document.getElementById('msg');
@@ -316,6 +343,13 @@ async function abrirNota(id) {
     const { nota, itens } = await fetchApi(`/api/notas/${id}`);
     document.getElementById('nhNumero').textContent = nota.numero_nota;
     document.getElementById('nhSerie').textContent = nota.serie;
+    const chaveWrap = document.getElementById('nhChaveWrap');
+    if (nota.chave_nfe) {
+      document.getElementById('nhChave').textContent = nota.chave_nfe;
+      chaveWrap.style.display = 'inline-flex';
+    } else {
+      chaveWrap.style.display = 'none';
+    }
     document.getElementById('nhFornecedor').textContent = nota.fornecedor_nome;
     document.getElementById('nhCnpj').textContent = nota.fornecedor_cnpj || '—';
     document.getElementById('nhData').textContent = fmtData(nota.data_emissao);
