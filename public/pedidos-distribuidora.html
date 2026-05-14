@@ -247,6 +247,13 @@ async function api(path, method = 'GET', body) {
     method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
     body: body ? JSON.stringify(body) : undefined,
   });
+  if (r.status === 401) {
+    localStorage.removeItem('jrlira_token');
+    localStorage.removeItem('jrlira_perfil');
+    localStorage.removeItem('jrlira_nome');
+    location.href = '/';
+    throw new Error('Sessao expirada — faca login novamente');
+  }
   const data = await r.json();
   if (!r.ok) throw new Error(data.erro || `HTTP ${r.status}`);
   return data;
