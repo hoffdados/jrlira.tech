@@ -110,6 +110,7 @@ tbody tr.ativo{background:#0c2040;outline:2px solid #0ea5e9}
 <div class="abas">
   <button class="aba ativa" id="abaDebitosBtn" onclick="setAba('debitos')">📃 Débitos (Devoluções)</button>
   <button class="aba" id="abaAcordosBtn" onclick="setAba('acordos')">📝 Acordos Comerciais <span id="badgePendentes" class="badge-pendente" style="display:none">0</span></button>
+  <button class="aba" id="abaMktBtn" onclick="setAba('mkt')">🏷️ MKT (Exposição) <span id="badgeMktAtraso" class="badge-pendente" style="display:none">0</span></button>
 </div>
 
 <div id="abaDebitos">
@@ -182,6 +183,68 @@ tbody tr.ativo{background:#0c2040;outline:2px solid #0ea5e9}
         <button class="btn-ghost btn-sm" onclick="fecharDetalheAcordo()">✕</button>
       </div>
       <div class="det-body" id="acDetBody"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ABA MKT ───────────────────────────────────────────────── -->
+<div id="abaMkt" style="display:none">
+  <div class="filtros">
+    <div class="fg"><label>Loja</label>
+      <select id="mktLoja" onchange="carregarMkt()"><option value="">Todas</option>
+        <option value="1">L1 Economico</option><option value="2">L2 BR</option><option value="3">L3 João Pessoa</option>
+        <option value="4">L4 Floresta</option><option value="5">L5 São José</option><option value="6">L6 Santarém</option>
+      </select>
+    </div>
+    <div class="fg"><label>Status</label>
+      <select id="mktStatus" onchange="carregarMkt()">
+        <option value="aberta" selected>🟡 Em aberto</option>
+        <option value="paga">🟢 Pagas</option>
+        <option value="parcial">🔵 Parciais</option>
+        <option value="cancelada">⚫ Canceladas</option>
+        <option value="">Todas</option>
+      </select>
+    </div>
+    <div class="fg"><label>Competência</label>
+      <input type="month" id="mktComp" onchange="carregarMkt()">
+    </div>
+    <div class="fg"><label>Buscar</label>
+      <input type="text" id="mktQ" placeholder="Fornecedor / ponto" oninput="filtrarMktDebounced()" style="min-width:200px">
+    </div>
+    <div style="margin-left:auto;display:flex;gap:8px">
+      <button class="btn-primary" style="padding:8px 14px;font-size:12px;background:#0ea5e9;color:#fff;border:none;border-radius:6px;cursor:pointer" onclick="location.href='/mkt-contratos'">+ Novo Contrato</button>
+      <button class="btn-primary" style="padding:8px 14px;font-size:12px;background:#7c3aed;color:#fff;border:none;border-radius:6px;cursor:pointer" onclick="location.href='/admin-pontos-exposicao'">Cadastrar Pontos</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="painel-lista">
+      <div id="mktResumo" class="resumo"></div>
+      <div id="mktTabela"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal pagar cobrança MKT -->
+<div class="overlay" id="modalPagarMkt" style="display:none">
+  <div class="modal">
+    <h3>Lançar pagamento</h3>
+    <div id="mpInfo" style="font-size:12px;color:#94a3b8;margin-bottom:10px"></div>
+    <div class="form-row"><label>Valor pago *</label><input type="number" id="mpValor" step="0.01" min="0"></div>
+    <div class="form-row"><label>Data pagamento</label><input type="date" id="mpData"></div>
+    <div class="form-row"><label>Forma</label>
+      <select id="mpForma">
+        <option value="abatimento_nf">Abatimento em NF</option>
+        <option value="boleto">Boleto / PIX</option>
+        <option value="deposito">Depósito / TED</option>
+        <option value="bonificacao">Bonificação em mercadoria</option>
+        <option value="outro">Outro</option>
+      </select>
+    </div>
+    <div class="form-row"><label>Observação</label><textarea id="mpObs" rows="2"></textarea></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn-ghost" onclick="fecharModal('modalPagarMkt')">Cancelar</button>
+      <button class="btn-success" onclick="confirmarPagamentoMkt()" style="background:#16a34a;color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-weight:600">Confirmar pagamento</button>
     </div>
   </div>
 </div>
@@ -609,14 +672,20 @@ document.querySelectorAll('.overlay').forEach(el => el.addEventListener('click',
 let abaAtual = 'debitos';
 function setAba(qual) {
   abaAtual = qual;
-  document.getElementById('abaDebitos').style.display       = qual === 'debitos' ? 'block' : 'none';
-  document.getElementById('abaAcordos').style.display       = qual === 'acordos' ? 'block' : 'none';
+  document.getElementById('abaDebitos').style.display = qual === 'debitos' ? 'block' : 'none';
+  document.getElementById('abaAcordos').style.display = qual === 'acordos' ? 'block' : 'none';
+  document.getElementById('abaMkt').style.display     = qual === 'mkt'     ? 'block' : 'none';
   document.getElementById('abaDebitosBtn').classList.toggle('ativa', qual === 'debitos');
   document.getElementById('abaAcordosBtn').classList.toggle('ativa', qual === 'acordos');
+  document.getElementById('abaMktBtn').classList.toggle('ativa', qual === 'mkt');
   if (qual === 'acordos' && !acordosCarregadosUmaVez) {
     popularSelectLojaAcordos();
     carregarAcordos();
     acordosCarregadosUmaVez = true;
+  }
+  if (qual === 'mkt' && !mktCarregadoUmaVez) {
+    carregarMkt();
+    mktCarregadoUmaVez = true;
   }
 }
 
@@ -923,6 +992,116 @@ async function confirmarRecusa() {
 // Carrega badge ao iniciar (depois do init original)
 setTimeout(carregarBadgePendentes, 800);
 setInterval(carregarBadgePendentes, 60000);
+
+// ── ABA MKT (trade marketing - aluguel de pontos de exposicao) ────────
+let mktCarregadoUmaVez = false;
+let mktCobrancas = [];
+let mktCobrancaAtiva = null;
+let _mktTimer;
+function filtrarMktDebounced(){clearTimeout(_mktTimer);_mktTimer=setTimeout(carregarMkt,400)}
+function fmtR$_mkt(v){return 'R$ '+(parseFloat(v||0)).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}
+function fmtD_mkt(d){if(!d)return'—';return new Date(d).toLocaleDateString('pt-BR',{timeZone:'UTC'})}
+function fmtComp_mkt(c){if(!c)return'';return new Date(c+'T12:00:00').toLocaleDateString('pt-BR',{month:'2-digit',year:'numeric',timeZone:'UTC'})}
+
+async function carregarMkt() {
+  const params = new URLSearchParams();
+  const l = document.getElementById('mktLoja').value;
+  const s = document.getElementById('mktStatus').value;
+  const c = document.getElementById('mktComp').value; // yyyy-mm
+  const q = document.getElementById('mktQ').value;
+  if (l) params.set('loja_id', l);
+  if (s) params.set('status', s);
+  if (c) params.set('competencia', c + '-01');
+  if (q) params.set('q', q);
+  const r = await apiFetch(`${API}/api/mkt/cobrancas?` + params);
+  if (!r.ok) { document.getElementById('mktTabela').innerHTML = '<div class="empty">Erro ao carregar</div>'; return; }
+  const d = await r.json();
+  mktCobrancas = d.rows || [];
+  document.getElementById('mktResumo').innerHTML = `
+    <div><span class="r-lbl">Cobranças:</span> <strong>${d.qtd}</strong></div>
+    <div><span class="r-lbl">Em aberto:</span> <strong style="color:#fbbf24">${fmtR$_mkt(d.total_aberto)}</strong></div>
+    <div><span class="r-lbl">Em atraso:</span> <strong style="color:#f87171">${fmtR$_mkt(d.total_atraso)}</strong></div>
+    <div><span class="r-lbl">Recebido:</span> <strong style="color:#4ade80">${fmtR$_mkt(d.total_recebido)}</strong></div>`;
+  renderMktTabela();
+}
+
+function renderMktTabela() {
+  const el = document.getElementById('mktTabela');
+  if (!mktCobrancas.length) { el.innerHTML = '<div class="empty">Nenhuma cobrança</div>'; return; }
+  const LOJAS = {1:'L1 EC',2:'L2 BR',3:'L3 JP',4:'L4 FL',5:'L5 SJ',6:'L6 STM'};
+  const podePagar = ['admin','ceo','comprador'].includes(localStorage.getItem('jrlira_perfil'));
+  el.innerHTML = `<table><thead><tr>
+    <th>Loja</th><th>Ponto</th><th>Fornecedor</th><th>Competência</th><th>Vencimento</th>
+    <th style="text-align:right">Valor</th><th>Status</th><th style="text-align:right">Pago</th>${podePagar?'<th>Ações</th>':''}
+  </tr></thead><tbody>
+  ${mktCobrancas.map(co => {
+    const atraso = co.dias_atraso > 0;
+    return `<tr style="${atraso?'background:#1a0a0a':''}">
+      <td><strong>${LOJAS[co.loja_id]||'L'+co.loja_id}</strong></td>
+      <td><span style="font-family:monospace;font-size:11px">${(co.ponto_codigo||'')}</span></td>
+      <td>${(co.fornecedor_nome||'').slice(0,40)}</td>
+      <td>${fmtComp_mkt(co.competencia)}</td>
+      <td>${fmtD_mkt(co.vencimento)}${atraso?`<div style="font-size:10px;color:#f87171">⚠ ${co.dias_atraso}d atraso</div>`:''}</td>
+      <td style="text-align:right;font-weight:700">${fmtR$_mkt(co.valor)}</td>
+      <td><span class="badge cob-${co.status}" style="display:inline-block;padding:2px 8px;border-radius:5px;font-size:10px;font-weight:700;background:${{aberta:'#451a03',paga:'#14532d',parcial:'#1e3a5f',cancelada:'#1e293b'}[co.status]};color:${{aberta:'#fbbf24',paga:'#4ade80',parcial:'#60a5fa',cancelada:'#64748b'}[co.status]}">${co.status}</span></td>
+      <td style="text-align:right;color:${co.pago_valor>0?'#4ade80':'#64748b'}">${co.pago_valor != null ? fmtR$_mkt(co.pago_valor) : '—'}</td>
+      ${podePagar ? `<td>${co.status === 'aberta' || co.status === 'parcial' ? `<button class="btn-success" onclick='abrirPagarMkt(${JSON.stringify(co).replace(/'/g,"&apos;")})' style="background:#16a34a;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px;font-weight:700">💰 Pagar</button>` : (co.status === 'paga' && ['admin','ceo'].includes(localStorage.getItem('jrlira_perfil')) ? `<button onclick="desfazerPagamentoMkt(${co.id})" style="background:transparent;color:#94a3b8;border:1px solid #334155;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:10px">Desfazer</button>` : '')}</td>` : ''}
+    </tr>`;
+  }).join('')}
+  </tbody></table>`;
+}
+
+function abrirPagarMkt(co) {
+  if (typeof co === 'string') co = JSON.parse(co.replace(/&apos;/g,"'"));
+  mktCobrancaAtiva = co;
+  document.getElementById('mpInfo').innerHTML = `<strong>${co.fornecedor_nome}</strong> — ${co.ponto_codigo} · ${fmtComp_mkt(co.competencia)}<br>Valor: <strong style="color:#fbbf24">${fmtR$_mkt(co.valor)}</strong>`;
+  document.getElementById('mpValor').value = co.valor;
+  document.getElementById('mpData').value = new Date().toISOString().slice(0,10);
+  document.getElementById('mpForma').value = 'abatimento_nf';
+  document.getElementById('mpObs').value = '';
+  document.getElementById('modalPagarMkt').style.display = 'flex';
+}
+
+async function confirmarPagamentoMkt() {
+  if (!mktCobrancaAtiva) return;
+  const body = {
+    pago_valor: parseFloat(document.getElementById('mpValor').value),
+    pago_em: document.getElementById('mpData').value || null,
+    forma_pagamento: document.getElementById('mpForma').value,
+    observacao: document.getElementById('mpObs').value.trim() || null,
+  };
+  if (isNaN(body.pago_valor)) { alert('Valor obrigatório'); return; }
+  const r = await apiFetch(`${API}/api/mkt/cobrancas/${mktCobrancaAtiva.id}/pagar`, {
+    method:'PATCH', body: JSON.stringify(body)
+  });
+  if (!r.ok) { alert((await r.json()).erro); return; }
+  fecharModal('modalPagarMkt');
+  mktCobrancaAtiva = null;
+  await carregarMkt();
+  await carregarBadgeMkt();
+}
+
+async function desfazerPagamentoMkt(id) {
+  if (!confirm('Desfazer pagamento?')) return;
+  const r = await apiFetch(`${API}/api/mkt/cobrancas/${id}/desfazer-pagamento`, { method:'POST' });
+  if (!r.ok) { alert((await r.json()).erro); return; }
+  await carregarMkt();
+}
+
+async function carregarBadgeMkt() {
+  try {
+    const r = await apiFetch(`${API}/api/mkt/resumo`);
+    if (!r.ok) return;
+    const d = await r.json();
+    const b = document.getElementById('badgeMktAtraso');
+    if (parseFloat(d.total_atraso) > 0) {
+      b.textContent = fmtR$_mkt(d.total_atraso).replace('R$ ','');
+      b.style.display = 'inline-block';
+    } else b.style.display = 'none';
+  } catch {}
+}
+setTimeout(carregarBadgeMkt, 1200);
+setInterval(carregarBadgeMkt, 60000);
 
 init();
 </script>

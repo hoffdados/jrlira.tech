@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pontos de Exposição — JR Lira Tech</title>
+<link rel="stylesheet" href="/shared.css">
+<script src="/shared.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+nav{background:#1e293b;padding:14px 24px;display:flex;align-items:center;gap:16px;border-bottom:1px solid #334155}
+nav .brand{font-size:16px;font-weight:700;color:#38bdf8}
+nav .page{font-size:14px;color:#94a3b8}
+nav .btn-nav{margin-left:auto;background:#0ea5e9;color:#fff;border:none;padding:7px 14px;border-radius:6px;font-size:13px;cursor:pointer}
+.wrap{padding:20px;max-width:1300px;margin:0 auto}
+.toolbar{display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+.toolbar select,.toolbar input{padding:8px 12px;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:13px}
+.toolbar button{padding:8px 14px;background:#0ea5e9;border:none;border-radius:6px;color:#fff;cursor:pointer;font-size:13px;font-weight:600}
+table{width:100%;border-collapse:collapse;background:#1e293b;border-radius:10px;overflow:hidden;font-size:13px}
+thead th{background:#0f2a3f;padding:10px;text-align:left;color:#94a3b8;font-weight:600;font-size:11px;text-transform:uppercase}
+tbody tr{border-bottom:1px solid #1e3148}
+tbody td{padding:10px;vertical-align:middle}
+.badge{display:inline-block;padding:2px 8px;border-radius:5px;font-size:10px;font-weight:700}
+.b-ponta_gondola{background:#3b0a4a;color:#e9d5ff}
+.b-ponto_extra{background:#451a03;color:#fbbf24}
+.b-ilha{background:#0c2340;color:#7dd3fc}
+.b-topo_prateleira{background:#14532d;color:#4ade80}
+.b-checkout{background:#1e3a5f;color:#60a5fa}
+.b-display{background:#1e293b;color:#cbd5e1}
+.b-inativo{background:#450a0a;color:#fca5a5}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,0.7);display:none;align-items:center;justify-content:center;z-index:100}
+.modal.show{display:flex}
+.mbox{background:#1e293b;border-radius:12px;padding:22px;width:520px;max-width:92vw}
+.mbox h3{color:#38bdf8;margin-bottom:14px;font-size:16px}
+.mbox label{display:block;font-size:11px;color:#94a3b8;text-transform:uppercase;margin-top:10px;margin-bottom:4px}
+.mbox input,.mbox select,.mbox textarea{width:100%;padding:8px 10px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:13px}
+.mbox textarea{min-height:60px;resize:vertical;font-family:inherit}
+.macts{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
+.macts button{padding:8px 14px;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:13px}
+.macts .cancel{background:transparent;color:#94a3b8;border:1px solid #334155}
+.macts .ok{background:#0ea5e9;color:#fff}
+.empty{padding:40px;text-align:center;color:#64748b}
+.acao{padding:4px 10px;font-size:11px;border:none;border-radius:5px;cursor:pointer;font-weight:600;margin-right:4px}
+.btn-edit{background:#1e3a5f;color:#7dd3fc}
+.btn-toggle{background:#7c3aed;color:#fff}
+</style>
+</head>
+<body>
+<nav>
+  <span class="brand">JR Lira Tech</span>
+  <span style="color:#475569">/</span>
+  <span class="page">Pontos de Exposição</span>
+  <button class="btn-nav" onclick="location.href='/'">← Início</button>
+</nav>
+
+<div class="wrap">
+  <div class="toolbar">
+    <select id="fLoja" onchange="carregar()">
+      <option value="">Todas as lojas</option>
+      <option value="1">L1 Economico</option><option value="2">L2 BR</option><option value="3">L3 João Pessoa</option>
+      <option value="4">L4 Floresta</option><option value="5">L5 São José</option><option value="6">L6 Santarém</option>
+    </select>
+    <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#94a3b8">
+      <input type="checkbox" id="fTodos" onchange="carregar()"> incluir inativos
+    </label>
+    <button onclick="abrirNovo()">+ Novo Ponto</button>
+    <span style="color:#64748b;font-size:12px;margin-left:auto" id="contador"></span>
+  </div>
+
+  <div id="lista"></div>
+</div>
+
+<div class="modal" id="mPonto">
+  <div class="mbox">
+    <h3 id="mTitulo">Novo ponto de exposição</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div>
+        <label>Loja *</label>
+        <select id="iLoja">
+          <option value="1">L1 Economico</option><option value="2">L2 BR</option><option value="3">L3 João Pessoa</option>
+          <option value="4">L4 Floresta</option><option value="5">L5 São José</option><option value="6">L6 Santarém</option>
+        </select>
+      </div>
+      <div>
+        <label>Código *</label>
+        <input type="text" id="iCodigo" placeholder="Ex: PG-01, PE-03" maxlength="40">
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div>
+        <label>Tipo *</label>
+        <select id="iTipo">
+          <option value="ponta_gondola">Ponta de Gôndola</option>
+          <option value="ponto_extra">Ponto Extra</option>
+          <option value="ilha">Ilha</option>
+          <option value="topo_prateleira">Topo de Prateleira</option>
+          <option value="checkout">Checkout / Caixa</option>
+          <option value="display">Display / Cesto</option>
+        </select>
+      </div>
+      <div>
+        <label>Área (m²)</label>
+        <input type="number" id="iArea" step="0.01" min="0" placeholder="opcional">
+      </div>
+    </div>
+    <label>Descrição / Localização</label>
+    <input type="text" id="iDesc" placeholder="Ex: Entrada principal, Corredor 5 — Bebidas">
+    <label>Observação</label>
+    <textarea id="iObs" placeholder="Detalhes adicionais"></textarea>
+    <div class="macts">
+      <button class="cancel" onclick="fecharModal()">Cancelar</button>
+      <button class="ok" onclick="salvar()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const PERFIL = localStorage.getItem('jrlira_perfil');
+if (!localStorage.getItem('jrlira_token') || !['admin','ceo'].includes(PERFIL)) location.href = '/';
+
+const TIPOS_LABEL = {
+  ponta_gondola: 'Ponta Gôndola', ponto_extra: 'Ponto Extra', ilha: 'Ilha',
+  topo_prateleira: 'Topo Prateleira', checkout: 'Checkout', display: 'Display'
+};
+const LOJAS = {1:'L1 EC',2:'L2 BR',3:'L3 JP',4:'L4 FL',5:'L5 SJ',6:'L6 STM'};
+let pontos = [];
+let editId = null;
+
+function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+
+async function carregar() {
+  const params = new URLSearchParams();
+  const l = document.getElementById('fLoja').value;
+  if (l) params.set('loja_id', l);
+  if (document.getElementById('fTodos').checked) params.set('todos', '1');
+  const r = await apiFetch('/api/mkt/pontos?' + params);
+  if (!r.ok) { alert('Erro ao carregar'); return; }
+  pontos = await r.json();
+  render();
+}
+
+function render() {
+  document.getElementById('contador').textContent = `${pontos.length} ponto(s)`;
+  const el = document.getElementById('lista');
+  if (!pontos.length) { el.innerHTML = '<div class="empty">Nenhum ponto cadastrado</div>'; return; }
+  el.innerHTML = `<table><thead><tr>
+    <th>Loja</th><th>Código</th><th>Tipo</th><th>Descrição</th>
+    <th>Área m²</th><th>Contratos ativos</th><th>Status</th><th>Ações</th>
+  </tr></thead><tbody>
+  ${pontos.map(p => `<tr>
+    <td><strong>${LOJAS[p.loja_id]||'L'+p.loja_id}</strong></td>
+    <td><span style="font-family:monospace">${esc(p.codigo)}</span></td>
+    <td><span class="badge b-${p.tipo}">${TIPOS_LABEL[p.tipo]||p.tipo}</span></td>
+    <td>${esc(p.descricao||'—')}</td>
+    <td style="text-align:center">${p.area_m2 || '—'}</td>
+    <td style="text-align:center">${p.contratos_ativos > 0 ? '<strong style="color:#4ade80">'+p.contratos_ativos+'</strong>' : '<span style="color:#64748b">0</span>'}</td>
+    <td>${p.ativo ? '<span style="color:#4ade80;font-size:11px;font-weight:700">ATIVO</span>' : '<span class="badge b-inativo">INATIVO</span>'}</td>
+    <td>
+      <button class="acao btn-edit" onclick="editar(${p.id})">Editar</button>
+      <button class="acao btn-toggle" onclick="toggleAtivo(${p.id},${!p.ativo})">${p.ativo ? 'Desativar' : 'Ativar'}</button>
+    </td>
+  </tr>`).join('')}
+  </tbody></table>`;
+}
+
+function abrirNovo() {
+  editId = null;
+  document.getElementById('mTitulo').textContent = 'Novo ponto de exposição';
+  ['iCodigo','iDesc','iObs','iArea'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('iLoja').value = document.getElementById('fLoja').value || '1';
+  document.getElementById('iTipo').value = 'ponta_gondola';
+  document.getElementById('mPonto').classList.add('show');
+}
+
+function editar(id) {
+  const p = pontos.find(x => x.id === id);
+  if (!p) return;
+  editId = id;
+  document.getElementById('mTitulo').textContent = `Editar ponto ${p.codigo}`;
+  document.getElementById('iLoja').value = p.loja_id;
+  document.getElementById('iCodigo').value = p.codigo;
+  document.getElementById('iTipo').value = p.tipo;
+  document.getElementById('iArea').value = p.area_m2 || '';
+  document.getElementById('iDesc').value = p.descricao || '';
+  document.getElementById('iObs').value = p.observacao || '';
+  document.getElementById('mPonto').classList.add('show');
+}
+
+function fecharModal() { document.getElementById('mPonto').classList.remove('show'); }
+
+async function salvar() {
+  const body = {
+    loja_id: parseInt(document.getElementById('iLoja').value),
+    codigo: document.getElementById('iCodigo').value.trim(),
+    tipo: document.getElementById('iTipo').value,
+    area_m2: document.getElementById('iArea').value || null,
+    descricao: document.getElementById('iDesc').value.trim() || null,
+    observacao: document.getElementById('iObs').value.trim() || null,
+  };
+  if (!body.codigo) { alert('Código obrigatório'); return; }
+  try {
+    const r = editId
+      ? await apiFetch(`/api/mkt/pontos/${editId}`, { method:'PATCH', body: JSON.stringify(body) })
+      : await apiFetch('/api/mkt/pontos', { method:'POST', body: JSON.stringify(body) });
+    if (!r.ok) throw new Error((await r.json()).erro);
+    fecharModal();
+    carregar();
+  } catch (e) { alert(e.message); }
+}
+
+async function toggleAtivo(id, novoAtivo) {
+  const r = await apiFetch(`/api/mkt/pontos/${id}`, {
+    method:'PATCH', body: JSON.stringify({ ativo: novoAtivo })
+  });
+  if (!r.ok) { alert((await r.json()).erro); return; }
+  carregar();
+}
+
+carregar();
+</script>
+</body>
+</html>

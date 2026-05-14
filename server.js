@@ -39,6 +39,7 @@ app.use('/api/produtos-embalagem', require('./src/routes/produtos_embalagem'));
 app.use('/api/cd-produtos-embalagem', require('./src/routes/cd_produtos_embalagem'));
 app.use('/api/embalagens-fornecedor', require('./src/routes/embalagens_fornecedor'));
 app.use('/api/auditagem-divergencias', require('./src/routes/auditagem_divergencias'));
+app.use('/api/mkt', require('./src/routes/mkt'));
 app.use('/api/validades-em-risco', require('./src/routes/validades_em_risco'));
 app.use('/api/devolucoes', require('./src/routes/devolucoes'));
 app.use('/api/perdas', require('./src/routes/perdas'));
@@ -78,6 +79,8 @@ app.get('/notas-cd', (req, res) => res.sendFile(path.join(__dirname, 'public/not
 app.get('/notas-distribuidora', (req, res) => res.sendFile(path.join(__dirname, 'public/notas-distribuidora.html')));
 app.get('/sugestao-compras', (req, res) => res.sendFile(path.join(__dirname, 'public/sugestao-compras.html')));
 app.get('/contas-receber', (req, res) => res.sendFile(path.join(__dirname, 'public/contas-receber.html')));
+app.get('/admin-pontos-exposicao', (req, res) => res.sendFile(path.join(__dirname, 'public/admin-pontos-exposicao.html')));
+app.get('/mkt-contratos', (req, res) => res.sendFile(path.join(__dirname, 'public/mkt-contratos.html')));
 app.get('/produtos-embalagem', (req, res) => res.sendFile(path.join(__dirname, 'public/produtos-embalagem.html')));
 app.get('/embalagens-fornecedor', (req, res) => res.sendFile(path.join(__dirname, 'public/embalagens-fornecedor.html')));
 app.get('/precos-otimizados', (req, res) => res.sendFile(path.join(__dirname, 'public/precos-otimizados.html')));
@@ -1132,6 +1135,68 @@ async function initDB() {
        ON CONFLICT (nome) DO NOTHING`);
     await runMigration(client, '20260515_funcionarios_usuario_eco',
       `ALTER TABLE funcionarios ADD COLUMN IF NOT EXISTS usuario_eco VARCHAR(60)`);
+
+    // ── Trade Marketing (Receita Passiva — aluguel de pontos de exposicao) ──
+    await runMigration(client, '20260515_pontos_exposicao',
+      `CREATE TABLE IF NOT EXISTS pontos_exposicao (
+         id SERIAL PRIMARY KEY,
+         loja_id INTEGER NOT NULL,
+         codigo VARCHAR(40) NOT NULL,
+         tipo VARCHAR(40) NOT NULL DEFAULT 'ponta_gondola',
+         descricao TEXT,
+         area_m2 NUMERIC(8,2),
+         observacao TEXT,
+         ativo BOOLEAN DEFAULT TRUE,
+         criado_em TIMESTAMPTZ DEFAULT NOW(),
+         criado_por VARCHAR(150),
+         UNIQUE (loja_id, codigo)
+       )`);
+    await runMigration(client, '20260515_mkt_contratos',
+      `CREATE TABLE IF NOT EXISTS mkt_contratos (
+         id SERIAL PRIMARY KEY,
+         ponto_id INTEGER NOT NULL REFERENCES pontos_exposicao(id),
+         loja_id INTEGER NOT NULL,
+         fornecedor_id INTEGER,
+         fornecedor_cnpj VARCHAR(20),
+         fornecedor_nome VARCHAR(200) NOT NULL,
+         data_inicio DATE NOT NULL,
+         data_fim DATE NOT NULL,
+         valor_mensal NUMERIC(12,2) NOT NULL,
+         renovacao_auto BOOLEAN DEFAULT FALSE,
+         observacao TEXT,
+         status VARCHAR(20) DEFAULT 'ativo',
+         cancelado_em TIMESTAMPTZ,
+         cancelado_por VARCHAR(150),
+         motivo_cancelamento TEXT,
+         criado_em TIMESTAMPTZ DEFAULT NOW(),
+         criado_por VARCHAR(150),
+         CHECK (status IN ('ativo','cancelado','encerrado')),
+         CHECK (data_fim >= data_inicio),
+         CHECK (valor_mensal >= 0)
+       )`);
+    await runMigration(client, '20260515_mkt_cobrancas',
+      `CREATE TABLE IF NOT EXISTS mkt_cobrancas (
+         id SERIAL PRIMARY KEY,
+         contrato_id INTEGER NOT NULL REFERENCES mkt_contratos(id) ON DELETE CASCADE,
+         competencia DATE NOT NULL,
+         valor NUMERIC(12,2) NOT NULL,
+         vencimento DATE NOT NULL,
+         status VARCHAR(20) DEFAULT 'aberta',
+         pago_em TIMESTAMPTZ,
+         pago_valor NUMERIC(12,2),
+         pago_por VARCHAR(150),
+         forma_pagamento VARCHAR(40),
+         observacao TEXT,
+         criado_em TIMESTAMPTZ DEFAULT NOW(),
+         UNIQUE (contrato_id, competencia),
+         CHECK (status IN ('aberta','paga','parcial','cancelada'))
+       )`);
+    await runMigration(client, '20260515_idx_mkt_cobrancas',
+      `CREATE INDEX IF NOT EXISTS idx_mkt_cobrancas_status_venc ON mkt_cobrancas(status, vencimento);
+       CREATE INDEX IF NOT EXISTS idx_mkt_cobrancas_contrato ON mkt_cobrancas(contrato_id);`);
+    await runMigration(client, '20260515_idx_mkt_contratos',
+      `CREATE INDEX IF NOT EXISTS idx_mkt_contratos_status ON mkt_contratos(status);
+       CREATE INDEX IF NOT EXISTS idx_mkt_contratos_loja ON mkt_contratos(loja_id);`);
     await runMigration(client, '20260504_backfill_criado_por_sug',
       `UPDATE pedidos SET criado_por_comprador = 'sugestao'
          WHERE status='rascunho' AND numero_pedido LIKE 'SUG-%' AND criado_por_comprador IS NULL`);
@@ -3313,6 +3378,20 @@ initDB().then(() => {
   };
   setTimeout(detectarEco, 5 * 60 * 1000);
   setInterval(detectarEco, 24 * 60 * 60 * 1000);
+
+  // ── Cron mensal: gera cobrancas MKT do mes corrente ──
+  // Dia 1 todo mes (cobrindo qualquer hora — roda a cada 6h e checa se ja rodou hoje)
+  const { gerarCobrancasDoMes } = require('./src/routes/mkt');
+  const rodarMktMensal = async () => {
+    try {
+      const hoje = new Date();
+      const comp = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-01`;
+      const criadas = await gerarCobrancasDoMes(comp);
+      if (criadas > 0) console.log(`[mkt] ${criadas} cobranca(s) geradas para ${comp}`);
+    } catch (e) { console.error('[mkt] erro ao gerar cobrancas:', e.message); }
+  };
+  setTimeout(rodarMktMensal, 10 * 60 * 1000); // 10min apos start
+  setInterval(rodarMktMensal, 6 * 60 * 60 * 1000); // a cada 6h (idempotente via UNIQUE constraint)
 }).catch(err => {
   console.error('[DB] Erro init:', err.message);
   process.exit(1);

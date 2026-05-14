@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trade Marketing — Contratos</title>
+<link rel="stylesheet" href="/shared.css">
+<script src="/shared.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+nav{background:#1e293b;padding:14px 24px;display:flex;align-items:center;gap:16px;border-bottom:1px solid #334155}
+nav .brand{font-size:16px;font-weight:700;color:#38bdf8}
+nav .page{font-size:14px;color:#94a3b8}
+nav .btn-nav{margin-left:auto;background:#0ea5e9;color:#fff;border:none;padding:7px 14px;border-radius:6px;font-size:13px;cursor:pointer}
+.wrap{padding:20px;max-width:1500px;margin:0 auto}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px}
+.kpi{background:#1e293b;border-radius:10px;padding:14px}
+.kpi-label{font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em}
+.kpi-value{font-size:22px;font-weight:700;margin-top:4px}
+.kpi-value.warn{color:#fbbf24}.kpi-value.err{color:#f87171}.kpi-value.ok{color:#4ade80}.kpi-value.info{color:#38bdf8}
+.toolbar{display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+.toolbar select,.toolbar input{padding:8px 12px;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:13px}
+.toolbar button{padding:8px 14px;background:#0ea5e9;border:none;border-radius:6px;color:#fff;cursor:pointer;font-size:13px;font-weight:600}
+table{width:100%;border-collapse:collapse;background:#1e293b;border-radius:10px;overflow:hidden;font-size:12px}
+thead th{background:#0f2a3f;padding:10px;text-align:left;color:#94a3b8;font-weight:600;font-size:11px;text-transform:uppercase}
+tbody tr{border-bottom:1px solid #1e3148;cursor:pointer}
+tbody tr:hover{background:#1a2744}
+tbody td{padding:10px;vertical-align:top}
+.badge{display:inline-block;padding:2px 8px;border-radius:5px;font-size:10px;font-weight:700}
+.b-ativo{background:#14532d;color:#4ade80}.b-cancelado{background:#450a0a;color:#fca5a5}.b-encerrado{background:#1e293b;color:#64748b}
+.cob-aberta{background:#451a03;color:#fbbf24}.cob-paga{background:#14532d;color:#4ade80}
+.cob-parcial{background:#1e3a5f;color:#60a5fa}.cob-cancelada{background:#1e293b;color:#64748b}
+.cob-atraso{background:#450a0a;color:#fca5a5}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,0.7);display:none;align-items:center;justify-content:center;z-index:100}
+.modal.show{display:flex}
+.mbox{background:#1e293b;border-radius:12px;padding:22px;width:600px;max-width:92vw;max-height:88vh;overflow:auto}
+.mbox h3{color:#38bdf8;margin-bottom:14px;font-size:16px}
+.mbox label{display:block;font-size:11px;color:#94a3b8;text-transform:uppercase;margin-top:10px;margin-bottom:4px}
+.mbox input,.mbox select,.mbox textarea{width:100%;padding:8px 10px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:13px}
+.mbox textarea{min-height:50px;resize:vertical;font-family:inherit}
+.macts{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
+.macts button{padding:8px 14px;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:13px}
+.macts .cancel{background:transparent;color:#94a3b8;border:1px solid #334155}
+.macts .ok{background:#0ea5e9;color:#fff}
+.macts .danger{background:#dc2626;color:#fff}
+.empty{padding:40px;text-align:center;color:#64748b}
+.cob-mini{font-size:11px;color:#94a3b8;margin-top:4px}
+</style>
+</head>
+<body>
+<nav>
+  <span class="brand">JR Lira Tech</span>
+  <span style="color:#475569">/</span>
+  <span class="page">Trade Marketing — Contratos</span>
+  <button class="btn-nav" onclick="location.href='/'">← Início</button>
+</nav>
+
+<div class="wrap">
+  <div class="kpis" id="kpis"></div>
+
+  <div class="toolbar">
+    <select id="fLoja" onchange="carregar()">
+      <option value="">Todas as lojas</option>
+      <option value="1">L1 Economico</option><option value="2">L2 BR</option><option value="3">L3 João Pessoa</option>
+      <option value="4">L4 Floresta</option><option value="5">L5 São José</option><option value="6">L6 Santarém</option>
+    </select>
+    <select id="fStatus" onchange="carregar()">
+      <option value="">Todos status</option>
+      <option value="ativo" selected>Ativos</option>
+      <option value="cancelado">Cancelados</option>
+      <option value="encerrado">Encerrados</option>
+    </select>
+    <select id="fVigencia" onchange="carregar()">
+      <option value="">Qualquer vigência</option>
+      <option value="ativos_hoje">Vigentes hoje</option>
+      <option value="futuros">Futuros</option>
+      <option value="encerrados">Já encerrados</option>
+    </select>
+    <input type="text" id="fQ" placeholder="Buscar fornecedor / ponto" oninput="filtrarDebounced()" style="min-width:240px">
+    <button onclick="abrirNovo()">+ Novo Contrato</button>
+    <span style="margin-left:auto;color:#64748b;font-size:12px" id="contador"></span>
+  </div>
+
+  <div id="lista"></div>
+</div>
+
+<!-- MODAL NOVO CONTRATO -->
+<div class="modal" id="mNovo">
+  <div class="mbox">
+    <h3>Novo Contrato de Exposição</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div>
+        <label>Loja *</label>
+        <select id="iLoja" onchange="recarregarPontos()">
+          <option value="">Selecione</option>
+          <option value="1">L1 Economico</option><option value="2">L2 BR</option><option value="3">L3 João Pessoa</option>
+          <option value="4">L4 Floresta</option><option value="5">L5 São José</option><option value="6">L6 Santarém</option>
+        </select>
+      </div>
+      <div>
+        <label>Ponto *</label>
+        <select id="iPonto"><option value="">Selecione a loja primeiro</option></select>
+      </div>
+    </div>
+    <label>Fornecedor (nome) *</label>
+    <input type="text" id="iFornNome" placeholder="Ex: COCA-COLA INDUSTRIAS LTDA">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div>
+        <label>CNPJ do fornecedor</label>
+        <input type="text" id="iFornCnpj" placeholder="opcional, só números">
+      </div>
+      <div>
+        <label>Valor mensal (R$) *</label>
+        <input type="number" id="iValor" step="0.01" min="0">
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div>
+        <label>Data início *</label>
+        <input type="date" id="iIni">
+      </div>
+      <div>
+        <label>Data fim *</label>
+        <input type="date" id="iFim">
+      </div>
+    </div>
+    <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#94a3b8;text-transform:none;margin-top:14px">
+      <input type="checkbox" id="iRenov"> Renovar automaticamente ao vencer
+    </label>
+    <label>Observação</label>
+    <textarea id="iObs" placeholder="Detalhes da negociação (campanha, exclusividade, condições especiais)"></textarea>
+    <div id="resumoCobranca" style="background:#0f172a;border-left:3px solid #38bdf8;padding:10px;border-radius:6px;margin-top:14px;font-size:12px;color:#94a3b8;display:none"></div>
+    <div class="macts">
+      <button class="cancel" onclick="fecharNovo()">Cancelar</button>
+      <button class="ok" onclick="salvar()">Salvar Contrato</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL DETALHE -->
+<div class="modal" id="mDetalhe">
+  <div class="mbox" style="width:700px">
+    <h3 id="dTitulo">Contrato</h3>
+    <div id="dCorpo"></div>
+    <div class="macts">
+      <button class="cancel" onclick="fecharDetalhe()">Fechar</button>
+      <button class="danger" id="dBtnCancelar" onclick="cancelarContrato()" style="display:none">Cancelar contrato</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const PERFIL = localStorage.getItem('jrlira_perfil');
+if (!localStorage.getItem('jrlira_token') || !['admin','ceo','comprador'].includes(PERFIL)) location.href = '/';
+
+const LOJAS = {1:'L1 EC',2:'L2 BR',3:'L3 JP',4:'L4 FL',5:'L5 SJ',6:'L6 STM'};
+const TIPOS_LABEL = {
+  ponta_gondola: 'Ponta', ponto_extra: 'Extra', ilha: 'Ilha',
+  topo_prateleira: 'Topo', checkout: 'Checkout', display: 'Display'
+};
+let contratos = [];
+let pontos = [];
+let contratoAtual = null;
+let timer;
+
+function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+function fmtR$(v){return 'R$ '+(parseFloat(v||0)).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}
+function fmtData(d){if(!d)return'—';return new Date(d).toLocaleDateString('pt-BR',{timeZone:'UTC'})}
+function fmtComp(c){if(!c)return'';const d=new Date(c+'T12:00:00');return d.toLocaleDateString('pt-BR',{month:'2-digit',year:'numeric',timeZone:'UTC'})}
+function filtrarDebounced(){clearTimeout(timer);timer=setTimeout(carregar,400)}
+
+async function carregar() {
+  const params = new URLSearchParams();
+  ['fLoja','fStatus','fVigencia','fQ'].forEach(id => {
+    const v = document.getElementById(id).value;
+    if (v) params.set({fLoja:'loja_id',fStatus:'status',fVigencia:'vigencia',fQ:'q'}[id], v);
+  });
+  const [rResumo, rContratos] = await Promise.all([
+    apiFetch('/api/mkt/resumo'),
+    apiFetch('/api/mkt/contratos?' + params)
+  ]);
+  if (rResumo.ok) renderKpis(await rResumo.json());
+  if (rContratos.ok) { contratos = await rContratos.json(); renderLista(); }
+}
+
+function renderKpis(k) {
+  const pct = k.pontos_ativos > 0 ? Math.round(k.pontos_ocupados / k.pontos_ativos * 100) : 0;
+  document.getElementById('kpis').innerHTML = `
+    <div class="kpi"><div class="kpi-label">Pontos cadastrados</div><div class="kpi-value">${k.pontos_ativos}</div></div>
+    <div class="kpi"><div class="kpi-label">Ocupação</div><div class="kpi-value ${pct>=70?'ok':pct>=40?'warn':'err'}">${k.pontos_ocupados}/${k.pontos_ativos} · ${pct}%</div></div>
+    <div class="kpi"><div class="kpi-label">Contratos vigentes</div><div class="kpi-value info">${k.contratos_vigentes}</div></div>
+    <div class="kpi"><div class="kpi-label">Receita mensal estimada</div><div class="kpi-value ok">${fmtR$(k.receita_mensal_estimada)}</div></div>
+    <div class="kpi"><div class="kpi-label">A receber</div><div class="kpi-value warn">${fmtR$(k.total_aberto)}</div></div>
+    <div class="kpi"><div class="kpi-label">Em atraso</div><div class="kpi-value err">${fmtR$(k.total_atraso)}</div></div>
+    <div class="kpi"><div class="kpi-label">Recebido no ano</div><div class="kpi-value ok">${fmtR$(k.recebido_ano)}</div></div>
+  `;
+}
+
+function renderLista() {
+  document.getElementById('contador').textContent = `${contratos.length} contrato(s)`;
+  const el = document.getElementById('lista');
+  if (!contratos.length) { el.innerHTML = '<div class="empty">Nenhum contrato</div>'; return; }
+  el.innerHTML = `<table><thead><tr>
+    <th>Loja</th><th>Ponto</th><th>Fornecedor</th><th>Período</th>
+    <th style="text-align:right">Valor/mês</th><th>Cobranças</th><th style="text-align:right">A receber</th><th style="text-align:right">Recebido</th><th>Status</th>
+  </tr></thead><tbody>
+  ${contratos.map(c => {
+    const pagas = c.cobrancas_pagas || 0;
+    const total = c.cobrancas_total || 0;
+    const aberto = parseFloat(c.total_aberto) || 0;
+    return `<tr onclick="abrirDetalhe(${c.id})">
+      <td><strong>${LOJAS[c.loja_id]||'L'+c.loja_id}</strong></td>
+      <td><span style="font-family:monospace">${esc(c.ponto_codigo)}</span><div style="font-size:10px;color:#64748b">${TIPOS_LABEL[c.ponto_tipo]||c.ponto_tipo}</div></td>
+      <td>${esc(c.fornecedor_nome)}${c.fornecedor_cnpj?`<div style="font-size:10px;color:#64748b">${esc(c.fornecedor_cnpj)}</div>`:''}</td>
+      <td>${fmtData(c.data_inicio)} → ${fmtData(c.data_fim)}</td>
+      <td style="text-align:right;font-weight:700">${fmtR$(c.valor_mensal)}</td>
+      <td style="text-align:center">${pagas}/${total}</td>
+      <td style="text-align:right;color:${aberto>0?'#fbbf24':'#64748b'}">${fmtR$(aberto)}</td>
+      <td style="text-align:right;color:#4ade80">${fmtR$(c.total_recebido)}</td>
+      <td><span class="badge b-${c.status}">${c.status}</span></td>
+    </tr>`;
+  }).join('')}
+  </tbody></table>`;
+}
+
+async function recarregarPontos() {
+  const loja = document.getElementById('iLoja').value;
+  if (!loja) { document.getElementById('iPonto').innerHTML = '<option value="">Selecione a loja primeiro</option>'; return; }
+  const r = await apiFetch('/api/mkt/pontos?loja_id=' + loja);
+  if (!r.ok) return;
+  const lista = await r.json();
+  pontos = lista;
+  document.getElementById('iPonto').innerHTML = '<option value="">Selecione</option>' +
+    lista.map(p => `<option value="${p.id}">${esc(p.codigo)} — ${TIPOS_LABEL[p.tipo]||p.tipo}${p.descricao?' · '+esc(p.descricao):''}${p.contratos_ativos>0?' [ocupado]':''}</option>`).join('');
+}
+
+function abrirNovo() {
+  ['iFornNome','iFornCnpj','iValor','iIni','iFim','iObs'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('iRenov').checked = false;
+  document.getElementById('iLoja').value = document.getElementById('fLoja').value || '';
+  document.getElementById('iPonto').innerHTML = '<option value="">Selecione a loja primeiro</option>';
+  document.getElementById('resumoCobranca').style.display = 'none';
+  if (document.getElementById('iLoja').value) recarregarPontos();
+  document.getElementById('mNovo').classList.add('show');
+  // Cron de resumo: atualiza a cada mudanca
+  ['iIni','iFim','iValor'].forEach(id => {
+    document.getElementById(id).oninput = atualizarResumo;
+  });
+}
+function fecharNovo() { document.getElementById('mNovo').classList.remove('show'); }
+
+function atualizarResumo() {
+  const ini = document.getElementById('iIni').value;
+  const fim = document.getElementById('iFim').value;
+  const valor = parseFloat(document.getElementById('iValor').value) || 0;
+  const el = document.getElementById('resumoCobranca');
+  if (!ini || !fim || !valor) { el.style.display = 'none'; return; }
+  if (fim < ini) { el.innerHTML = '⚠ Data fim antes do início'; el.style.display = 'block'; return; }
+  const i = new Date(ini+'T12:00:00'), f = new Date(fim+'T12:00:00');
+  const meses = (f.getFullYear()-i.getFullYear())*12 + (f.getMonth()-i.getMonth()) + 1;
+  const total = meses * valor;
+  el.innerHTML = `<strong>${meses} cobranças</strong> serão geradas — uma por mês entre ${fmtData(ini)} e ${fmtData(fim)}.<br>Total do contrato: <strong style="color:#4ade80">${fmtR$(total)}</strong>`;
+  el.style.display = 'block';
+}
+
+async function salvar() {
+  const body = {
+    ponto_id: parseInt(document.getElementById('iPonto').value),
+    fornecedor_nome: document.getElementById('iFornNome').value.trim(),
+    fornecedor_cnpj: document.getElementById('iFornCnpj').value.replace(/\D/g,'') || null,
+    valor_mensal: parseFloat(document.getElementById('iValor').value),
+    data_inicio: document.getElementById('iIni').value,
+    data_fim: document.getElementById('iFim').value,
+    renovacao_auto: document.getElementById('iRenov').checked,
+    observacao: document.getElementById('iObs').value.trim() || null,
+  };
+  if (!body.ponto_id || !body.fornecedor_nome || !body.valor_mensal || !body.data_inicio || !body.data_fim) {
+    alert('Preencha todos os campos obrigatórios');
+    return;
+  }
+  try {
+    const r = await apiFetch('/api/mkt/contratos', { method:'POST', body: JSON.stringify(body) });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.erro || 'Erro');
+    alert(`Contrato criado. ${data.cobrancas_geradas} cobranças geradas.`);
+    fecharNovo();
+    carregar();
+  } catch (e) { alert(e.message); }
+}
+
+function abrirDetalhe(id) {
+  contratoAtual = contratos.find(c => c.id === id);
+  if (!contratoAtual) return;
+  const c = contratoAtual;
+  document.getElementById('dTitulo').textContent = `Contrato #${c.id} — ${c.fornecedor_nome}`;
+  const cobs = c.cobrancas || [];
+  document.getElementById('dCorpo').innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px">
+      <div><div style="font-size:10px;color:#64748b;text-transform:uppercase">Loja</div><strong>${LOJAS[c.loja_id]||'L'+c.loja_id}</strong></div>
+      <div><div style="font-size:10px;color:#64748b;text-transform:uppercase">Ponto</div><strong>${esc(c.ponto_codigo)} — ${TIPOS_LABEL[c.ponto_tipo]||c.ponto_tipo}</strong></div>
+      <div><div style="font-size:10px;color:#64748b;text-transform:uppercase">Valor mensal</div><strong style="color:#4ade80">${fmtR$(c.valor_mensal)}</strong></div>
+      <div><div style="font-size:10px;color:#64748b;text-transform:uppercase">Período</div><strong>${fmtData(c.data_inicio)} → ${fmtData(c.data_fim)}</strong></div>
+      <div><div style="font-size:10px;color:#64748b;text-transform:uppercase">Recebido</div><strong style="color:#4ade80">${fmtR$(c.total_recebido)}</strong></div>
+      <div><div style="font-size:10px;color:#64748b;text-transform:uppercase">A receber</div><strong style="color:#fbbf24">${fmtR$(c.total_aberto)}</strong></div>
+    </div>
+    ${c.observacao ? `<div style="background:#0f172a;border-left:3px solid #64748b;padding:8px 10px;border-radius:6px;font-size:12px;color:#94a3b8;margin-bottom:12px"><strong>Obs.:</strong> ${esc(c.observacao)}</div>` : ''}
+    <div style="font-size:11px;color:#64748b;text-transform:uppercase;margin-bottom:6px">Cobranças (${cobs.length})</div>
+    <table style="font-size:11px"><thead><tr>
+      <th>Competência</th><th>Vencimento</th><th style="text-align:right">Valor</th><th>Status</th><th>Pago em</th><th style="text-align:right">Valor pago</th>
+    </tr></thead><tbody>
+    ${cobs.length ? cobs.map(co => `<tr>
+      <td>${fmtComp(co.competencia)}</td>
+      <td>${fmtData(co.vencimento)}</td>
+      <td style="text-align:right">${fmtR$(co.valor)}</td>
+      <td><span class="badge cob-${co.status}">${co.status}</span></td>
+      <td>${co.pago_em ? new Date(co.pago_em).toLocaleDateString('pt-BR') : '—'}</td>
+      <td style="text-align:right">${co.pago_valor != null ? fmtR$(co.pago_valor) : '—'}</td>
+    </tr>`).join('') : '<tr><td colspan="6" style="text-align:center;color:#64748b">Sem cobranças</td></tr>'}
+    </tbody></table>
+  `;
+  document.getElementById('dBtnCancelar').style.display = c.status === 'ativo' ? 'inline-block' : 'none';
+  document.getElementById('mDetalhe').classList.add('show');
+}
+function fecharDetalhe() { document.getElementById('mDetalhe').classList.remove('show'); contratoAtual = null; }
+
+async function cancelarContrato() {
+  if (!contratoAtual) return;
+  const motivo = prompt('Motivo do cancelamento (opcional):') ?? '';
+  if (!confirm(`Cancelar contrato #${contratoAtual.id}? Cobranças em aberto também serão canceladas.`)) return;
+  const r = await apiFetch(`/api/mkt/contratos/${contratoAtual.id}`, {
+    method:'PATCH', body: JSON.stringify({ status: 'cancelado', motivo_cancelamento: motivo })
+  });
+  if (!r.ok) { alert((await r.json()).erro); return; }
+  fecharDetalhe();
+  carregar();
+}
+
+carregar();
+</script>
+</body>
+</html>
