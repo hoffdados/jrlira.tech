@@ -184,7 +184,7 @@ async function fetchApi(url, method = 'GET', body = null) {
 
 function fmtData(d) { if (!d) return '—'; return d.substring(0, 10).split('-').reverse().join('/'); }
 function fmtMoeda(v) { return 'R$ ' + parseFloat(v || 0).toFixed(2).replace('.', ','); }
-function fmtQtd(v) { if (v == null) return '—'; return parseFloat(v).toFixed(0); }
+function fmtQtd(v) { if (v == null) return '—'; const n = parseFloat(v); return n % 1 === 0 ? n.toFixed(0) : n.toFixed(3).replace(/0+$/, '').replace(/\.$/, ''); }
 function chipStatus(s) {
   if (!s) return '<span class="chip chip-none">—</span>';
   return s === 'ok'
@@ -297,7 +297,7 @@ function renderTabela(itens) {
       <td class="col-c2" style="font-size:11px">${c2 ? fmtLotes(c2.lotes) : '—'}</td>
       <td class="col-c2">${chipStatus(c2?.status)}</td>
       <td class="col-aud">
-        <input type="number" id="aud-qty-${item.id}" min="0" step="1" value="${qtdVal}" placeholder="Qtd" ${readonly} ${tabindex}>
+        <input type="number" id="aud-qty-${item.id}" min="0" step="any" value="${qtdVal}" placeholder="Qtd" ${readonly} ${tabindex}>
       </td>
       <td class="col-aud">
         <input type="text" id="aud-lote-${item.id}" value="${loteVal}" placeholder="Lote" ${readonly} ${tabindex}>
