@@ -230,16 +230,17 @@ async function renderConteudo() {
 
     let html;
     if (abaAtiva === 'transito') {
+      const CB_CLI_LOJA = {'0000001495':'L1','0000002610':'L2','0000003308':'L3','0000004342':'L4','0000005153':'L5','0000005271':'L6'};
       html = `<div class="painel">
         <div class="painel-titulo">⏳ ${fmtN(d.total)} saídas CB sem entrada confirmada</div>
-        <table><thead><tr><th>Data</th><th class="left">MCP_CODI</th><th class="left">NF</th><th>FOR_CODI (destino)</th><th>NOP</th><th class="right">Valor</th></tr></thead><tbody>` +
+        <table><thead><tr><th>Data</th><th>Tipo</th><th class="left">Documento</th><th class="left">Cliente</th><th>Vendedor</th><th class="right">Valor</th></tr></thead><tbody>` +
         d.notas.map(n => `<tr>
           <td>${dtPt(n.data)}</td>
-          <td class="left">${esc(n.mcp_codi)}</td>
-          <td class="left"><strong>${esc(n.mcp_nnotafis)}</strong></td>
-          <td>${esc(n.for_codi)}</td>
-          <td><span class="pill">${esc(n.nop_codi)}</span></td>
-          <td class="right"><strong>${fmtBRL(n.mcp_vtot)}</strong></td>
+          <td><span class="pill">${esc(n.tipo)}</span></td>
+          <td class="left"><strong>${esc(n.doc)}</strong></td>
+          <td class="left">${esc(n.cli || '—')}${CB_CLI_LOJA[n.cli] ? ' <span class="pill">'+CB_CLI_LOJA[n.cli]+'</span>' : ''}</td>
+          <td>${esc(n.ven || '—')}</td>
+          <td class="right"><strong>${fmtBRL(n.valor)}</strong></td>
         </tr>`).join('') + `</tbody></table></div>`;
     } else {
       const cls = abaAtiva === 'confirmadas' ? 'confirm-cell' : 'desconhecida-cell';
