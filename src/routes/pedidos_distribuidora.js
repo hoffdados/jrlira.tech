@@ -37,7 +37,8 @@ const COD_TIPOVENDA_PADRAO  = '12';
 const COD_TABELA_PADRAO     = '1';
 const TIPO_CALCULO_PADRAO   = 'E';
 const NOME_EMBALAGEM_PADRAO = 'EMB';
-const UNIDADE_PADRAO        = 'CX';
+const UNIDADE_PADRAO        = 'UNI';   // UltraSyst espera UNI mesmo quando e caixa
+const COD_MOTIVO_PADRAO     = '   ';   // 3 espacos (modelo original)
 
 // ── Destinos (lojas + CDs) ──
 
@@ -2138,14 +2139,25 @@ router.get('/produtos', adminOuCeo, async (req, res) => {
 
 function padNomeCliente(nome) { return String(nome || '').padEnd(60, ' ').slice(0, 60); }
 function fmtData(d) {
+  // Modelo UltraSyst original: '2023-09-04 00:00:00.000' (hora sempre zerada)
   const pad = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.000`;
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} 00:00:00.000`;
 }
 function fmtHora(d) {
   const pad = n => String(n).padStart(2, '0');
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
-function fmtNum(n, casas = 2) { return Number(n || 0).toFixed(casas); }
+// Numero com VIRGULA decimal (Delphi BR usa locale ',') e sem padding desnecessario.
+// 37 -> "37"; 11.5 -> "11,5"; 274.65 -> "274,65"
+function fmtNum(n) {
+  const v = Number(n || 0);
+  if (Number.isInteger(v)) return String(v);
+  return String(v).replace('.', ',');
+}
+function semZeros(s) { const x = String(s || '').replace(/^0+/, ''); return x || '0'; }
+function encObs(s) { return encodeURIComponent(String(s || '')).replace(/'/g, '%27'); }
+// CPF/CNPJ vazio = 18 espacos no modelo original (loja interna nao precisa documento)
+const CPF_VAZIO = ' '.repeat(18);
 
 const HEADER_PEDIDOS = 'COD_PEDIDO;EMPRESA;LOCALIZACAO;COD_VENDEDOR;COD_CLIENTE;COD_CLIENTE_CADASTRO;COD_CONDICAO;COD_PAGAMENTO;COD_TIPOVENDA;COD_TABELA;DATA_EMISSAO;VALOR_PEDIDO;OBSERVACAO;RETORNO;SIT_RETORNO;NUMPEDIDO;HORA_EMISSAO;COD_MOTIVO;ID;LATITUDE;LONGITUDE;CPF_CNPJ;NOME_CLIENTE';
 const HEADER_ITENS   = 'COD_PEDIDO;COD_VENDEDOR;COD_PRODUTO;UNIDADE;QUANTIDADE;VALOR;DESCONTO_UNI;DESCONTO_PER;VALOR_TABELA;TIPO_CALCULO;NOME_EMBALAGEM;QTD_EMBALAGEM;ID';
@@ -2309,9 +2321,12 @@ router.post('/', adminOuCeo, async (req, res) => {
 
     // Helper que emite UM pedido (1 destino + 1 conjunto de itens) e incrementa cod_pedido.
     // bloco = 'prioridade' | 'grupo'; rotulo = nome do grupo ou 'PRIORIDADE'
+    // ID/NUMPEDIDO sao unicos por pedido (incrementam junto com codPedido).
     function emitirPedido(dest, cliCodi, itens, bloco, rotulo) {
       if (!itens?.length) return;
       const obsPedido = `${rotulo} - ${obser}`.slice(0, 120);
+      const obsEnc = encObs(obsPedido);
+      const cliSemZero = semZeros(cliCodi);
       let valorPedido = 0;
       const linhasItensPed = [];
       for (const it of itens) {
@@ -2320,22 +2335,29 @@ router.post('/', adminOuCeo, async (req, res) => {
         const qtd = it.qtd;
         valorPedido += qtd * valor;
         linhasItensPed.push([
-          codPedido,               VEN_CODI_PADRAO,        it.mat_codi,
-          UNIDADE_PADRAO,          fmtNum(qtd, 0),         fmtNum(valor, 2),
-          '0',                     '0',                    fmtNum(valor, 2),
+          codPedido,               VEN_CODI_PADRAO,        semZeros(it.mat_codi),
+          UNIDADE_PADRAO,          fmtNum(qtd),            fmtNum(valor),
+          '0',                     '0',                    fmtNum(valor),
           TIPO_CALCULO_PADRAO,     NOME_EMBALAGEM_PADRAO,  parseInt(cd.qtd_embalagem) || 1,
-          '',
+          codPedido,  // ID do item: usar codPedido como base (Delphi parece tolerar repetir, mas vou variar com indice abaixo)
         ].join(';'));
+      }
+      // Garante ID unico por linha de item somando indice
+      const idBaseItem = codPedido * 1000;
+      for (let i = 0; i < linhasItensPed.length; i++) {
+        const partes = linhasItensPed[i].split(';');
+        partes[12] = String(idBaseItem + i + 1);
+        linhasItensPed[i] = partes.join(';');
       }
       linhasPedidos.push([
         codPedido,                EMPRESA_PADRAO,         LOCALIZACAO_PADRAO,
-        VEN_CODI_PADRAO,          cliCodi,                '0',
+        VEN_CODI_PADRAO,          cliSemZero,             'NULL',
         COD_CONDICAO_PADRAO,      COD_PAGAMENTO_PADRAO,   COD_TIPOVENDA_PADRAO,
-        COD_TABELA_PADRAO,        dataEmissao,            fmtNum(valorPedido, 2),
-        obsPedido,                '0',                    '1',
-        '0',                      horaEmissao,            '0',
-        '0',                      '00.00000',             '00.00000',
-        dest.cnpj,                padNomeCliente(dest.nome),
+        COD_TABELA_PADRAO,        dataEmissao,            fmtNum(valorPedido),
+        obsEnc,                   '0',                    '1',
+        codPedido,                horaEmissao,            COD_MOTIVO_PADRAO,
+        codPedido,                '00.00000',             '00.00000',
+        CPF_VAZIO,                padNomeCliente(dest.nome),
       ].join(';'));
       linhasItens.push(...linhasItensPed);
       pedidosResumo.push({
