@@ -75,8 +75,15 @@ tbody td{padding:10px;vertical-align:top}
       <option value="devolvida_loja">Devolvidas (loja)</option>
       <option value="baixada">Baixadas</option>
     </select>
+    <select id="fCdOrigem" onchange="carregar()">
+      <option value="">Todos os CDs (origem)</option>
+      <option value="srv1-itautuba">Asa Branca ITB</option>
+      <option value="srv1-nprogresso">N. Progresso</option>
+      <option value="srv2-asafrio">Asa Frios</option>
+      <option value="srv2-asasantarem">Asa Santarém</option>
+    </select>
     <select id="fLoja" onchange="carregar()">
-      <option value="">Todas as lojas</option>
+      <option value="">Todas as lojas (destino)</option>
       <option value="1">L1 Economico</option><option value="2">L2 BR</option><option value="3">L3 João Pessoa</option>
       <option value="4">L4 Floresta</option><option value="5">L5 São José</option><option value="6">L6 Santarém</option>
     </select>
@@ -120,11 +127,16 @@ function fmtData(d){if(!d)return'—';return new Date(d).toLocaleDateString('pt-
 function fmtMoeda(v){return'R$ '+(parseFloat(v||0)).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}
 document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
 
+const CDS_NOMES = {
+  'srv1-itautuba':'Asa Branca ITB','srv1-nprogresso':'N. Progresso',
+  'srv2-asafrio':'Asa Frios','srv2-asasantarem':'Asa Santarém'
+};
+
 async function carregar(){
   const params = new URLSearchParams();
-  ['fStatus','fLoja','fDesde','fAte','fQ'].forEach(id=>{
+  ['fStatus','fLoja','fCdOrigem','fDesde','fAte','fQ'].forEach(id=>{
     const v=document.getElementById(id).value;
-    if(v){const k={fStatus:'status',fLoja:'loja_id',fDesde:'desde',fAte:'ate',fQ:'q'}[id];params.set(k,v)}
+    if(v){const k={fStatus:'status',fLoja:'loja_id',fCdOrigem:'origem_cd_codigo',fDesde:'desde',fAte:'ate',fQ:'q'}[id];params.set(k,v)}
   });
   try{
     const r=await apiFetch('/api/auditagem-divergencias?'+params);
@@ -147,7 +159,7 @@ function renderLista(rows){
   const el=document.getElementById('lista');
   if(!rows.length){el.innerHTML='<div class="empty">Nenhuma divergência</div>';return}
   el.innerHTML=`<table><thead><tr>
-    <th>Data</th><th>Loja</th><th>MCP</th><th>MAT_CODI</th><th>Descrição</th>
+    <th>Data</th><th>CD Origem</th><th>Loja Destino</th><th>MCP</th><th>MAT_CODI</th><th>Descrição</th>
     <th style="text-align:right">Esperado</th><th style="text-align:right">Contado</th>
     <th style="text-align:right">Diferença</th><th style="text-align:right">R$</th>
     <th>Status</th><th>Resolução</th><th>Ações</th>
@@ -162,6 +174,7 @@ function renderLista(rows){
     const resol = r.numero_nf_devolucao ? `NF dev ${r.numero_nf_devolucao}` : (r.observacao||'').slice(0,50);
     return `<tr>
       <td>${fmtData(r.criado_em)}</td>
+      <td><span style="font-size:11px;color:#7dd3fc">${CDS_NOMES[r.origem_cd_codigo]||r.origem_cd_codigo||'—'}</span></td>
       <td>${LOJAS_NOMES[r.loja_id]||'L'+r.loja_id}</td>
       <td><span style="font-family:monospace;font-size:11px">${r.cd_mov_codi||'—'}</span></td>
       <td><span style="font-family:monospace;font-size:11px">${r.cd_pro_codi||'—'}</span></td>
@@ -210,9 +223,9 @@ async function salvarResolver(){
 
 async function exportar(){
   const params=new URLSearchParams();
-  ['fStatus','fLoja','fDesde','fAte'].forEach(id=>{
+  ['fStatus','fLoja','fCdOrigem','fDesde','fAte'].forEach(id=>{
     const v=document.getElementById(id).value;
-    if(v){const k={fStatus:'status',fLoja:'loja_id',fDesde:'desde',fAte:'ate'}[id];params.set(k,v)}
+    if(v){const k={fStatus:'status',fLoja:'loja_id',fCdOrigem:'origem_cd_codigo',fDesde:'desde',fAte:'ate'}[id];params.set(k,v)}
   });
   try{
     const r=await apiFetch('/api/auditagem-divergencias/export.xlsx?'+params);

@@ -4,13 +4,19 @@ const xlsx = require('xlsx');
 const { query } = require('../db');
 const { autenticar, apenasAdmin } = require('../auth');
 
-// GET /api/auditagem-divergencias?status=&loja_id=&desde=&ate=&limit=&offset=
+// GET /api/auditagem-divergencias?status=&loja_id=&origem_cd_codigo=&desde=&ate=&limit=&offset=
+// Lista apenas divergencias de notas de transferencia CD -> loja (n.origem = 'cd').
+// Divergencias de NF-e fornecedor sao tratadas em outro fluxo.
 router.get('/', autenticar, async (req, res) => {
   try {
-    const where = ['1=1'];
+    const where = [`n.origem = 'cd'`];
     const params = [];
     if (req.query.status) { params.push(req.query.status); where.push(`d.status = $${params.length}`); }
     if (req.query.loja_id) { params.push(req.query.loja_id); where.push(`d.loja_id = $${params.length}`); }
+    if (req.query.origem_cd_codigo) {
+      params.push(String(req.query.origem_cd_codigo).trim());
+      where.push(`n.origem_cd_codigo = $${params.length}`);
+    }
     if (req.query.desde) { params.push(req.query.desde); where.push(`d.criado_em >= $${params.length}::date`); }
     if (req.query.ate) { params.push(req.query.ate); where.push(`d.criado_em < ($${params.length}::date + INTERVAL '1 day')`); }
     if (req.query.q) {
@@ -23,14 +29,16 @@ router.get('/', autenticar, async (req, res) => {
 
     const total = await query(
       `SELECT COUNT(*)::int AS total,
-              COALESCE(SUM(valor_total_diferenca) FILTER (WHERE diferenca < 0),0)::numeric(14,2) AS total_falta,
-              COALESCE(SUM(valor_total_diferenca) FILTER (WHERE diferenca > 0),0)::numeric(14,2) AS total_sobra
-         FROM auditagem_divergencias d WHERE ${whereSql}`,
+              COALESCE(SUM(d.valor_total_diferenca) FILTER (WHERE d.diferenca < 0),0)::numeric(14,2) AS total_falta,
+              COALESCE(SUM(d.valor_total_diferenca) FILTER (WHERE d.diferenca > 0),0)::numeric(14,2) AS total_sobra
+         FROM auditagem_divergencias d
+         JOIN notas_entrada n ON n.id = d.nota_id
+        WHERE ${whereSql}`,
       params
     );
 
     const lst = await query(
-      `SELECT d.*, n.cd_mov_codi, n.data_emissao, n.conferida_em, n.conferida_por
+      `SELECT d.*, n.cd_mov_codi, n.origem_cd_codigo, n.data_emissao, n.conferida_em, n.conferida_por
          FROM auditagem_divergencias d
          JOIN notas_entrada n ON n.id = d.nota_id
         WHERE ${whereSql}
@@ -150,10 +158,14 @@ router.post('/resolver-massa', apenasAdmin, async (req, res) => {
 // GET /api/auditagem-divergencias/export.xlsx
 router.get('/export.xlsx', autenticar, async (req, res) => {
   try {
-    const where = ['1=1'];
+    const where = [`n.origem = 'cd'`];
     const params = [];
     if (req.query.status) { params.push(req.query.status); where.push(`d.status = $${params.length}`); }
     if (req.query.loja_id) { params.push(req.query.loja_id); where.push(`d.loja_id = $${params.length}`); }
+    if (req.query.origem_cd_codigo) {
+      params.push(String(req.query.origem_cd_codigo).trim());
+      where.push(`n.origem_cd_codigo = $${params.length}`);
+    }
     if (req.query.desde) { params.push(req.query.desde); where.push(`d.criado_em >= $${params.length}::date`); }
     if (req.query.ate) { params.push(req.query.ate); where.push(`d.criado_em < ($${params.length}::date + INTERVAL '1 day')`); }
     const whereSql = where.join(' AND ');
