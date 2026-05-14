@@ -534,12 +534,63 @@ let itensIndex = {};   // { ean_normalizado: item.id }
 let lotesCountTransf = {};   // { item_id: nº de lotes adicionados }
 
 function loteRowTransf(itemId, idx) {
+  const dataInputStyle = 'width:42px;padding:3px;background:#0f172a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:11px;text-align:center';
   return `<div style="display:flex;gap:4px;align-items:center;justify-content:center;margin-bottom:3px" data-lote="${idx}">
     <input type="number" min="0" step="1" id="cx-${itemId}-${idx}" placeholder="cx" style="width:48px;padding:3px;background:#0f172a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:11px;text-align:center">
     <input type="number" min="0" step="1" id="un-${itemId}-${idx}" placeholder="un" style="width:48px;padding:3px;background:#0f172a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:11px;text-align:center">
-    <input type="date" id="val-${itemId}-${idx}" style="width:128px;padding:3px;background:#0f172a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:11px">
+    <span style="display:inline-flex;gap:2px;align-items:center" data-validade="${itemId}-${idx}">
+      <input type="number" inputmode="numeric" min="1" max="31" placeholder="dd" id="vd-${itemId}-${idx}" style="${dataInputStyle}" maxlength="2" onkeyup="ajustarFocoData(this,'vm-${itemId}-${idx}',2)" onblur="validarValidadeUI(${itemId},${idx})">
+      <span style="color:#475569;font-size:11px">/</span>
+      <input type="number" inputmode="numeric" min="1" max="12" placeholder="mm" id="vm-${itemId}-${idx}" style="${dataInputStyle}" maxlength="2" onkeyup="ajustarFocoData(this,'vy-${itemId}-${idx}',2)" onblur="validarValidadeUI(${itemId},${idx})">
+      <span style="color:#475569;font-size:11px">/</span>
+      <input type="number" inputmode="numeric" min="1900" placeholder="aaaa" id="vy-${itemId}-${idx}" style="${dataInputStyle};width:56px" maxlength="4" onblur="validarValidadeUI(${itemId},${idx})">
+    </span>
     ${idx > 0 ? `<button onclick="removerLoteTransf(${itemId},${idx})" style="background:transparent;border:none;color:#f87171;cursor:pointer;font-size:14px" title="Remover lote">×</button>` : ''}
-  </div>`;
+  </div>
+  <div id="val-err-${itemId}-${idx}" style="font-size:10px;color:#f87171;text-align:center;display:none;margin-bottom:6px"></div>`;
+}
+
+function ajustarFocoData(el, proxId, len) {
+  const v = (el.value || '').replace(/\D/g, '');
+  if (v.length >= len) {
+    el.value = v.slice(0, len);
+    const prox = document.getElementById(proxId);
+    if (prox) prox.focus();
+  }
+}
+
+function montarISODataLote(itemId, idx) {
+  const d = (document.getElementById(`vd-${itemId}-${idx}`)?.value || '').trim();
+  const m = (document.getElementById(`vm-${itemId}-${idx}`)?.value || '').trim();
+  const y = (document.getElementById(`vy-${itemId}-${idx}`)?.value || '').trim();
+  if (!d && !m && !y) return { iso: null, ok: true, vazio: true };
+  if (!d || !m || !y) return { iso: null, ok: false, erro: 'Data incompleta' };
+  const dd = parseInt(d, 10), mm = parseInt(m, 10), yy = parseInt(y, 10);
+  if (isNaN(dd) || isNaN(mm) || isNaN(yy)) return { iso: null, ok: false, erro: 'Data inválida' };
+  if (mm < 1 || mm > 12) return { iso: null, ok: false, erro: 'Mês inválido' };
+  if (dd < 1 || dd > 31) return { iso: null, ok: false, erro: 'Dia inválido' };
+  if (yy < 2000 || yy > 2099) return { iso: null, ok: false, erro: 'Ano inválido' };
+  const dt = new Date(yy, mm - 1, dd);
+  if (dt.getFullYear() !== yy || dt.getMonth() !== mm - 1 || dt.getDate() !== dd) {
+    return { iso: null, ok: false, erro: 'Data inexistente' };
+  }
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  if (dt < hoje) return { iso: null, ok: false, erro: 'Produto vencido — não aceitar' };
+  const iso = `${String(yy).padStart(4,'0')}-${String(mm).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
+  return { iso, ok: true };
+}
+
+function validarValidadeUI(itemId, idx) {
+  const err = document.getElementById(`val-err-${itemId}-${idx}`);
+  if (!err) return;
+  const r = montarISODataLote(itemId, idx);
+  if (r.vazio || r.ok) {
+    err.style.display = 'none';
+    err.textContent = '';
+  } else {
+    err.style.display = 'block';
+    err.textContent = '⚠ ' + r.erro;
+  }
 }
 
 function addLoteTransf(itemId) {
@@ -558,17 +609,22 @@ function removerLoteTransf(itemId, idx) {
 
 function lerLotesDoItem(itemId) {
   const wrap = document.getElementById('lotes-' + itemId);
-  if (!wrap) return [];
+  if (!wrap) return { lotes: [], erros: [] };
   const linhas = wrap.querySelectorAll('[data-lote]');
   const out = [];
+  const erros = [];
   linhas.forEach(l => {
     const idx = l.dataset.lote;
     const cx = parseFloat(document.getElementById(`cx-${itemId}-${idx}`)?.value) || 0;
     const un = parseFloat(document.getElementById(`un-${itemId}-${idx}`)?.value) || 0;
-    const validade = document.getElementById(`val-${itemId}-${idx}`)?.value || null;
-    if (cx || un || validade) out.push({ cx, un, validade });
+    const r = montarISODataLote(itemId, idx);
+    if (!r.ok) {
+      erros.push(`Item ${itemId}: ${r.erro}`);
+      return;
+    }
+    if (cx || un || r.iso) out.push({ cx, un, validade: r.iso });
   });
-  return out;
+  return { lotes: out, erros };
 }
 
 // Bipador: ouve o input do EAN. Coletor envia código + Enter (ou só Enter no fim).
@@ -687,20 +743,27 @@ function fecharCamera() {
 
 async function finalizarConferenciaAuto() {
   const { itens } = await fetchApi(`/api/notas/${notaAtualId}`);
-  // Monta payload por item com seus lotes lidos do DOM
+  // Lê todos os itens e valida datas
+  const errosValidade = [];
   const payload = itens.map(i => {
-    const lotes = lerLotesDoItem(i.id).map(l => ({
-      qtd_caixas: l.cx, qtd_unidades: l.un, validade: l.validade
-    }));
-    return { item_id: i.id, lotes };
+    const r = lerLotesDoItem(i.id);
+    if (r.erros.length) errosValidade.push(...r.erros);
+    return {
+      item_id: i.id,
+      lotes: r.lotes.map(l => ({ qtd_caixas: l.cx, qtd_unidades: l.un, validade: l.validade }))
+    };
   });
+  if (errosValidade.length) {
+    showMsg('Datas de validade inválidas:\n' + errosValidade.slice(0, 5).join('\n'), 'err');
+    return;
+  }
   // Pré-calcula divergência localmente pra prompt
   const detalhes = [];
   for (const i of itens) {
-    const lotes = lerLotesDoItem(i.id);
+    const r = lerLotesDoItem(i.id);
     const emb = parseFloat(i.qtd_embalagem_loja) || 1;
     const qtdEsperada = (parseFloat(i.quantidade) || 0) * emb;
-    const qtdContada = lotes.reduce((s, l) => s + (l.cx * emb + l.un), 0);
+    const qtdContada = r.lotes.reduce((s, l) => s + (l.cx * emb + l.un), 0);
     if (Math.abs(qtdContada - qtdEsperada) > 0.0001) {
       detalhes.push(`${i.descricao_nota}: esperado ${qtdEsperada}, contado ${qtdContada}`);
     }

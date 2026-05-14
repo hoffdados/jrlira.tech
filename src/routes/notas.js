@@ -1287,6 +1287,20 @@ router.patch('/:id/finalizar-conferencia-transf', autenticar, async (req, res) =
 
       let temValidadeEmRisco = false;
 
+      // Valida que nenhum lote tem validade no passado
+      const hojeISO = new Date().toISOString().slice(0, 10);
+      for (const ent of itensInput) {
+        for (const l of (ent.lotes || [])) {
+          if (l.validade && String(l.validade) < hojeISO) {
+            await client.query('ROLLBACK');
+            client.release();
+            return res.status(400).json({
+              erro: `Lote com validade vencida (${l.validade}) no item ${ent.item_id}. Produtos vencidos não podem ser aceitos na coleta.`
+            });
+          }
+        }
+      }
+
       for (const ent of itensInput) {
         const it = mapaItens[ent.item_id];
         if (!it) continue;
