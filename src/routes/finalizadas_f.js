@@ -51,7 +51,7 @@ function autenticarComQS(req, res, next) {
 //      → mantém status original, marca auditoria_eco_status='n_finalizadas_eco'
 async function detectarStatusEco() {
   // Atualiza cache mcp_status_cd das notas com origem=cd via JOIN com cd_movcompra do CD origem
-  // Filtro: importado_em >= cutoff pra reduzir universo
+  // Removido filtro importado_em pra cobrir notas antigas que só agora chegaram no ERP.
   await dbQuery(`
     UPDATE notas_entrada n
        SET mcp_status_cd = sub.mcp_status
@@ -66,18 +66,18 @@ async function detectarStatusEco() {
            AND REGEXP_REPLACE(COALESCE(mc.mcp_codi,''), '^0+', '') =
                REGEXP_REPLACE(COALESCE(n2.cd_mov_codi, n2.numero_nota, ''), '^0+', '')
          WHERE n2.origem IN ('cd','transferencia_loja')
-           AND n2.importado_em >= $1::date
+           AND n2.status NOT IN ('validada','finalizada_f','cancelada')
            AND (n2.mcp_status_cd IS NULL OR n2.mcp_status_cd <> mc.mcp_status)
          ORDER BY n2.id, mc.mcp_dten DESC
       ) sub
      WHERE sub.id = n.id
-  `, [DATA_CORTE_ECO]);
+  `);
 
   // Atualiza cache chegou_no_erp_em via compras_historico — DOIS UPDATEs separados
   // (origem='nfe' usa match direto = pode usar índice; origem='cd' usa REGEXP)
+  // Filtro só por c.data_entrada >= cutoff (não por importado_em da nota — nota legada pode receber entrada nova).
 
   // Cache 1: NF-e fornecedor — match direto numero_nota=numeronfe
-  // Limita às notas e compras a partir do cutoff (reduz universo absurdamente)
   await dbQuery(`
     UPDATE notas_entrada n
        SET chegou_no_erp_em = sub.data_entrada
@@ -92,8 +92,7 @@ async function detectarStatusEco() {
            AND n2.origem = 'nfe'
            AND n2.fornecedor_cnpj IS NOT NULL
            AND n2.numero_nota IS NOT NULL
-           AND n2.importado_em >= $1::date
-           AND c.data_entrada    >= $1::date
+           AND c.data_entrada >= $1::date
          GROUP BY n2.id
       ) sub
      WHERE sub.id = n.id
@@ -114,8 +113,7 @@ async function detectarStatusEco() {
          WHERE n2.chegou_no_erp_em IS NULL
            AND n2.origem IN ('cd','transferencia_loja')
            AND n2.fornecedor_cnpj IS NOT NULL
-           AND n2.importado_em >= $1::date
-           AND c.data_entrada  >= $1::date
+           AND c.data_entrada >= $1::date
          GROUP BY n2.id
       ) sub
      WHERE sub.id = n.id
