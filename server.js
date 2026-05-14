@@ -45,6 +45,7 @@ app.use('/api/perdas', require('./src/routes/perdas'));
 app.use('/api/sync-status', require('./src/routes/sync_status'));
 app.use('/api/notificacoes', require('./src/routes/notificacoes'));
 app.use('/api/dashboard', require('./src/routes/dashboard'));
+app.use('/api/cb-auditoria', require('./src/routes/cb_auditoria'));
 app.use('/api/precos-otimizados', require('./src/routes/precos_otimizados'));
 app.use('/api/admin/cds', require('./src/routes/cds'));
 app.use('/api/pedidos-distribuidora', require('./src/routes/pedidos_distribuidora'));
@@ -110,6 +111,7 @@ app.get('/divergencias-preco', (req, res) => res.sendFile(path.join(__dirname, '
 app.get('/produtos-novos', (req, res) => res.sendFile(path.join(__dirname, 'public/produtos-novos.html')));
 app.get('/emergenciais', (req, res) => res.sendFile(path.join(__dirname, 'public/emergenciais.html')));
 app.get('/aprovacoes', (req, res) => res.sendFile(path.join(__dirname, 'public/aprovacoes.html')));
+app.get('/cb-auditoria', (req, res) => res.sendFile(path.join(__dirname, 'public/cb-auditoria.html')));
 app.get('/sla-notas', (req, res) => res.sendFile(path.join(__dirname, 'public/sla-notas.html')));
 app.get('/divergencias-estoque', (req, res) => res.sendFile(path.join(__dirname, 'public/divergencias-estoque.html')));
 app.get('/pedidos-fornecedor', (req, res) => res.sendFile(path.join(__dirname, 'public/pedidos-fornecedor.html')));

@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Casa Branca — Auditoria de Saídas</title>
+<link rel="stylesheet" href="/shared.css">
+<script src="/shared.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+nav{background:#1e293b;padding:12px 20px;display:flex;align-items:center;gap:14px;border-bottom:1px solid #334155}
+.brand{font-family:'Segoe UI Black','Segoe UI',sans-serif;font-weight:900;font-size:18px;color:#38bdf8}
+.btn-nav{background:#0ea5e9;color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:12px;cursor:pointer}
+.main{padding:18px 20px;max-width:1500px;margin:0 auto}
+input,select{background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;padding:7px 11px;font-size:13px}
+button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 14px;font-weight:600}
+.btn-primary{background:#0ea5e9;color:#fff}
+.btn-ghost{background:#1e293b;color:#94a3b8;border:1px solid #334155}
+.filtros{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:18px;padding:14px;background:#1e293b;border-radius:10px}
+.filtros label{font-size:11px;color:#64748b;display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:18px}
+.card{background:#1e293b;border-radius:10px;padding:14px 16px;border-left:4px solid #475569}
+.card.total{border-left-color:#38bdf8}
+.card.confirmada{border-left-color:#22c55e}
+.card.transito{border-left-color:#fbbf24}
+.card.desconhecida{border-left-color:#f87171}
+.card .label{font-size:11px;color:#94a3b8;text-transform:uppercase;font-weight:700;letter-spacing:.04em}
+.card .v{font-size:24px;font-weight:900;color:#e2e8f0;margin-top:4px;line-height:1}
+.card .extra{font-size:12px;color:#cbd5e1;margin-top:4px}
+.card .extra strong{color:#fde047}
+.painel{background:#1e293b;border-radius:10px;padding:16px;margin-bottom:18px}
+.painel-titulo{font-size:13px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead th{background:#0f172a;padding:8px 10px;text-align:center;color:#64748b;font-weight:600;border-bottom:1px solid #334155;white-space:nowrap;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+thead th.left{text-align:left}
+tbody td{padding:7px 10px;border-bottom:1px solid #1e293b;vertical-align:middle;text-align:center}
+tbody td.left{text-align:left}
+tbody td.right{text-align:right;font-variant-numeric:tabular-nums}
+tbody tr:hover td{background:#1a2744;cursor:pointer}
+.empty{text-align:center;color:#475569;padding:40px;font-size:13px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.tab{padding:8px 14px;background:#1e293b;color:#94a3b8;border:1px solid #334155;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600}
+.tab.ativa{background:#0ea5e9;color:#fff;border-color:#0ea5e9}
+.pill{display:inline-block;padding:1px 7px;background:#0f172a;border:1px solid #334155;border-radius:10px;font-size:10px;color:#94a3b8}
+.fonte-info{font-size:11px;color:#64748b;margin-bottom:6px;font-style:italic}
+.confirm-cell{color:#86efac}
+.transito-cell{color:#fde047}
+.desconhecida-cell{color:#f87171}
+</style>
+</head>
+<body>
+<nav>
+  <span class="brand">JR Lira Tech</span>
+  <span style="color:#475569">/</span>
+  <span style="font-size:13px;color:#94a3b8">Casa Branca — Auditoria</span>
+  <span style="margin-left:auto;font-size:11px;color:#64748b" id="nomeUsuario"></span>
+  <button class="btn-nav" onclick="location.href='/'">← Início</button>
+</nav>
+
+<div class="main">
+  <div class="filtros">
+    <div>
+      <label>Mês</label>
+      <input type="month" id="filtroMes">
+    </div>
+    <div>
+      <label>Loja</label>
+      <select id="filtroLoja"><option value="">Todas</option></select>
+    </div>
+    <button class="btn-primary" onclick="carregar()">Atualizar</button>
+    <span style="margin-left:auto;color:#64748b;font-size:11px;align-self:center">CNPJ CB: 07.961.363/0001-32</span>
+  </div>
+
+  <div id="kpis" class="cards"></div>
+
+  <div class="painel">
+    <div class="painel-titulo">📊 Por Loja Destino</div>
+    <div class="fonte-info">Match via MCP_NNOTAFIS (saída CB UltraSyst) ↔ numeronfe (entrada loja)</div>
+    <div id="por-loja"></div>
+  </div>
+
+  <div class="tabs" id="tabs"></div>
+  <div id="conteudo"></div>
+
+  <div class="painel">
+    <div class="painel-titulo">🏆 Top Produtos Consumidos (confirmadas)</div>
+    <div id="produtos"></div>
+  </div>
+</div>
+
+<script>
+const token = localStorage.getItem('jrlira_token') || localStorage.getItem('token');
+if (!token) location.href = '/';
+const NOMES_LOJA = { 1:'L1 ECONÔMICO', 2:'L2 BR', 3:'L3 JOÃO PESSOA', 4:'L4 FLORESTA', 5:'L5 SÃO JOSÉ', 6:'L6 SANTARÉM' };
+
+let DADOS = null;
+let abaAtiva = 'confirmadas';
+
+function fmtBRL(v) { return Number(v||0).toLocaleString('pt-BR', { style:'currency', currency:'BRL' }); }
+function fmtN(v) { return Number(v||0).toLocaleString('pt-BR'); }
+function dtPt(s) { if(!s) return '—'; return new Date(s).toLocaleDateString('pt-BR'); }
+function esc(s) { return String(s||'').replace(/[<>&"']/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'})[c]); }
+
+document.getElementById('filtroMes').value = new Date().toISOString().slice(0,7);
+
+async function carregar() {
+  const mes = document.getElementById('filtroMes').value;
+  const loja = document.getElementById('filtroLoja').value;
+  const url = '/api/cb-auditoria/resumo?mes=' + mes;
+  try {
+    const r = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
+    if (r.status === 401) { localStorage.clear(); location.href='/'; return; }
+    if (!r.ok) {
+      const e = await r.json().catch(()=>({}));
+      document.getElementById('kpis').innerHTML = '<div class="empty">Erro: ' + (e.erro||r.status) + '</div>';
+      return;
+    }
+    DADOS = await r.json();
+    popularLojas();
+    renderKPIs();
+    renderPorLoja();
+    renderTabs();
+    renderConteudo();
+    carregarProdutos();
+  } catch (e) {
+    document.getElementById('kpis').innerHTML = '<div class="empty">Erro: ' + esc(e.message) + '</div>';
+  }
+}
+
+function popularLojas() {
+  const sel = document.getElementById('filtroLoja');
+  if (sel.options.length > 1) return;
+  (DADOS.lojas||[]).forEach(l => {
+    const o = document.createElement('option');
+    o.value = l.id; o.textContent = NOMES_LOJA[l.id] || l.nome;
+    sel.appendChild(o);
+  });
+}
+
+function renderKPIs() {
+  const k = DADOS.kpis;
+  document.getElementById('kpis').innerHTML = `
+    <div class="card total">
+      <div class="label">Saídas CB (UltraSyst)</div>
+      <div class="v">${fmtN(k.saidas_cb_mes.qtd)}</div>
+      <div class="extra"><strong>${fmtBRL(k.saidas_cb_mes.valor)}</strong></div>
+    </div>
+    <div class="card confirmada">
+      <div class="label">✅ Confirmadas em Loja</div>
+      <div class="v">${fmtN(k.confirmadas.qtd)}</div>
+      <div class="extra"><strong>${fmtBRL(k.confirmadas.valor)}</strong></div>
+    </div>
+    <div class="card transito">
+      <div class="label">⏳ Em Trânsito (sem match)</div>
+      <div class="v">${fmtN(k.em_transito.qtd)}</div>
+      <div class="extra"><strong>${fmtBRL(k.em_transito.valor)}</strong></div>
+    </div>
+    <div class="card desconhecida">
+      <div class="label">⚠️ Origem Desconhecida</div>
+      <div class="v">${fmtN(k.origem_desconhecida.qtd)}</div>
+      <div class="extra"><strong>${fmtBRL(k.origem_desconhecida.valor)}</strong> · NF de outro sistema</div>
+    </div>`;
+}
+
+function renderPorLoja() {
+  const conf = new Map((DADOS.por_loja.confirmadas||[]).map(r => [r.loja_id, r]));
+  const desc = new Map((DADOS.por_loja.desconhecidas||[]).map(r => [r.loja_id, r]));
+  const lojas = new Set([...conf.keys(), ...desc.keys()]);
+  if (lojas.size === 0) {
+    document.getElementById('por-loja').innerHTML = '<div class="empty">Sem dados nesse mês</div>';
+    return;
+  }
+  let html = `
+    <table>
+      <thead><tr>
+        <th class="left">Loja</th>
+        <th colspan="2" style="border-left:1px solid #334155">✅ Confirmadas</th>
+        <th colspan="2" style="border-left:1px solid #334155">⚠️ Origem Desconhecida</th>
+        <th style="border-left:1px solid #334155">Total Compras CB</th>
+      </tr><tr>
+        <th></th>
+        <th style="border-left:1px solid #334155">Qtd</th><th>Valor</th>
+        <th style="border-left:1px solid #334155">Qtd</th><th>Valor</th>
+        <th style="border-left:1px solid #334155">Qtd</th>
+      </tr></thead>
+      <tbody>`;
+  [...lojas].sort((a,b) => a-b).forEach(loja => {
+    const c = conf.get(loja) || { qtd:0, valor:0 };
+    const d = desc.get(loja) || { qtd:0, valor:0 };
+    const total = c.qtd + d.qtd;
+    html += `<tr>
+      <td class="left"><strong>${NOMES_LOJA[loja] || 'L'+loja}</strong></td>
+      <td class="confirm-cell" style="border-left:1px solid #334155" onclick="drillNotas(${loja},'confirmadas')">${fmtN(c.qtd)}</td>
+      <td class="right confirm-cell" onclick="drillNotas(${loja},'confirmadas')">${fmtBRL(c.valor)}</td>
+      <td class="desconhecida-cell" style="border-left:1px solid #334155" onclick="drillNotas(${loja},'desconhecidas')">${fmtN(d.qtd)}</td>
+      <td class="right desconhecida-cell" onclick="drillNotas(${loja},'desconhecidas')">${fmtBRL(d.valor)}</td>
+      <td style="border-left:1px solid #334155"><strong>${fmtN(total)}</strong></td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  document.getElementById('por-loja').innerHTML = html;
+}
+
+function renderTabs() {
+  const k = DADOS.kpis;
+  const abas = [
+    ['confirmadas',   '✅ Confirmadas',   k.confirmadas.qtd],
+    ['transito',      '⏳ Em Trânsito',   k.em_transito.qtd],
+    ['desconhecidas', '⚠️ Origem Desconhecida', k.origem_desconhecida.qtd],
+  ];
+  document.getElementById('tabs').innerHTML = abas.map(([k,lbl,n]) =>
+    `<div class="tab ${k===abaAtiva?'ativa':''}" onclick="ativarAba('${k}')">${lbl} <span class="pill">${fmtN(n)}</span></div>`
+  ).join('');
+}
+
+function ativarAba(k) { abaAtiva = k; renderTabs(); renderConteudo(); }
+
+async function renderConteudo() {
+  const cont = document.getElementById('conteudo');
+  cont.innerHTML = '<div class="empty">Carregando…</div>';
+  const mes = document.getElementById('filtroMes').value;
+  const loja = document.getElementById('filtroLoja').value;
+  const url = '/api/cb-auditoria/notas?mes=' + mes + '&categoria=' + abaAtiva + (loja ? '&loja_id='+loja : '');
+  try {
+    const r = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
+    if (!r.ok) { cont.innerHTML = '<div class="empty">Erro ao carregar notas</div>'; return; }
+    const d = await r.json();
+    if (!d.notas.length) { cont.innerHTML = '<div class="painel"><div class="empty">Nenhuma nota</div></div>'; return; }
+
+    let html;
+    if (abaAtiva === 'transito') {
+      html = `<div class="painel">
+        <div class="painel-titulo">⏳ ${fmtN(d.total)} saídas CB sem entrada confirmada</div>
+        <table><thead><tr><th>Data</th><th class="left">MCP_CODI</th><th class="left">NF</th><th>FOR_CODI (destino)</th><th>NOP</th><th class="right">Valor</th></tr></thead><tbody>` +
+        d.notas.map(n => `<tr>
+          <td>${dtPt(n.data)}</td>
+          <td class="left">${esc(n.mcp_codi)}</td>
+          <td class="left"><strong>${esc(n.mcp_nnotafis)}</strong></td>
+          <td>${esc(n.for_codi)}</td>
+          <td><span class="pill">${esc(n.nop_codi)}</span></td>
+          <td class="right"><strong>${fmtBRL(n.mcp_vtot)}</strong></td>
+        </tr>`).join('') + `</tbody></table></div>`;
+    } else {
+      const cls = abaAtiva === 'confirmadas' ? 'confirm-cell' : 'desconhecida-cell';
+      html = `<div class="painel">
+        <div class="painel-titulo">${abaAtiva === 'confirmadas' ? '✅' : '⚠️'} ${fmtN(d.total)} notas em compras_historico</div>
+        <table><thead><tr><th>Data</th><th class="left">Loja</th><th class="left">NF</th><th>Itens</th><th class="right">Valor</th></tr></thead><tbody>` +
+        d.notas.map(n => `<tr>
+          <td>${dtPt(n.data)}</td>
+          <td class="left"><strong>${NOMES_LOJA[n.loja_id] || 'L'+n.loja_id}</strong></td>
+          <td class="left ${cls}"><strong>${esc(n.numeronfe)}</strong></td>
+          <td>${fmtN(n.qtd_itens)}</td>
+          <td class="right ${cls}"><strong>${fmtBRL(n.valor)}</strong></td>
+        </tr>`).join('') + `</tbody></table></div>`;
+    }
+    cont.innerHTML = html;
+  } catch (e) { cont.innerHTML = '<div class="empty">Erro: ' + esc(e.message) + '</div>'; }
+}
+
+function drillNotas(loja, categoria) {
+  document.getElementById('filtroLoja').value = loja;
+  abaAtiva = categoria;
+  renderTabs();
+  renderConteudo();
+  carregarProdutos();
+  document.getElementById('tabs').scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+async function carregarProdutos() {
+  const mes = document.getElementById('filtroMes').value;
+  const loja = document.getElementById('filtroLoja').value;
+  const url = '/api/cb-auditoria/produtos?mes=' + mes + '&limit=20' + (loja ? '&loja_id='+loja : '');
+  const wrap = document.getElementById('produtos');
+  wrap.innerHTML = '<div class="empty">Carregando…</div>';
+  try {
+    const r = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
+    if (!r.ok) { wrap.innerHTML = '<div class="empty">Erro</div>'; return; }
+    const d = await r.json();
+    if (!d.produtos.length) { wrap.innerHTML = '<div class="empty">Sem produtos confirmados nesse mês</div>'; return; }
+    wrap.innerHTML = `<table><thead><tr><th>#</th><th class="left">Cód</th><th class="left">Descrição</th><th>Notas</th><th class="right">Qtd</th><th class="right">Valor</th></tr></thead><tbody>` +
+      d.produtos.map((p,i) => `<tr>
+        <td>${i+1}</td>
+        <td class="left"><span class="pill">${esc(p.pro_codi)}</span></td>
+        <td class="left"><strong>${esc(p.descricao)}</strong>${p.referencia?' <small style="color:#64748b">'+esc(p.referencia)+'</small>':''}</td>
+        <td>${fmtN(p.qtd_notas)}</td>
+        <td class="right">${Number(p.qtd_total).toFixed(2)}</td>
+        <td class="right confirm-cell"><strong>${fmtBRL(p.valor_total)}</strong></td>
+      </tr>`).join('') + `</tbody></table>`;
+  } catch (e) { wrap.innerHTML = '<div class="empty">Erro: ' + esc(e.message) + '</div>'; }
+}
+
+document.getElementById('filtroLoja').addEventListener('change', () => { renderConteudo(); carregarProdutos(); });
+document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || localStorage.getItem('nome') || '';
+
+carregar();
+</script>
+</body>
+</html>

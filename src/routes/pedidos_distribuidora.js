@@ -18,11 +18,13 @@ const adminOuCeo = [autenticar, exigirPerfil('admin', 'ceo')];
 // Regras de transferência entre CDs (quem pode mandar pra quem)
 // Lojas sempre são destino válido pra qualquer CD origem.
 // ASA FRIOS não envia pra ASA BRANCA (nem ITAITUBA nem N_PROGRESSO) — só pra outro ASA FRIOS.
+// CASA BRANCA é fornecedora interna (uso/consumo) — só envia, nunca recebe transferência.
 const REGRAS_CD_DESTINOS = {
   'srv1-itautuba':    ['srv1-nprogresso', 'srv2-asafrio', 'srv2-asasantarem'],
   'srv1-nprogresso':  ['srv1-itautuba',   'srv2-asafrio', 'srv2-asasantarem'],
   'srv2-asafrio':     ['srv2-asasantarem'],
   'srv2-asasantarem': ['srv2-asafrio'],
+  'srv3-casabranca':  ['srv1-itautuba', 'srv1-nprogresso', 'srv2-asafrio', 'srv2-asasantarem'],
 };
 
 // Defaults do CSV de exemplo
