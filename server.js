@@ -1112,6 +1112,24 @@ async function initDB() {
       `UPDATE funcionarios
           SET status = CASE WHEN data_demissao IS NOT NULL THEN 'DESLIGADO' ELSE 'ATIVO' END
         WHERE status IS NULL`);
+    // Tabela proria de empresas terceirizadas (antes era DISTINCT do campo em funcionarios,
+    // entao empresa sumia quando nao tinha funcionario associado)
+    await runMigration(client, '20260515_rh_terceirizadas',
+      `CREATE TABLE IF NOT EXISTS rh_terceirizadas (
+         id SERIAL PRIMARY KEY,
+         nome VARCHAR(120) UNIQUE NOT NULL,
+         ativo BOOLEAN DEFAULT TRUE,
+         criado_em TIMESTAMPTZ DEFAULT NOW()
+       )`);
+    // Backfill: empresas que ja apareciam em funcionarios + A D A FERNANDES
+    await runMigration(client, '20260515_rh_terceirizadas_backfill',
+      `INSERT INTO rh_terceirizadas (nome)
+         SELECT DISTINCT terceirizada FROM funcionarios
+          WHERE terceirizada IS NOT NULL AND terceirizada <> ''
+       ON CONFLICT (nome) DO NOTHING`);
+    await runMigration(client, '20260515_rh_terceirizadas_ada',
+      `INSERT INTO rh_terceirizadas (nome) VALUES ('A D A FERNANDES')
+       ON CONFLICT (nome) DO NOTHING`);
     await runMigration(client, '20260504_backfill_criado_por_sug',
       `UPDATE pedidos SET criado_por_comprador = 'sugestao'
          WHERE status='rascunho' AND numero_pedido LIKE 'SUG-%' AND criado_por_comprador IS NULL`);

@@ -224,16 +224,62 @@ router.get('/cid/buscar', autenticar, async (req, res) => {
   } catch (err) { console.error('[funcionarios]', err.message); res.status(500).json({ erro: 'Erro interno' }); }
 });
 
-// Listar terceirizadas distintas (para popular dropdown)
+// Listar terceirizadas ativas (para popular dropdown)
 router.get('/terceirizadas', autenticar, async (req, res) => {
   try {
+    const incluirInativas = req.query.todas === '1';
     const rows = await dbQuery(
-      `SELECT DISTINCT terceirizada FROM funcionarios
-       WHERE terceirizada IS NOT NULL AND terceirizada <> ''
-       ORDER BY terceirizada`
+      incluirInativas
+        ? `SELECT id, nome, ativo FROM rh_terceirizadas ORDER BY ativo DESC, nome`
+        : `SELECT nome FROM rh_terceirizadas WHERE ativo = TRUE ORDER BY nome`
     );
-    res.json(rows.map(r => r.terceirizada));
-  } catch (err) { console.error('[funcionarios]', err.message); res.status(500).json({ erro: 'Erro interno' }); }
+    if (incluirInativas) return res.json(rows);
+    res.json(rows.map(r => r.nome));
+  } catch (err) { console.error('[funcionarios terceirizadas]', err.message); res.status(500).json({ erro: 'Erro interno' }); }
+});
+
+// Cadastrar terceirizada (admin/rh)
+router.post('/terceirizadas', autenticar, async (req, res) => {
+  try {
+    if (!['admin', 'rh'].includes(req.usuario.perfil)) {
+      return res.status(403).json({ erro: 'Acesso restrito' });
+    }
+    const nome = String(req.body?.nome || '').trim().toUpperCase();
+    if (!nome) return res.status(400).json({ erro: 'Nome obrigatorio' });
+    const r = await dbQuery(
+      `INSERT INTO rh_terceirizadas (nome) VALUES ($1)
+         ON CONFLICT (nome) DO UPDATE SET ativo = TRUE
+       RETURNING id, nome, ativo`,
+      [nome]
+    );
+    res.json(r[0]);
+  } catch (err) { console.error('[terceirizadas POST]', err.message); res.status(500).json({ erro: err.message }); }
+});
+
+// Ativar/desativar/renomear terceirizada (admin/rh)
+router.patch('/terceirizadas/:id', autenticar, async (req, res) => {
+  try {
+    if (!['admin', 'rh'].includes(req.usuario.perfil)) {
+      return res.status(403).json({ erro: 'Acesso restrito' });
+    }
+    const updates = [], params = [];
+    if (req.body?.nome !== undefined) {
+      params.push(String(req.body.nome).trim().toUpperCase());
+      updates.push(`nome = $${params.length}`);
+    }
+    if (req.body?.ativo !== undefined) {
+      params.push(!!req.body.ativo);
+      updates.push(`ativo = $${params.length}`);
+    }
+    if (!updates.length) return res.status(400).json({ erro: 'Nada para atualizar' });
+    params.push(req.params.id);
+    const r = await dbQuery(
+      `UPDATE rh_terceirizadas SET ${updates.join(', ')} WHERE id = $${params.length} RETURNING *`,
+      params
+    );
+    if (!r.length) return res.status(404).json({ erro: 'Nao encontrada' });
+    res.json(r[0]);
+  } catch (err) { console.error('[terceirizadas PATCH]', err.message); res.status(500).json({ erro: err.message }); }
 });
 
 // Buscar por matrícula (para lookup nos outros apps)
