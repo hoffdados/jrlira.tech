@@ -2223,10 +2223,12 @@ router.post('/', adminOuCeo, async (req, res) => {
       }
     }
 
-    // 4) Hidrata todos mat_codi com preço admin do CD origem
+    // 4) Hidrata todos mat_codi com preço admin + grupo do CD origem
     const dadosCd = await dbQuery(
-      `SELECT cd_m.mat_codi, cd_m.mat_desc, cd_c.pro_prad, pe.qtd_embalagem
+      `SELECT cd_m.mat_codi, cd_m.mat_desc, cd_m.gru_codi,
+              cg.gru_desc, cd_c.pro_prad, pe.qtd_embalagem
          FROM cd_material cd_m
+         LEFT JOIN cd_grupo cg ON cg.cd_codigo = cd_m.cd_codigo AND cg.gru_codi = cd_m.gru_codi
          LEFT JOIN cd_custoprod cd_c ON cd_c.cd_codigo = cd_m.cd_codigo AND cd_c.pro_codi = cd_m.mat_codi
          LEFT JOIN produtos_embalagem pe ON pe.mat_codi = cd_m.mat_codi
         WHERE cd_m.cd_codigo = $1 AND cd_m.mat_codi = ANY($2::text[])`,
@@ -2238,6 +2240,30 @@ router.post('/', adminOuCeo, async (req, res) => {
       if (!cd) return res.status(400).json({ erro: `mat_codi ${m} nao encontrado no catalogo` });
       if (!(parseFloat(cd.pro_prad) > 0)) return res.status(400).json({ erro: `mat_codi ${m} sem preco admin` });
     }
+
+    // 4.1) Prioridades cadastradas pra esse CD origem
+    const prioRows = await dbQuery(
+      `SELECT mat_codi FROM pedidos_distrib_prioridades WHERE cd_origem_codigo = $1`,
+      [cd_origem_codigo]
+    );
+    const setPrio = new Set(prioRows.map(p => p.mat_codi));
+
+    // 4.2) Ordem dos destinos: lojas primeiro (loja_id ASC), depois CDs na ordem fixa
+    const ORDEM_CD = ['srv1-nprogresso','srv2-asafrio','srv2-asasantarem','srv1-itautuba','srv3-casabranca'];
+    function ordemDest(d) {
+      if (d.tipo === 'LOJA') return [0, d.loja_id || 999, d.nome];
+      const idx = ORDEM_CD.indexOf(d.codigo) >= 0 ? ORDEM_CD.indexOf(d.codigo) : 9;
+      return [1, idx, d.nome];
+    }
+    const destIdsOrd = [...destIds].sort((a, b) => {
+      const A = ordemDest(destMap.get(a));
+      const B = ordemDest(destMap.get(b));
+      for (let i = 0; i < A.length; i++) {
+        if (A[i] < B[i]) return -1;
+        if (A[i] > B[i]) return 1;
+      }
+      return 0;
+    });
 
     // 5) Próximo COD_PEDIDO pra esse CD origem
     const [{ proximo }] = await dbQuery(`
@@ -2258,21 +2284,19 @@ router.post('/', adminOuCeo, async (req, res) => {
     let totalItensGeral = 0;
     const pedidosResumo = [];
 
-    for (const id of destIds) {
-      const dest = destMap.get(id);
-      const cliCodi = cliMap.get(id);
-      const itensDoDestino = porDestino.get(id);
-      if (!itensDoDestino?.length) continue;
-
-      // Calcula valor total do pedido somando qtd × preço de cada item
+    // Helper que emite UM pedido (1 destino + 1 conjunto de itens) e incrementa cod_pedido.
+    // bloco = 'prioridade' | 'grupo'; rotulo = nome do grupo ou 'PRIORIDADE'
+    function emitirPedido(dest, cliCodi, itens, bloco, rotulo) {
+      if (!itens?.length) return;
+      const obsPedido = `${rotulo} - ${obser}`.slice(0, 120);
       let valorPedido = 0;
-      const linhasItensDest = [];
-      for (const it of itensDoDestino) {
+      const linhasItensPed = [];
+      for (const it of itens) {
         const cd = cdMap.get(it.mat_codi);
         const valor = parseFloat(cd.pro_prad);
         const qtd = it.qtd;
         valorPedido += qtd * valor;
-        linhasItensDest.push([
+        linhasItensPed.push([
           codPedido,               VEN_CODI_PADRAO,        it.mat_codi,
           UNIDADE_PADRAO,          fmtNum(qtd, 0),         fmtNum(valor, 2),
           '0',                     '0',                    fmtNum(valor, 2),
@@ -2280,31 +2304,55 @@ router.post('/', adminOuCeo, async (req, res) => {
           '',
         ].join(';'));
       }
-
       linhasPedidos.push([
         codPedido,                EMPRESA_PADRAO,         LOCALIZACAO_PADRAO,
         VEN_CODI_PADRAO,          cliCodi,                '0',
         COD_CONDICAO_PADRAO,      COD_PAGAMENTO_PADRAO,   COD_TIPOVENDA_PADRAO,
         COD_TABELA_PADRAO,        dataEmissao,            fmtNum(valorPedido, 2),
-        obser,                    '0',                    '1',
+        obsPedido,                '0',                    '1',
         '0',                      horaEmissao,            '0',
         '0',                      '00.00000',             '00.00000',
         dest.cnpj,                padNomeCliente(dest.nome),
       ].join(';'));
-      linhasItens.push(...linhasItensDest);
-
+      linhasItens.push(...linhasItensPed);
       pedidosResumo.push({
-        cod_pedido: codPedido,
-        destino_id: dest.id,
-        destino_tipo: dest.tipo,
-        destino_nome: dest.nome,
-        cli_codi: cliCodi,
-        valor: valorPedido,
-        itens: itensDoDestino.length,
+        cod_pedido: codPedido, destino_id: dest.id, destino_tipo: dest.tipo,
+        destino_nome: dest.nome, cli_codi: cliCodi,
+        bloco, rotulo,
+        valor: valorPedido, itens: itens.length,
       });
       valorTotalGeral += valorPedido;
-      totalItensGeral += itensDoDestino.length;
+      totalItensGeral += itens.length;
       codPedido += 1;
+    }
+
+    // BLOCO 1 — Pedidos de PRIORIDADE (todas as lojas, na ordem)
+    for (const id of destIdsOrd) {
+      const dest = destMap.get(id);
+      const cliCodi = cliMap.get(id);
+      const itensDest = porDestino.get(id) || [];
+      const itensPrio = itensDest.filter(it => setPrio.has(it.mat_codi));
+      emitirPedido(dest, cliCodi, itensPrio, 'prioridade', 'PRIORIDADE');
+    }
+
+    // BLOCO 2 — Pra cada destino, 1 pedido por grupo (ordem alfabetica de gru_desc)
+    for (const id of destIdsOrd) {
+      const dest = destMap.get(id);
+      const cliCodi = cliMap.get(id);
+      const itensDest = porDestino.get(id) || [];
+      const naoPrio = itensDest.filter(it => !setPrio.has(it.mat_codi));
+      // Agrupa por gru_desc (fallback 'SEM GRUPO' se vier null)
+      const porGrupo = new Map(); // gru_desc -> [...]
+      for (const it of naoPrio) {
+        const cd = cdMap.get(it.mat_codi);
+        const g = (cd?.gru_desc || 'SEM GRUPO').trim().toUpperCase();
+        if (!porGrupo.has(g)) porGrupo.set(g, []);
+        porGrupo.get(g).push(it);
+      }
+      const grupos = [...porGrupo.keys()].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+      for (const g of grupos) {
+        emitirPedido(dest, cliCodi, porGrupo.get(g), 'grupo', g);
+      }
     }
 
     if (!linhasPedidos.length) return res.status(400).json({ erro: 'nenhum pedido valido' });
@@ -2438,28 +2486,75 @@ router.get('/pdf', autoricar, async (req, res) => {
     );
     const origemNome = origem?.nome || cdOrigem;
 
-    // Quantidades + descricao + destino
+    // Quantidades + descricao + grupo + destino
     const params = [cdOrigem];
     let extra = '';
     if (destFilter) { params.push(destFilter); extra = ` AND q.destino_id = $${params.length}`; }
     const linhas = await dbQuery(
       `SELECT q.destino_id, q.mat_codi, q.qtd,
-              d.nome AS destino_nome, d.tipo AS destino_tipo, d.loja_id,
-              cm.mat_desc
+              d.codigo AS destino_codigo, d.nome AS destino_nome, d.tipo AS destino_tipo, d.loja_id,
+              cm.mat_desc, cm.gru_codi,
+              cg.gru_desc,
+              (pr.mat_codi IS NOT NULL) AS prioritario
          FROM pedidos_distrib_quantidades q
          JOIN pedidos_distrib_destinos d ON d.id = q.destino_id
          LEFT JOIN cd_material cm ON cm.cd_codigo = q.cd_origem_codigo AND cm.mat_codi = q.mat_codi
+         LEFT JOIN cd_grupo cg ON cg.cd_codigo = q.cd_origem_codigo AND cg.gru_codi = cm.gru_codi
+         LEFT JOIN pedidos_distrib_prioridades pr
+                ON pr.cd_origem_codigo = q.cd_origem_codigo AND pr.mat_codi = q.mat_codi
         WHERE q.cd_origem_codigo = $1 AND q.qtd > 0 ${extra}
         ORDER BY d.tipo, d.loja_id NULLS LAST, d.nome, cm.mat_desc`,
       params
     );
     if (!linhas.length) return res.status(400).json({ erro: 'Sem quantidades > 0 pra exportar' });
 
-    // Agrupa por destino
+    // Agrupa por destino + bloco (PRIORIDADE ou nome do grupo)
+    const ORDEM_CD = ['srv1-nprogresso','srv2-asafrio','srv2-asasantarem','srv1-itautuba','srv3-casabranca'];
     const porDestino = new Map();
     for (const l of linhas) {
-      if (!porDestino.has(l.destino_id)) porDestino.set(l.destino_id, { nome: l.destino_nome, tipo: l.destino_tipo, loja_id: l.loja_id, itens: [] });
-      porDestino.get(l.destino_id).itens.push(l);
+      if (!porDestino.has(l.destino_id)) {
+        porDestino.set(l.destino_id, {
+          codigo: l.destino_codigo, nome: l.destino_nome, tipo: l.destino_tipo, loja_id: l.loja_id,
+          prio: [], porGrupo: new Map()
+        });
+      }
+      const reg = porDestino.get(l.destino_id);
+      if (l.prioritario) {
+        reg.prio.push(l);
+      } else {
+        const g = (l.gru_desc || 'SEM GRUPO').trim().toUpperCase();
+        if (!reg.porGrupo.has(g)) reg.porGrupo.set(g, []);
+        reg.porGrupo.get(g).push(l);
+      }
+    }
+    // Ordena destinos: lojas L1..L6 primeiro, depois CDs na ordem fixa
+    function ordemDest(d) {
+      if (d.tipo === 'LOJA') return [0, d.loja_id || 999, d.nome];
+      const idx = ORDEM_CD.indexOf(d.codigo) >= 0 ? ORDEM_CD.indexOf(d.codigo) : 9;
+      return [1, idx, d.nome];
+    }
+    const destIdsOrd = [...porDestino.keys()].sort((a, b) => {
+      const A = ordemDest(porDestino.get(a));
+      const B = ordemDest(porDestino.get(b));
+      for (let i = 0; i < A.length; i++) {
+        if (A[i] < B[i]) return -1;
+        if (A[i] > B[i]) return 1;
+      }
+      return 0;
+    });
+
+    // Monta lista de "paginas" na ordem correta:
+    // BLOCO 1: PRIORIDADE de todas as lojas (ordenadas)
+    // BLOCO 2: pra cada loja, 1 pagina por grupo (alfabetico)
+    const paginas = [];
+    for (const id of destIdsOrd) {
+      const d = porDestino.get(id);
+      if (d.prio.length) paginas.push({ dest: d, rotulo: 'PRIORIDADE', itens: d.prio });
+    }
+    for (const id of destIdsOrd) {
+      const d = porDestino.get(id);
+      const grupos = [...d.porGrupo.keys()].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+      for (const g of grupos) paginas.push({ dest: d, rotulo: g, itens: d.porGrupo.get(g) });
     }
 
     const PDFDocument = require('pdfkit');
@@ -2479,15 +2574,17 @@ router.get('/pdf', autoricar, async (req, res) => {
 
     const hoje = new Date().toLocaleString('pt-BR');
     let primeiro = true;
-    for (const [, dest] of porDestino) {
+    for (const pag of paginas) {
+      const dest = pag.dest;
       if (!primeiro) doc.addPage();
       primeiro = false;
 
       // Cabecalho
-      doc.fontSize(14).fillColor('#000').text('Pedido — Transferência CD', { align: 'left' });
+      const ehPrio = pag.rotulo === 'PRIORIDADE';
+      doc.fontSize(14).fillColor(ehPrio ? '#b91c1c' : '#000').text(`Pedido — ${pag.rotulo}`, { align: 'left' });
       doc.fontSize(10).fillColor('#444').text(`Origem: ${origemNome}    Destino: ${dest.nome}`);
       doc.text(`Tipo destino: ${dest.tipo}${dest.loja_id ? ` (loja ${dest.loja_id})` : ''}`);
-      doc.text(`Emitido em: ${hoje}    Itens: ${dest.itens.length}`);
+      doc.text(`Emitido em: ${hoje}    Itens: ${pag.itens.length}`);
       doc.moveDown(0.6);
 
       // Tabela header
@@ -2510,7 +2607,7 @@ router.get('/pdf', autoricar, async (req, res) => {
 
       doc.fontSize(9);
       let totalQtd = 0;
-      for (const it of dest.itens) {
+      for (const it of pag.itens) {
         // quebra de pagina manual
         if (y > doc.page.height - 60) {
           doc.addPage();
@@ -2527,7 +2624,7 @@ router.get('/pdf', autoricar, async (req, res) => {
 
       // Total
       y += 6;
-      doc.fontSize(10).fillColor('#000').text(`Total: ${totalQtd % 1 === 0 ? totalQtd.toFixed(0) : totalQtd.toFixed(3)} unidade(s) — ${dest.itens.length} produto(s)`, startX, y);
+      doc.fontSize(10).fillColor('#000').text(`Total: ${totalQtd % 1 === 0 ? totalQtd.toFixed(0) : totalQtd.toFixed(3)} unidade(s) — ${pag.itens.length} produto(s)`, startX, y);
     }
 
     doc.end();
