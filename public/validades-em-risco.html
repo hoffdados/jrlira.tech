@@ -38,6 +38,7 @@ tbody td{padding:10px;vertical-align:top}
 .acoes button{padding:5px 10px;font-size:11px;border:none;border-radius:5px;cursor:pointer;font-weight:700}
 .btn-liberar{background:#16a34a;color:#fff}
 .btn-devolver{background:#dc2626;color:#fff}
+.btn-editar-data{background:#7c3aed;color:#fff}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,0.7);display:none;align-items:center;justify-content:center;z-index:100}
 .modal.show{display:flex}
 .modal-box{background:#1e293b;border-radius:12px;padding:24px;width:480px;max-width:92vw}
@@ -101,8 +102,37 @@ tbody td{padding:10px;vertical-align:top}
   </div>
 </div>
 
+<div class="modal" id="modalEditarData">
+  <div class="modal-box">
+    <h3>✏ Corrigir validade</h3>
+    <div id="editarDesc" style="font-size:12px;color:#94a3b8;margin-bottom:8px"></div>
+    <div style="background:#0f2a3f;border-left:3px solid #38bdf8;padding:8px 10px;border-radius:6px;font-size:11px;color:#7dd3fc;margin-bottom:10px">
+      ⚠ Use só se a validade foi digitada errada na conferência. A alteração fica registrada na observação.
+    </div>
+    <label>Validade atual</label>
+    <div id="editarValAtual" style="font-size:13px;color:#fbbf24;font-weight:700;margin-bottom:10px"></div>
+    <label>Nova validade</label>
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">
+      <input type="number" inputmode="numeric" min="1" max="31" placeholder="dd" id="editD" style="width:60px;padding:8px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:14px;text-align:center" maxlength="2">
+      <span style="color:#475569">/</span>
+      <input type="number" inputmode="numeric" min="1" max="12" placeholder="mm" id="editM" style="width:60px;padding:8px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:14px;text-align:center" maxlength="2">
+      <span style="color:#475569">/</span>
+      <input type="number" inputmode="numeric" min="2000" max="2099" placeholder="aaaa" id="editY" style="width:80px;padding:8px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:14px;text-align:center" maxlength="4">
+    </div>
+    <div id="editErr" style="font-size:11px;color:#f87171;display:none;margin-bottom:6px"></div>
+    <label>Motivo / Observação</label>
+    <textarea id="editObs" placeholder="Ex: lançamento errado — validade real é dia X"></textarea>
+    <div class="modal-act">
+      <button class="cancel" onclick="fecharEditarModal()">Cancelar</button>
+      <button class="confirm" onclick="salvarNovaValidade()" style="background:#7c3aed">Confirmar alteração</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const LOJAS_NOMES={1:'L1 ECON',2:'L2 BR',3:'L3 JP',4:'L4 FLO',5:'L5 SJ',6:'L6 SAN'};
+const PERFIL = localStorage.getItem('jrlira_perfil');
+const PODE_EDITAR_VALIDADE = ['admin', 'auditor'].includes(PERFIL);
 let timer=null;
 function debouncedCarregar(){clearTimeout(timer);timer=setTimeout(carregar,400)}
 function fmtData(d){if(!d)return'—';return new Date(d).toLocaleDateString('pt-BR',{timeZone:'UTC'})}
@@ -161,10 +191,15 @@ function renderLista(rows){
     <th style="text-align:right">R$ devolver</th><th>Motivo</th><th>Status</th><th>Ações</th>
   </tr></thead><tbody>
   ${rows.map(r=>{
-    const acoes=r.status==='pendente'?`
-      <button class="btn-liberar" onclick='abrirDecidir(${r.id},"liberado","${(r.descricao||'').replace(/"/g,'')}")'>Liberar</button>
-      <button class="btn-devolver" onclick='abrirDecidir(${r.id},"devolucao","${(r.descricao||'').replace(/"/g,'')}",${r.qtd_em_risco_caixas||0})'>Devolução</button>
-    `:`<span style="color:#64748b;font-size:11px">${r.decidido_por||''} ${fmtData(r.decidido_em)}</span>`;
+    const descEsc = (r.descricao||'').replace(/"/g,'');
+    const btnEditar = PODE_EDITAR_VALIDADE
+      ? `<button class="btn-editar-data" onclick='abrirEditarValidade(${r.id},"${descEsc}","${r.validade}")' title="Corrigir validade digitada errada">✏ Validade</button>`
+      : '';
+    const acoes = r.status==='pendente'?`
+      <button class="btn-liberar" onclick='abrirDecidir(${r.id},"liberado","${descEsc}")'>Liberar</button>
+      <button class="btn-devolver" onclick='abrirDecidir(${r.id},"devolucao","${descEsc}",${r.qtd_em_risco_caixas||0})'>Devolução</button>
+      ${btnEditar}
+    `:`<span style="color:#64748b;font-size:11px">${r.decidido_por||''} ${fmtData(r.decidido_em)}</span> ${btnEditar}`;
     const dias = r.dias_ate_vencer;
     const corDias = dias < 0 ? '#f87171' : dias < 30 ? '#fbbf24' : '#94a3b8';
     const cx = r.qtd_em_risco_caixas != null ? r.qtd_em_risco_caixas : Math.ceil(parseFloat(r.qtd_em_risco)/(parseFloat(r.qtd_embalagem)||1));
@@ -206,6 +241,79 @@ async function salvar(){
     if(!r.ok)throw new Error((await r.json()).erro);
     fecharModal();carregar();
   }catch(e){alert('Erro: '+e.message)}
+}
+
+// ── Editar validade (admin / auditor) ──
+let editarCtx = null;
+function abrirEditarValidade(id, desc, validadeAtual) {
+  editarCtx = { id };
+  document.getElementById('editarDesc').textContent = desc;
+  document.getElementById('editarValAtual').textContent = fmtData(validadeAtual);
+  document.getElementById('editD').value = '';
+  document.getElementById('editM').value = '';
+  document.getElementById('editY').value = '';
+  document.getElementById('editObs').value = '';
+  document.getElementById('editErr').style.display = 'none';
+  document.getElementById('modalEditarData').classList.add('show');
+  setTimeout(() => document.getElementById('editD').focus(), 50);
+}
+function fecharEditarModal(){document.getElementById('modalEditarData').classList.remove('show');editarCtx=null}
+
+// Foco auto entre dd/mm/yyyy
+['editD','editM'].forEach((id, i) => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener('input', () => {
+    if (el.value.length >= 2) {
+      const prox = i === 0 ? 'editM' : 'editY';
+      document.getElementById(prox)?.focus();
+    }
+  });
+});
+
+function validarNovaData() {
+  const d = parseInt(document.getElementById('editD').value, 10);
+  const m = parseInt(document.getElementById('editM').value, 10);
+  const y = parseInt(document.getElementById('editY').value, 10);
+  if (isNaN(d) || isNaN(m) || isNaN(y)) return { ok: false, erro: 'Preencha dia, mes e ano' };
+  if (m < 1 || m > 12) return { ok: false, erro: 'Mes invalido' };
+  if (d < 1 || d > 31) return { ok: false, erro: 'Dia invalido' };
+  if (y < 2000 || y > 2099) return { ok: false, erro: 'Ano invalido' };
+  const dt = new Date(y, m - 1, d);
+  if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) {
+    return { ok: false, erro: 'Data inexistente' };
+  }
+  const iso = `${String(y).padStart(4,'0')}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+  return { ok: true, iso };
+}
+
+async function salvarNovaValidade() {
+  if (!editarCtx) return;
+  const errEl = document.getElementById('editErr');
+  const r = validarNovaData();
+  if (!r.ok) {
+    errEl.textContent = '⚠ ' + r.erro;
+    errEl.style.display = 'block';
+    return;
+  }
+  const obs = document.getElementById('editObs').value.trim();
+  try {
+    const resp = await apiFetch(`/api/validades-em-risco/${editarCtx.id}/alterar-validade`, {
+      method: 'POST',
+      body: JSON.stringify({ nova_validade: r.iso, observacao: obs })
+    });
+    if (!resp.ok) {
+      const e = await resp.json();
+      errEl.textContent = '⚠ ' + (e.erro || 'Erro ao salvar');
+      errEl.style.display = 'block';
+      return;
+    }
+    fecharEditarModal();
+    carregar();
+  } catch (e) {
+    errEl.textContent = '⚠ ' + e.message;
+    errEl.style.display = 'block';
+  }
 }
 
 if(!localStorage.getItem('jrlira_token'))location.href='/';

@@ -153,4 +153,68 @@ async function checarLiberacaoNota(notaId) {
   await query(`UPDATE notas_entrada SET status=$2 WHERE id=$1 AND status='aguardando_admin_validade'`, [notaId, novoStatus]);
 }
 
+// POST /:id/alterar-validade  body: { nova_validade: 'yyyy-mm-dd', observacao? }
+// Permitido para admin e auditor — corrigir lancamento errado de validade na conferencia.
+// Recalcula dias_ate_vencer, qtd_em_risco, motivo_risco e propaga pra lotes_conferidos.
+router.post('/:id/alterar-validade', autenticar, async (req, res) => {
+  try {
+    if (!['admin', 'auditor'].includes(req.usuario.perfil)) {
+      return res.status(403).json({ erro: 'Acesso restrito a admin/auditor' });
+    }
+    const { nova_validade, observacao } = req.body || {};
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(nova_validade || '')) {
+      return res.status(400).json({ erro: 'Data invalida (use yyyy-mm-dd)' });
+    }
+    const [risco] = await query('SELECT * FROM validades_em_risco WHERE id = $1', [req.params.id]);
+    if (!risco) return res.status(404).json({ erro: 'Registro nao encontrado' });
+
+    const dt = new Date(nova_validade + 'T12:00:00');
+    const hoje = new Date(); hoje.setHours(12, 0, 0, 0);
+    const dias = Math.ceil((dt - hoje) / 86400000);
+
+    const vendasMedia = parseFloat(risco.vendas_media_dia) || 0;
+    const qtdRecebida = parseFloat(risco.qtd_recebida_lote) || 0;
+    const estoqueAcum = parseFloat(risco.estoque_pos_recebimento) || 0;
+    const emb = parseFloat(risco.qtd_embalagem) || 1;
+    const precoUnit = parseFloat(risco.valor_unitario) || 0;
+
+    const consumivel = Math.max(0, vendasMedia * Math.max(0, dias));
+    const emRisco = Math.max(0, estoqueAcum - consumivel);
+    const qtdRiscoUn = vendasMedia <= 0 ? qtdRecebida : emRisco;
+    const qtdRiscoCx = emb > 0 ? Math.ceil(qtdRiscoUn / emb) : Math.ceil(qtdRiscoUn);
+    const valorRiscoCx = qtdRiscoCx * emb * precoUnit;
+
+    let motivo;
+    if (dias < 0) motivo = 'ja_vencido';
+    else if (vendasMedia <= 0) motivo = 'sem_historico_vendas';
+    else motivo = qtdRiscoUn > 0 ? 'risco_por_giro' : 'risco_por_giro'; // mantem se ainda em risco
+
+    const stamp = new Date().toISOString().slice(0, 10);
+    const quem = req.usuario.nome || req.usuario.usuario;
+    const linhaLog = `[${stamp} ${quem}] Validade alterada de ${risco.validade} para ${nova_validade}${observacao ? ': ' + observacao : ''}`;
+    const novaObs = risco.observacao ? `${risco.observacao}\n${linhaLog}` : linhaLog;
+
+    await query(
+      `UPDATE validades_em_risco SET
+         validade = $1, dias_ate_vencer = $2,
+         qtd_consumivel_ate_vencer = $3, qtd_em_risco = $4, qtd_em_risco_caixas = $5,
+         valor_em_risco = $6, motivo_risco = $7, observacao = $8
+       WHERE id = $9`,
+      [nova_validade, dias, consumivel, qtdRiscoUn, qtdRiscoCx, valorRiscoCx, motivo, novaObs, req.params.id]
+    );
+
+    // Propaga pra lotes_conferidos (mesmo nota+item+validade antiga)
+    await query(
+      `UPDATE lotes_conferidos SET validade = $1
+         WHERE nota_id = $2 AND item_id = $3 AND validade = $4`,
+      [nova_validade, risco.nota_id, risco.item_id, risco.validade]
+    );
+
+    res.json({ ok: true, dias_ate_vencer: dias, motivo_risco: motivo });
+  } catch (e) {
+    console.error('[validades alterar-validade]', e.message);
+    res.status(500).json({ erro: e.message });
+  }
+});
+
 module.exports = router;
