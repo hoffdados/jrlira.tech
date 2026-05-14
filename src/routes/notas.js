@@ -886,7 +886,7 @@ router.get('/:id', autenticar, async (req, res) => {
         ${isTransfCD ? `
           COALESCE(cpe.ean_secundario, cpe.ean_principal, pe.ean_principal_jrlira) AS cod_barra_loja,
           COALESCE(cpe.qtd_embalagem, pe.qtd_embalagem) AS qtd_embalagem_loja,
-          pe.descricao_atual      AS descricao_cadastro_cd,
+          cm.mat_desc             AS descricao_cadastro_cd,
           (SELECT i2.preco_unitario_nota
              FROM itens_nota i2
              JOIN notas_entrada n2 ON n2.id = i2.nota_id
@@ -928,6 +928,8 @@ router.get('/:id', autenticar, async (req, res) => {
       ${isTransfCD ? `
         LEFT JOIN cd_produtos_embalagem cpe
                ON cpe.cd_codigo = $3 AND cpe.mat_codi = i.cd_pro_codi
+        LEFT JOIN cd_material cm
+               ON cm.cd_codigo = $3 AND cm.mat_codi = i.cd_pro_codi
         LEFT JOIN produtos_embalagem pe ON pe.mat_codi = i.cd_pro_codi` : ''}
       WHERE i.nota_id = $1
       ORDER BY i.numero_item
