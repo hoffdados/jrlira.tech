@@ -283,6 +283,14 @@ function validarNovaData() {
   if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) {
     return { ok: false, erro: 'Data inexistente' };
   }
+  // Bloqueia validade < hoje+10d (mesma regra da conferencia)
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const minimo = new Date(hoje); minimo.setDate(minimo.getDate() + 10);
+  if (dt < minimo) {
+    const diff = Math.ceil((dt - hoje) / 86400000);
+    if (diff < 0) return { ok: false, erro: 'Produto vencido — nao aceitar' };
+    return { ok: false, erro: `Validade muito curta (${diff}d) — minimo 10 dias` };
+  }
   const iso = `${String(y).padStart(4,'0')}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
   return { ok: true, iso };
 }

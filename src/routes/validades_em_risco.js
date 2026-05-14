@@ -165,6 +165,13 @@ router.post('/:id/alterar-validade', autenticar, async (req, res) => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(nova_validade || '')) {
       return res.status(400).json({ erro: 'Data invalida (use yyyy-mm-dd)' });
     }
+    // Bloqueio de 10 dias minimos (mesma regra da conferencia)
+    const dataMin = new Date(); dataMin.setHours(0,0,0,0);
+    dataMin.setDate(dataMin.getDate() + 10);
+    const minISO = dataMin.toISOString().slice(0, 10);
+    if (nova_validade < minISO) {
+      return res.status(400).json({ erro: `Validade ${nova_validade} esta abaixo do minimo (hoje + 10 dias). Nao aceitar produto.` });
+    }
     const [risco] = await query('SELECT * FROM validades_em_risco WHERE id = $1', [req.params.id]);
     if (!risco) return res.status(404).json({ erro: 'Registro nao encontrado' });
 

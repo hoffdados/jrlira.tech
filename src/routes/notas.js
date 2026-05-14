@@ -1690,6 +1690,21 @@ router.post('/:id/conferencia', autenticar, async (req, res) => {
     const rodada = (nota.conferencia_rodada || 0) + 1;
     if (rodada > 2) return res.status(400).json({ erro: 'Conferências encerradas. Aguarda auditoria.' });
 
+    // Bloqueia lotes com validade < hoje+10d
+    const DIAS_MINIMOS = 10;
+    const dataMin = new Date(); dataMin.setHours(0,0,0,0);
+    dataMin.setDate(dataMin.getDate() + DIAS_MINIMOS);
+    const minISO = dataMin.toISOString().slice(0, 10);
+    for (const conf of itens_conferidos) {
+      for (const l of (conf.lotes || [])) {
+        if (l.validade && String(l.validade) < minISO) {
+          return res.status(400).json({
+            erro: `Item ${conf.item_id}: lote com validade ${l.validade} — minimo ${DIAS_MINIMOS} dias a partir de hoje. Nao aceitar produto.`
+          });
+        }
+      }
+    }
+
     await client.query('BEGIN');
     let divergentes = 0;
     const resultados = [];
