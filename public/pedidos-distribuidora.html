@@ -212,6 +212,21 @@ table.grade tbody tr.prioritario:hover{background:#27220e}
       <a id="dlItens"     target="_blank">⬇ P_PEDIDOS_ITENS.csv</a>
     </div>
   </div>
+
+  <div style="margin-top:18px;padding:14px;background:#0f172a;border:1px solid #1e293b;border-radius:8px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <h3 style="color:#fde047;font-size:14px;margin:0">📂 Histórico de gerações</h3>
+      <button class="btn-ghost btn-sm" onclick="carregarHistorico()">🔄 Atualizar</button>
+    </div>
+    <div style="overflow:auto;max-height:320px">
+      <table class="grade" style="font-size:12px">
+        <thead><tr>
+          <th>#</th><th>Data</th><th>CD origem</th><th>Pedidos</th><th>Itens</th><th>Valor</th><th>Observação</th><th>Baixado</th><th>CSVs</th>
+        </tr></thead>
+        <tbody id="histBody"><tr><td colspan="9" style="color:#94a3b8">carregando...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
 </div>
 
 <div id="dbgModal" onclick="if(event.target===this)fecharDbg()">
@@ -550,6 +565,7 @@ async function gerarCsv(btn) {
       await api(`/api/pedidos-distribuidora/qtd-tudo?cd_origem=${encodeURIComponent(cdOrigemAtual)}`, 'DELETE');
       recarregarGrade();
     } catch (e) { console.warn('auto-limpar falhou', e); }
+    carregarHistorico();
   } catch (e) { showMsg('❌ ' + e.message, 'err'); }
   finally { btn.disabled = false; btn.textContent = 'Gerar CSVs'; }
 }
@@ -602,7 +618,39 @@ async function limparTudo() {
   } catch (e) { showMsg(e.message, 'err'); }
 }
 
+async function carregarHistorico() {
+  const tbody = document.getElementById('histBody');
+  tbody.innerHTML = '<tr><td colspan="9" style="color:#94a3b8">carregando...</td></tr>';
+  try {
+    const rows = await api('/api/pedidos-distribuidora/geracoes?limit=50');
+    if (!rows?.length) { tbody.innerHTML = '<tr><td colspan="9" style="color:#94a3b8">nenhuma geração ainda</td></tr>'; return; }
+    const t = encodeURIComponent(token());
+    tbody.innerHTML = rows.map(g => {
+      const dt = new Date(g.gerado_em);
+      const dataStr = dt.toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' });
+      const baixado = g.baixado_em ? '<span style="color:#22c55e">✓</span>' : '<span style="color:#94a3b8">—</span>';
+      return `<tr>
+        <td>${g.id}</td>
+        <td style="white-space:nowrap">${dataStr}</td>
+        <td>${g.cd_origem_codigo}</td>
+        <td style="text-align:right">${g.total_pedidos}</td>
+        <td style="text-align:right">${g.total_itens}</td>
+        <td style="text-align:right;white-space:nowrap">${fmtBRL(g.valor_total)}</td>
+        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(g.observacao||'').replace(/"/g,'&quot;')}">${g.observacao||''}</td>
+        <td>${baixado}</td>
+        <td style="white-space:nowrap">
+          <a href="/api/pedidos-distribuidora/csv/${g.id}/P_PEDIDOS.csv?token=${t}" target="_blank" style="color:#60a5fa;margin-right:8px">⬇ Ped</a>
+          <a href="/api/pedidos-distribuidora/csv/${g.id}/P_PEDIDOS_ITENS.csv?token=${t}" target="_blank" style="color:#60a5fa">⬇ Itens</a>
+        </td>
+      </tr>`;
+    }).join('');
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="9" style="color:#f87171">erro: ${e.message}</td></tr>`;
+  }
+}
+
 carregarOrigens();
+carregarHistorico();
 </script>
 </body>
 </html>
