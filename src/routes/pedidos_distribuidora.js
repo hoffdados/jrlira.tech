@@ -2139,14 +2139,27 @@ router.get('/produtos', adminOuCeo, async (req, res) => {
 // ── Helpers de CSV ──
 
 function padNomeCliente(nome) { return String(nome || '').padEnd(60, ' ').slice(0, 60); }
+// Server roda em UTC (Railway); converte pra America/Sao_Paulo antes de formatar
+function _brParts(d) {
+  const f = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+  }).formatToParts(d);
+  const m = {};
+  for (const p of f) m[p.type] = p.value;
+  return m;
+}
 function fmtData(d) {
-  // Modelo UltraSyst original: '2023-09-04 00:00:00.000' (hora sempre zerada)
-  const pad = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} 00:00:00.000`;
+  // Modelo UltraSyst: '2023-09-04 00:00:00.000' (hora zerada, data BR)
+  const p = _brParts(d);
+  return `${p.year}-${p.month}-${p.day} 00:00:00.000`;
 }
 function fmtHora(d) {
-  const pad = n => String(n).padStart(2, '0');
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const p = _brParts(d);
+  // Intl pode devolver "24" pra meia-noite — normaliza pra "00"
+  const h = p.hour === '24' ? '00' : p.hour;
+  return `${h}:${p.minute}`;
 }
 // Numero com VIRGULA decimal (Delphi BR usa locale ',') e sem padding desnecessario.
 // 37 -> "37"; 11.5 -> "11,5"; 274.65 -> "274,65"
