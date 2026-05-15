@@ -5,7 +5,8 @@ const { pool, query: dbQuery } = require('./db');
 const ultrasyst = require('./ultrasyst');
 
 const CHAVE_ULTIMO = 'ultrasyst_ultimo_mcp_codi';
-const NOP_TRANSFERENCIA = '031';
+const NOPS_ACEITOS = "'031','012'"; // 031=transferência, 012=bonificação
+const NATUREZA_POR_NOP = { '031': 'TRANSFERENCIA', '012': 'BONIFICACAO' };
 const CD_CNPJ = '17764296000209'; // Atacadão Asa Branca
 
 function limparCnpj(s) {
@@ -55,7 +56,7 @@ async function mapearLojas() {
   return { porCnpj, porCliCodi, cnpjs };
 }
 
-// Busca movimentações novas (NOP=031, FOR_CODI nas lojas, MCP_CODI > último, últimos 24 meses)
+// Busca movimentações novas (NOP IN 031/012, FOR_CODI nas lojas, MCP_CODI > último, últimos 24 meses)
 async function buscarTransferenciasNovas(cliCodisLojas, ultimoMcpCodi) {
   if (!cliCodisLojas.length) return [];
   const lista = cliCodisLojas.map(c => `'${c}'`).join(',');
@@ -64,7 +65,7 @@ async function buscarTransferenciasNovas(cliCodisLojas, ultimoMcpCodi) {
             m.MCP_VTOT, m.MCP_STATUS, m.MCP_NNOTAFIS, m.MCP_CHAVENFE,
             m.NOP_CODI, m.MCP_OBSE
        FROM TBMOVCOMPRA m WITH (NOLOCK)
-      WHERE m.NOP_CODI = '${NOP_TRANSFERENCIA}'
+      WHERE m.NOP_CODI IN (${NOPS_ACEITOS})
         AND m.MCP_STATUS <> 'C'
         AND m.MCP_TIPOMOV = 'S'
         AND m.FOR_CODI IN (${lista})
@@ -112,12 +113,14 @@ async function buscarItensBatch(empCodi, mcpCodis, mcpTipoMov) {
 async function inserirTransferencia(client, mov, lojaInfo, itens) {
   const dataEmissao = mov.MCP_DTEM ? new Date(mov.MCP_DTEM).toISOString().slice(0, 10) : null;
 
+  const natureza = NATUREZA_POR_NOP[mov.NOP_CODI] || 'TRANSFERENCIA';
   const ins = await client.query(
     `INSERT INTO notas_entrada
         (chave_nfe, numero_nota, serie, fornecedor_nome, fornecedor_cnpj,
          data_emissao, valor_total, status, importado_por, loja_id,
-         origem, cd_mov_codi, cd_loja_cli_codi, cd_synced_em, origem_cd_codigo)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,'em_transito',$8,$9,'cd',$10,$11,NOW(),'srv1-itautuba')
+         origem, cd_mov_codi, cd_loja_cli_codi, cd_synced_em, origem_cd_codigo,
+         natureza_op)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'em_transito',$8,$9,'cd',$10,$11,NOW(),'srv1-itautuba',$12)
        ON CONFLICT (cd_mov_codi) WHERE cd_mov_codi IS NOT NULL DO NOTHING
        RETURNING id`,
     [
@@ -126,6 +129,7 @@ async function inserirTransferencia(client, mov, lojaInfo, itens) {
       dataEmissao, mov.MCP_VTOT || 0,
       'sync_ultrasyst', lojaInfo.id,
       mov.MCP_CODI, lojaInfo.cli_codi,
+      natureza,
     ]
   );
   if (!ins.rows.length) return null;

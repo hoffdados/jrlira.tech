@@ -12,7 +12,8 @@
 const { pool, query: dbQuery } = require('./db');
 const { listarCds, clientePorCodigo } = require('./cds');
 
-const NOP_TRANSFERENCIA = '031';
+const NOPS_ACEITOS = "'031','012'"; // 031=transferência, 012=bonificação
+const NATUREZA_POR_NOP = { '031': 'TRANSFERENCIA', '012': 'BONIFICACAO' };
 const CD_LEGADO = 'srv1-itautuba'; // exclui do loop pra não conflitar com sync_ultrasyst.js
 
 function limparCnpj(s) { return String(s || '').replace(/\D/g, ''); }
@@ -75,7 +76,7 @@ async function buscarTransferenciasNovas(cli, cliCodis, ultimoMcpCodi, top = 500
             m.MCP_VTOT, m.MCP_STATUS, m.MCP_NNOTAFIS, m.MCP_CHAVENFE,
             m.NOP_CODI, m.MCP_OBSE
        FROM TBMOVCOMPRA m WITH (NOLOCK)
-      WHERE m.NOP_CODI = '${NOP_TRANSFERENCIA}'
+      WHERE m.NOP_CODI IN (${NOPS_ACEITOS})
         AND m.MCP_STATUS <> 'C'
         AND m.MCP_TIPOMOV = 'S'
         AND m.FOR_CODI IN (${lista})
@@ -126,13 +127,14 @@ async function inserirTransferencia(client, mov, destinoInfo, cdOrigem, cdNomeOr
       WHERE origem_cd_codigo = $1 AND cd_mov_codi = $2 LIMIT 1`,
     [cdOrigem, mov.MCP_CODI]);
   if (existe.rows.length) return null;
+  const natureza = NATUREZA_POR_NOP[mov.NOP_CODI] || 'TRANSFERENCIA';
   const ins = await client.query(
     `INSERT INTO notas_entrada
         (chave_nfe, numero_nota, serie, fornecedor_nome, fornecedor_cnpj,
          data_emissao, valor_total, status, importado_por, loja_id,
          origem, cd_mov_codi, cd_loja_cli_codi, cd_synced_em,
-         origem_cd_codigo, cd_destino_codigo)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,'em_transito',$8,$9,'cd',$10,$11,NOW(),$12,$13)
+         origem_cd_codigo, cd_destino_codigo, natureza_op)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'em_transito',$8,$9,'cd',$10,$11,NOW(),$12,$13,$14)
        RETURNING id`,
     [
       null, mov.MCP_CODI, null,
@@ -140,7 +142,7 @@ async function inserirTransferencia(client, mov, destinoInfo, cdOrigem, cdNomeOr
       dataEmissao, mov.MCP_VTOT || 0,
       'sync_transf_multi', lojaId,
       mov.MCP_CODI, destinoInfo.cli_codi,
-      cdOrigem, cdDestino,
+      cdOrigem, cdDestino, natureza,
     ]);
   if (!ins.rows.length) return null;
   const notaId = ins.rows[0].id;

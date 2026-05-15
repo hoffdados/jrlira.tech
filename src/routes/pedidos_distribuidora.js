@@ -2361,12 +2361,26 @@ router.post('/', adminOuCeo, async (req, res) => {
       return 0;
     });
 
-    // 5) Próximo COD_PEDIDO pra esse CD origem
-    const [{ proximo }] = await dbQuery(`
-      SELECT COALESCE(MAX(cod_pedido), 0) + 1 AS proximo
-        FROM pedidos_distrib_historico
-       WHERE cd_origem_codigo = $1
-    `, [cd_origem_codigo]);
+    // 5) Próximos contadores reais do P_PEDIDOS / P_PEDIDOS_ITENS do CD origem.
+    //    COD_PEDIDO, NUMPEDIDO e ID sao 3 sequencias INDEPENDENTES no UltraSyst
+    //    (NUMPEDIDO ja esta em 102k enquanto COD_PEDIDO esta em 76k). Idem o ID
+    //    do item — precisa do MAX(ID) da P_PEDIDOS_ITENS senao colide.
+    let proximo, proximoNum, proximoId, proximoIdItem;
+    try {
+      const r1 = await cli.query(
+        'SELECT COALESCE(MAX(COD_PEDIDO),0) AS mcp, ' +
+        '       COALESCE(MAX(TRY_CAST(LTRIM(RTRIM(NUMPEDIDO)) AS INT)),0) AS mnp, ' +
+        '       COALESCE(MAX(ID),0) AS mid FROM P_PEDIDOS'
+      );
+      const r2 = await cli.query('SELECT COALESCE(MAX(ID),0) AS mid FROM P_PEDIDOS_ITENS');
+      proximo       = parseInt(r1.rows?.[0]?.mcp) + 1;
+      proximoNum    = parseInt(r1.rows?.[0]?.mnp) + 1;
+      proximoId     = parseInt(r1.rows?.[0]?.mid) + 1;
+      proximoIdItem = parseInt(r2.rows?.[0]?.mid) + 1;
+      if (!proximo || !proximoNum || !proximoId || !proximoIdItem) throw new Error('contadores invalidos');
+    } catch (e) {
+      return res.status(500).json({ erro: `falha lendo contadores do CD ${cd_origem_codigo}: ${e.message}` });
+    }
 
     const agora = new Date();
     const dataEmissao = fmtData(agora);
@@ -2376,13 +2390,15 @@ router.post('/', adminOuCeo, async (req, res) => {
     const linhasPedidos = [];
     const linhasItens   = [];
     let codPedido = parseInt(proximo);
+    let numPedido = parseInt(proximoNum);
+    let idPedido  = parseInt(proximoId);
+    let idItem    = parseInt(proximoIdItem);
     let valorTotalGeral = 0;
     let totalItensGeral = 0;
     const pedidosResumo = [];
 
-    // Helper que emite UM pedido (1 destino + 1 conjunto de itens) e incrementa cod_pedido.
-    // bloco = 'prioridade' | 'grupo'; rotulo = nome do grupo ou 'PRIORIDADE'
-    // ID/NUMPEDIDO sao unicos por pedido (incrementam junto com codPedido).
+    // Helper que emite UM pedido (1 destino + 1 conjunto de itens) e incrementa contadores.
+    // COD_PEDIDO, NUMPEDIDO, ID (cabec) e ID (item) sao sequencias INDEPENDENTES no UltraSyst.
     function emitirPedido(dest, cliCodi, itens, bloco, rotulo) {
       if (!itens?.length) return;
       const obsPedido = `${rotulo} - ${obser}`.slice(0, 120);
@@ -2400,15 +2416,8 @@ router.post('/', adminOuCeo, async (req, res) => {
           UNIDADE_PADRAO,          fmtNum(qtd),            fmtNum(valor),
           '0',                     '0',                    fmtNum(valor),
           TIPO_CALCULO_PADRAO,     NOME_EMBALAGEM_PADRAO,  QTD_EMBALAGEM_PADRAO,
-          codPedido,
+          idItem++,
         ].join(';'));
-      }
-      // Garante ID unico por linha de item somando indice
-      const idBaseItem = codPedido * 1000;
-      for (let i = 0; i < linhasItensPed.length; i++) {
-        const partes = linhasItensPed[i].split(';');
-        partes[12] = String(idBaseItem + i + 1);
-        linhasItensPed[i] = partes.join(';');
       }
       linhasPedidos.push([
         codPedido,                EMPRESA_PADRAO,         LOCALIZACAO_PADRAO,
@@ -2416,13 +2425,14 @@ router.post('/', adminOuCeo, async (req, res) => {
         COD_CONDICAO_PADRAO,      COD_PAGAMENTO_PADRAO,   COD_TIPOVENDA_PADRAO,
         COD_TABELA_PADRAO,        dataEmissao,            fmtNum(valorPedido),
         obsEnc,                   '0',                    '1',
-        codPedido,                horaEmissao,            COD_MOTIVO_PADRAO,
-        codPedido,                '00.00000',             '00.00000',
+        numPedido,                horaEmissao,            COD_MOTIVO_PADRAO,
+        idPedido,                 '00.00000',             '00.00000',
         fmtCpfCnpj(dest.cnpj),    padNomeCliente(dest.nome),
       ].join(';'));
       linhasItens.push(...linhasItensPed);
       pedidosResumo.push({
-        cod_pedido: codPedido, destino_id: dest.id, destino_tipo: dest.tipo,
+        cod_pedido: codPedido, num_pedido: numPedido, id_pedido: idPedido,
+        destino_id: dest.id, destino_tipo: dest.tipo,
         destino_nome: dest.nome, cli_codi: cliCodi,
         bloco, rotulo,
         valor: valorPedido, itens: itens.length,
@@ -2430,6 +2440,8 @@ router.post('/', adminOuCeo, async (req, res) => {
       valorTotalGeral += valorPedido;
       totalItensGeral += itens.length;
       codPedido += 1;
+      numPedido += 1;
+      idPedido  += 1;
     }
 
     // BLOCO 1 — Pedidos de PRIORIDADE (todas as lojas, na ordem)
