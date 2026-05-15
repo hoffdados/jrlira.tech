@@ -2186,9 +2186,15 @@ const HEADER_ITENS   = 'COD_PEDIDO;COD_VENDEDOR;COD_PRODUTO;UNIDADE;QUANTIDADE;V
 // Body: { cd_origem_codigo: "srv1-itautuba", observacao?: string }
 // Os destinos e itens vêm das qtds salvas via PUT /qtd (cesta tipo planilha).
 // Pedido é gerado pra cada destino que tem ao menos 1 item com qtd > 0.
+// POST /apagar-pedido-cd { cd_origem, cod_pedido } — apaga pedido direto no banco do CD
+router.post('/apagar-pedido-cd', adminOuCeo, async (req, res) => {
+  req.query = { cd_origem: req.body?.cd_origem, cod_pedido: req.body?.cod_pedido };
+  return apagarPedidoCdHandler(req, res);
+});
+
 // DELETE /pedido-cd?cd_origem=X&cod_pedido=N — apaga pedido direto no banco do CD (relay)
-// Util pra limpar pedidos de teste/lixo antes de re-importar.
-router.delete('/pedido-cd', adminOuCeo, async (req, res) => {
+router.delete('/pedido-cd', adminOuCeo, async (req, res) => apagarPedidoCdHandler(req, res));
+async function apagarPedidoCdHandler(req, res) {
   try {
     const cdOrigem = String(req.query.cd_origem || '').trim();
     const codPedido = parseInt(req.query.cod_pedido);
@@ -2221,7 +2227,7 @@ router.delete('/pedido-cd', adminOuCeo, async (req, res) => {
     }
     res.json({ ok: true, cd_origem: cdOrigem, cod_pedido: codPedido, resultados });
   } catch (e) { res.status(500).json({ erro: e.message }); }
-});
+}
 
 // GET /destinos-com-qtd?cd_origem=X — lista destinos que tem qtd digitada (pra teste)
 router.get('/destinos-com-qtd', autenticar, async (req, res) => {

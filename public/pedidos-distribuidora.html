@@ -203,6 +203,7 @@ table.grade tbody tr.prioritario:hover{background:#27220e}
       <button class="btn-primary" onclick="gerarCsv(this)">Gerar CSVs</button>
       <button class="btn-primary" onclick="gerarCsvTeste(this)" style="background:#dc2626" title="CSV com 1 destino e 3 itens — pra testar o formato no UltraSyst sem volume">🧪 CSV Teste (1 loja · 3 itens)</button>
       <button class="btn-primary" onclick="exportarPdf()" style="background:#7c3aed">📄 PDF por Loja</button>
+      <button class="btn-primary" onclick="apagarPedidoCd()" style="background:#64748b" title="Apaga 1 pedido importado direto no banco do CD (pra refazer teste)">🗑 Apagar Pedido CD</button>
     </div>
   </div>
 
@@ -574,6 +575,20 @@ async function gerarCsvTeste(btn) {
     document.getElementById('downloadArea').style.display = 'block';
   } catch (e) { showMsg('❌ ' + e.message, 'err'); }
   finally { btn.disabled = false; btn.textContent = '🧪 CSV Teste (1 loja · 3 itens)'; }
+}
+
+async function apagarPedidoCd() {
+  if (!cdOrigemAtual) { showMsg('Selecione o CD origem', 'err'); return; }
+  const cod = prompt('COD_PEDIDO a apagar no banco do CD ' + cdOrigemAtual + ':');
+  if (!cod) return;
+  if (!confirm(`Apagar pedido #${cod} do banco do CD ${cdOrigemAtual}? Esta acao nao tem volta.`)) return;
+  try {
+    const r = await api('/api/pedidos-distribuidora/apagar-pedido-cd', 'POST', {
+      cd_origem: cdOrigemAtual, cod_pedido: parseInt(cod)
+    });
+    const tot = (r.resultados || []).reduce((s, x) => s + (x.removidos || 0), 0);
+    showMsg(`✓ Apagado: ${tot} registro(s) removido(s)`, 'ok');
+  } catch (e) { showMsg('❌ ' + e.message, 'err'); }
 }
 
 function exportarPdf() {
