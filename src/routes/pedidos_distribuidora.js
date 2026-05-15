@@ -2186,6 +2186,43 @@ const HEADER_ITENS   = 'COD_PEDIDO;COD_VENDEDOR;COD_PRODUTO;UNIDADE;QUANTIDADE;V
 // Body: { cd_origem_codigo: "srv1-itautuba", observacao?: string }
 // Os destinos e itens vêm das qtds salvas via PUT /qtd (cesta tipo planilha).
 // Pedido é gerado pra cada destino que tem ao menos 1 item com qtd > 0.
+// DELETE /pedido-cd?cd_origem=X&cod_pedido=N — apaga pedido direto no banco do CD (relay)
+// Util pra limpar pedidos de teste/lixo antes de re-importar.
+router.delete('/pedido-cd', adminOuCeo, async (req, res) => {
+  try {
+    const cdOrigem = String(req.query.cd_origem || '').trim();
+    const codPedido = parseInt(req.query.cod_pedido);
+    if (!cdOrigem || !codPedido) return res.status(400).json({ erro: 'cd_origem e cod_pedido obrigatorios' });
+    let cli;
+    try { cli = await clientePorCodigo(cdOrigem); }
+    catch (e) { return res.status(400).json({ erro: `relay do CD ${cdOrigem} indisponivel: ${e.message}` }); }
+
+    // Tenta nomes comuns das tabelas (UltraSyst). Se algum nao existir, ignora.
+    const tabelas = [
+      { nome: 'PEDIDO_ITEM', col: 'COD_PEDIDO' },
+      { nome: 'PEDIDOITEM', col: 'COD_PEDIDO' },
+      { nome: 'ITENS_PEDIDO', col: 'COD_PEDIDO' },
+      { nome: 'PED_ITEM', col: 'PED_CODI' },
+      { nome: 'TPEDPEDIDO_ITEM', col: 'COD_PEDIDO' },
+      { nome: 'PEDIDO', col: 'COD_PEDIDO' },
+      { nome: 'TPEDPEDIDO', col: 'COD_PEDIDO' },
+      { nome: 'PED', col: 'PED_CODI' },
+    ];
+    const resultados = [];
+    for (const t of tabelas) {
+      try {
+        const r = await cli.query(`DELETE FROM ${t.nome} WHERE ${t.col} = ${codPedido}`);
+        resultados.push({ tabela: t.nome, removidos: r.rowsAffected?.[0] ?? 0 });
+      } catch (e) {
+        if (!/Invalid object name/i.test(e.message)) {
+          resultados.push({ tabela: t.nome, erro: e.message });
+        }
+      }
+    }
+    res.json({ ok: true, cd_origem: cdOrigem, cod_pedido: codPedido, resultados });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
 // GET /destinos-com-qtd?cd_origem=X — lista destinos que tem qtd digitada (pra teste)
 router.get('/destinos-com-qtd', autenticar, async (req, res) => {
   try {
