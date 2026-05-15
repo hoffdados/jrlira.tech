@@ -2170,8 +2170,13 @@ function fmtNum(n) {
 }
 function semZeros(s) { const x = String(s || '').replace(/^0+/, ''); return x || '0'; }
 function encObs(s) { return encodeURIComponent(String(s || '')).replace(/'/g, '%27'); }
-// CPF/CNPJ vazio = 18 espacos no modelo original (loja interna nao precisa documento)
-const CPF_VAZIO = ' '.repeat(18);
+// CNPJ do destino padded ate 18 chars (modelo original usa 18 espacos pra venda externa,
+// mas pra transferencia interna precisamos do CNPJ real - sem ele UltModVendas.dll crasha
+// com access violation 0xc0000005 ao processar).
+function fmtCpfCnpj(cnpj) {
+  const d = String(cnpj || '').replace(/\D/g, '');
+  return d.padEnd(18, ' ').slice(0, 18);
+}
 
 const HEADER_PEDIDOS = 'COD_PEDIDO;EMPRESA;LOCALIZACAO;COD_VENDEDOR;COD_CLIENTE;COD_CLIENTE_CADASTRO;COD_CONDICAO;COD_PAGAMENTO;COD_TIPOVENDA;COD_TABELA;DATA_EMISSAO;VALOR_PEDIDO;OBSERVACAO;RETORNO;SIT_RETORNO;NUMPEDIDO;HORA_EMISSAO;COD_MOTIVO;ID;LATITUDE;LONGITUDE;CPF_CNPJ;NOME_CLIENTE';
 const HEADER_ITENS   = 'COD_PEDIDO;COD_VENDEDOR;COD_PRODUTO;UNIDADE;QUANTIDADE;VALOR;DESCONTO_UNI;DESCONTO_PER;VALOR_TABELA;TIPO_CALCULO;NOME_EMBALAGEM;QTD_EMBALAGEM;ID';
@@ -2371,7 +2376,7 @@ router.post('/', adminOuCeo, async (req, res) => {
         obsEnc,                   '0',                    '1',
         codPedido,                horaEmissao,            COD_MOTIVO_PADRAO,
         codPedido,                '00.00000',             '00.00000',
-        CPF_VAZIO,                padNomeCliente(dest.nome),
+        fmtCpfCnpj(dest.cnpj),    padNomeCliente(dest.nome),
       ].join(';'));
       linhasItens.push(...linhasItensPed);
       pedidosResumo.push({
