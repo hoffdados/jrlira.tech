@@ -540,11 +540,16 @@ async function gerarCsv(btn) {
       observacao: document.getElementById('obs').value.trim() || undefined,
     };
     const r = await api('/api/pedidos-distribuidora', 'POST', body);
-    showMsg(`✅ ${r.total_pedidos} pedido(s) · ${fmtBRL(r.valor_total)} · origem: ${r.cd_origem.nome}`, 'ok');
+    showMsg(`✅ ${r.total_pedidos} pedido(s) · ${fmtBRL(r.valor_total)} · origem: ${r.cd_origem.nome} · rascunho limpo (CSVs salvos em #${r.geracao_id})`, 'ok');
     const t = encodeURIComponent(token());
     document.getElementById('dlPedidos').href = `/api/pedidos-distribuidora/csv/${r.geracao_id}/P_PEDIDOS.csv?token=${t}`;
     document.getElementById('dlItens').href   = `/api/pedidos-distribuidora/csv/${r.geracao_id}/P_PEDIDOS_ITENS.csv?token=${t}`;
     document.getElementById('downloadArea').style.display = 'block';
+    // Auto-limpa o rascunho após gerar com sucesso (CSVs ficam salvos em pedidos_distrib_geracoes).
+    try {
+      await api(`/api/pedidos-distribuidora/qtd-tudo?cd_origem=${encodeURIComponent(cdOrigemAtual)}`, 'DELETE');
+      recarregarGrade();
+    } catch (e) { console.warn('auto-limpar falhou', e); }
   } catch (e) { showMsg('❌ ' + e.message, 'err'); }
   finally { btn.disabled = false; btn.textContent = 'Gerar CSVs'; }
 }
