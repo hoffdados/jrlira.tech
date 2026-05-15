@@ -2202,15 +2202,16 @@ async function apagarPedidoCdHandler(req, res) {
     catch (e) { return res.status(400).json({ erro: `relay do CD ${cdOrigem} indisponivel: ${e.message}` }); }
 
     // Tenta nomes comuns das tabelas (UltraSyst). Se algum nao existir, ignora.
+    // Tabelas reais do UltraSyst (descobertas via sys.tables). P_PEDIDOS/P_PEDIDOS_ITENS
+    // sao as tabelas onde o importador insere; TBITEMPEDIDO recebe quando o pedido eh
+    // processado/finalizado pelo usuario na tela.
     const tabelas = [
-      { nome: 'PEDIDO_ITEM', col: 'COD_PEDIDO' },
-      { nome: 'PEDIDOITEM', col: 'COD_PEDIDO' },
-      { nome: 'ITENS_PEDIDO', col: 'COD_PEDIDO' },
-      { nome: 'PED_ITEM', col: 'PED_CODI' },
-      { nome: 'TPEDPEDIDO_ITEM', col: 'COD_PEDIDO' },
-      { nome: 'PEDIDO', col: 'COD_PEDIDO' },
-      { nome: 'TPEDPEDIDO', col: 'COD_PEDIDO' },
-      { nome: 'PED', col: 'PED_CODI' },
+      { nome: 'P_PEDIDOS_ITENS', col: 'COD_PEDIDO' },
+      { nome: 'P_PEDIDOS', col: 'COD_PEDIDO' },
+      { nome: 'TBITEMPEDIDO', col: 'PED_CODI' },
+      { nome: 'TBITEMPEDIDO', col: 'COD_PEDIDO' },
+      { nome: 'TBPARCELASPEDIDO', col: 'COD_PEDIDO' },
+      { nome: 'TBPARCELASPEDIDO', col: 'PED_CODI' },
     ];
     const resultados = [];
     for (const t of tabelas) {
