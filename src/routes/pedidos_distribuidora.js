@@ -2187,17 +2187,15 @@ const HEADER_ITENS   = 'COD_PEDIDO;COD_VENDEDOR;COD_PRODUTO;UNIDADE;QUANTIDADE;V
 // Os destinos e itens vêm das qtds salvas via PUT /qtd (cesta tipo planilha).
 // Pedido é gerado pra cada destino que tem ao menos 1 item com qtd > 0.
 // POST /apagar-pedido-cd { cd_origem, cod_pedido } — apaga pedido direto no banco do CD
-router.post('/apagar-pedido-cd', adminOuCeo, async (req, res) => {
-  req.query = { cd_origem: req.body?.cd_origem, cod_pedido: req.body?.cod_pedido };
-  return apagarPedidoCdHandler(req, res);
-});
+router.post('/apagar-pedido-cd', adminOuCeo, apagarPedidoCdHandler);
+// DELETE /pedido-cd?cd_origem=X&cod_pedido=N — alias
+router.delete('/pedido-cd', adminOuCeo, apagarPedidoCdHandler);
 
-// DELETE /pedido-cd?cd_origem=X&cod_pedido=N — apaga pedido direto no banco do CD (relay)
-router.delete('/pedido-cd', adminOuCeo, async (req, res) => apagarPedidoCdHandler(req, res));
 async function apagarPedidoCdHandler(req, res) {
   try {
-    const cdOrigem = String(req.query.cd_origem || '').trim();
-    const codPedido = parseInt(req.query.cod_pedido);
+    const src = (req.body && Object.keys(req.body).length) ? req.body : req.query;
+    const cdOrigem = String(src.cd_origem || '').trim();
+    const codPedido = parseInt(src.cod_pedido);
     if (!cdOrigem || !codPedido) return res.status(400).json({ erro: 'cd_origem e cod_pedido obrigatorios' });
     let cli;
     try { cli = await clientePorCodigo(cdOrigem); }
