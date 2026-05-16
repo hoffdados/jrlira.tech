@@ -121,7 +121,9 @@ async function inserirTransferencia(client, mov, lojaInfo, itens) {
          origem, cd_mov_codi, cd_loja_cli_codi, cd_synced_em, origem_cd_codigo,
          natureza_op)
        VALUES ($1,$2,$3,$4,$5,$6,$7,'em_transito',$8,$9,'cd',$10,$11,NOW(),'srv1-itautuba',$12)
-       ON CONFLICT (cd_mov_codi) WHERE cd_mov_codi IS NOT NULL DO NOTHING
+       ON CONFLICT (origem_cd_codigo, cd_mov_codi)
+         WHERE origem_cd_codigo IS NOT NULL AND cd_mov_codi IS NOT NULL
+         DO NOTHING
        RETURNING id`,
     [
       null, mov.MCP_CODI, null,

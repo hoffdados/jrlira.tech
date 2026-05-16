@@ -78,6 +78,8 @@ async function detectarStatusEco() {
   // Filtro só por c.data_entrada >= cutoff (não por importado_em da nota — nota legada pode receber entrada nova).
 
   // Cache 1: NF-e fornecedor — match direto numero_nota=numeronfe
+  // Sem cutoff aqui: se a nota está em notas_entrada, é elegível pra match.
+  // O cutoff defende apenas o Cenário B (criação a partir do compras_historico).
   await dbQuery(`
     UPDATE notas_entrada n
        SET chegou_no_erp_em = sub.data_entrada
@@ -92,11 +94,10 @@ async function detectarStatusEco() {
            AND n2.origem = 'nfe'
            AND n2.fornecedor_cnpj IS NOT NULL
            AND n2.numero_nota IS NOT NULL
-           AND c.data_entrada >= $1::date
          GROUP BY n2.id
       ) sub
      WHERE sub.id = n.id
-  `, [DATA_CORTE_ECO]);
+  `);
 
   // Cache 2: transferências CD — match com normalização de zeros via cd_mov_codi
   await dbQuery(`
@@ -113,14 +114,15 @@ async function detectarStatusEco() {
          WHERE n2.chegou_no_erp_em IS NULL
            AND n2.origem IN ('cd','transferencia_loja')
            AND n2.fornecedor_cnpj IS NOT NULL
-           AND c.data_entrada >= $1::date
          GROUP BY n2.id
       ) sub
      WHERE sub.id = n.id
-  `, [DATA_CORTE_ECO]);
+  `);
 
   // Cenário A: notas EXISTENTES que chegaram no ERP, status nao fechado, e NAO canceladas no CD
   // Inclui NF-e fornecedor E transferências CD
+  // Sem cutoff: defesas reais são chegou_no_erp_em IS NOT NULL (nota está no ERP) + status nao fechado.
+  // Se a nota está em notas_entrada e chegou ao ERP, ela é do detector independente da data.
   const updatedA = await dbQuery(`
     UPDATE notas_entrada
        SET status = 'finalizada_f',
@@ -129,12 +131,11 @@ async function detectarStatusEco() {
            finalizada_f_em = NOW(),
            finalizada_f_motivo = 'chegou no ERP mas pulou cadastro/conferencia/auditoria do app'
      WHERE chegou_no_erp_em IS NOT NULL
-       AND chegou_no_erp_em >= $1::date
        AND origem IN ('nfe','cd','transferencia_loja')
        AND status NOT IN ('fechada','validada','arquivada','cancelada','finalizada_f','auditagem')
        AND COALESCE(mcp_status_cd, 'A') <> 'C'
      RETURNING id, loja_id, numero_nota, fornecedor_cnpj
-  `, [DATA_CORTE_ECO]);
+  `);
 
   // Cenário B: notas que NAO existem em notas_entrada mas chegaram no ERP via CD
   const insertedB = await dbQuery(`

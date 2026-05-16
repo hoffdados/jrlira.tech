@@ -55,6 +55,7 @@ app.use('/api/auditoria-ean', require('./src/routes/auditoria_ean_canonico'));
 app.use('/api/de-para-eans', require('./src/routes/de_para_eans'));
 app.use('/api/notas-avaria', require('./src/routes/notas_avaria'));
 app.use('/api/finalizadas-f', require('./src/routes/finalizadas_f'));
+app.use('/api/admin/fantasmas', require('./src/routes/fantasmas'));
 
 // ── PÁGINAS ───────────────────────────────────────────────────────
 app.get('/favicon.ico', (req, res) => res.redirect(301, '/favicon.svg'));
@@ -107,6 +108,7 @@ app.get('/validades-em-risco', (req, res) => res.sendFile(path.join(__dirname, '
 app.get('/nota-historico', (req, res) => res.sendFile(path.join(__dirname, 'public/nota-historico.html')));
 app.get('/aguardando-devolucao', (req, res) => res.sendFile(path.join(__dirname, 'public/aguardando-devolucao.html')));
 app.get('/preview-icons', (req, res) => res.sendFile(path.join(__dirname, 'public/preview-icons.html')));
+app.get('/admin-fantasmas', (req, res) => res.sendFile(path.join(__dirname, 'public/admin-fantasmas.html')));
 app.get('/auditoria-acordos', (req, res) => res.sendFile(path.join(__dirname, 'public/auditoria-acordos.html')));
 app.get('/devolucoes-divergencias', (req, res) => res.sendFile(path.join(__dirname, 'public/devolucoes-divergencias.html')));
 app.get('/dashboard-notas', (req, res) => res.sendFile(path.join(__dirname, 'public/dashboard-notas.html')));
@@ -1214,6 +1216,21 @@ async function initDB() {
          ADD COLUMN IF NOT EXISTS foto_data BYTEA,
          ADD COLUMN IF NOT EXISTS foto_mime VARCHAR(20),
          ADD COLUMN IF NOT EXISTS foto_atualizada_em TIMESTAMPTZ`);
+
+    // Rascunho de conferência (estoque pausa e retoma)
+    // PK em nota_id = 1 rascunho por nota (lock natural; último escreve vence)
+    await runMigration(client, '20260516_conferencia_rascunho',
+      `CREATE TABLE IF NOT EXISTS conferencia_rascunho (
+         nota_id INTEGER PRIMARY KEY REFERENCES notas_entrada(id) ON DELETE CASCADE,
+         tipo VARCHAR(20) NOT NULL,
+         rodada INTEGER NOT NULL DEFAULT 1,
+         conferido_por VARCHAR(150) NOT NULL,
+         dados JSONB NOT NULL,
+         total_itens INTEGER DEFAULT 0,
+         itens_preenchidos INTEGER DEFAULT 0,
+         criado_em TIMESTAMPTZ DEFAULT NOW(),
+         atualizado_em TIMESTAMPTZ DEFAULT NOW()
+       )`);
     await runMigration(client, '20260504_backfill_criado_por_sug',
       `UPDATE pedidos SET criado_por_comprador = 'sugestao'
          WHERE status='rascunho' AND numero_pedido LIKE 'SUG-%' AND criado_por_comprador IS NULL`);
@@ -2777,6 +2794,34 @@ async function initDB() {
         WHERE ean_secundario IS NOT NULL;
     `);
 
+    // compras_fantasmas — NFs em compras_historico cuja origem foi corrigida/cancelada
+    // no Ecocentauro mas o sync Pentaho não propagou o delete (só UPSERTa).
+    // Detector backend roda 1x/dia e popula pendentes; admin revisa e apaga.
+    await runMigration(client, '20260515_compras_fantasmas', `
+      CREATE TABLE IF NOT EXISTS compras_fantasmas (
+        id SERIAL PRIMARY KEY,
+        loja_id INTEGER NOT NULL,
+        numeronfe VARCHAR(40) NOT NULL,
+        fornecedor_cnpj VARCHAR(20) NOT NULL,
+        fornecedor_nome VARCHAR(300),
+        motivo VARCHAR(40) NOT NULL,
+        twin_numeronfe VARCHAR(40),
+        qtd_itens INTEGER,
+        valor_total NUMERIC(14,2),
+        data_entrada DATE,
+        detalhe_json JSONB,
+        detectado_em TIMESTAMPTZ DEFAULT NOW(),
+        status VARCHAR(20) DEFAULT 'pendente',
+        resolvido_em TIMESTAMPTZ,
+        resolvido_por VARCHAR(150),
+        resolucao VARCHAR(40)
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS uniq_compras_fantasmas
+        ON compras_fantasmas (loja_id, numeronfe, fornecedor_cnpj);
+      CREATE INDEX IF NOT EXISTS idx_compras_fantasmas_pendentes
+        ON compras_fantasmas (status) WHERE status = 'pendente';
+    `);
+
     console.log('[DB] Tabelas inicializadas');
   } finally {
     client.release();
@@ -3379,7 +3424,7 @@ initDB().then(() => {
   setTimeout(limparProdutosExternoOrfaos, 30 * 60 * 1000);
   setInterval(limparProdutosExternoOrfaos, 24 * 60 * 60 * 1000);
 
-  // Cross-check app x ERP (Ecocentauro) — roda 1x ao dia, 5min apos boot
+  // Cross-check app x ERP (Ecocentauro) — roda a cada 30min, 5min apos boot
   const finalizadasF = require('./src/routes/finalizadas_f');
   const detectarEco = async () => {
     try {
@@ -3394,7 +3439,17 @@ initDB().then(() => {
     } catch (e) { console.error('[auditoria_eco] falha:', e.message); }
   };
   setTimeout(detectarEco, 5 * 60 * 1000);
-  setInterval(detectarEco, 24 * 60 * 60 * 1000);
+  setInterval(detectarEco, 30 * 60 * 1000);
+
+  // Detector de NFs fantasma em compras_historico (twin substituiu, sync nao apaga).
+  // Roda 1x/dia — admin revisa em /admin-fantasmas e decide apagar/ignorar.
+  const detectorFantasmas = require('./src/detector_fantasmas');
+  const rodarDetectorFantasmas = async () => {
+    try { await detectorFantasmas.rodar(); }
+    catch (e) { console.error('[detector_fantasmas]', e.message); }
+  };
+  setTimeout(rodarDetectorFantasmas, 15 * 60 * 1000); // 15min apos boot
+  setInterval(rodarDetectorFantasmas, 24 * 60 * 60 * 1000);
 
   // ── Cron MKT ──
   // 1) Cobrancas mensais (idempotente via UNIQUE contrato_id+competencia)
