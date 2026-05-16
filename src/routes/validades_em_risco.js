@@ -43,24 +43,58 @@ router.get('/', autenticar, async (req, res) => {
 });
 
 // POST /api/validades-em-risco/:id/decidir  body: { tipo: 'liberado' | 'devolucao', observacao? }
+// Aceita transição entre qualquer par. Ao reverter 'devolucao'→'liberado', remove o item da
+// devolução vinculada (e cancela a devolução se ficar sem itens).
 router.post('/:id/decidir', autenticar, async (req, res) => {
   try {
     const { tipo, observacao } = req.body || {};
     if (!['liberado', 'devolucao'].includes(tipo)) return res.status(400).json({ erro: 'tipo inválido' });
+    const [antes] = await query(`SELECT id, status FROM validades_em_risco WHERE id=$1`, [req.params.id]);
+    if (!antes) return res.status(404).json({ erro: 'Não encontrada' });
     const r = await query(
       `UPDATE validades_em_risco
           SET status=$2, observacao=$3, decidido_em=NOW(), decidido_por=$4
-        WHERE id=$1 AND status='pendente'
+        WHERE id=$1
         RETURNING *`,
       [req.params.id, tipo, observacao || null, req.usuario.nome || req.usuario.usuario]
     );
-    if (!r.length) return res.status(404).json({ erro: 'Não encontrada ou já decidida' });
-    if (tipo === 'devolucao') {
+    // Reversão devolucao → outro: limpa item da devolução vinculada
+    if (antes.status === 'devolucao' && tipo !== 'devolucao') {
+      const itensRemov = await query(
+        `DELETE FROM devolucoes_itens
+           WHERE origem_tipo='validade_risco' AND origem_id=$1
+           RETURNING devolucao_id`,
+        [req.params.id]
+      );
+      for (const it of itensRemov) {
+        const [resto] = await query(
+          `SELECT COUNT(*)::int AS qtd, COALESCE(SUM(valor_total),0)::numeric AS total
+             FROM devolucoes_itens WHERE devolucao_id=$1`,
+          [it.devolucao_id]
+        );
+        if (resto.qtd === 0) {
+          await query(
+            `UPDATE devolucoes
+                SET status='cancelada', valor_total=0,
+                    observacao = COALESCE(observacao,'') || ' [auto] cancelada por reversão de validade'
+              WHERE id=$1 AND status='aguardando'`,
+            [it.devolucao_id]
+          );
+        } else {
+          await query(`UPDATE devolucoes SET valor_total=$2 WHERE id=$1`, [it.devolucao_id, resto.total]);
+        }
+      }
+    }
+    // Nova decisão devolucao (a partir de qualquer status): cria/adiciona item de devolução
+    if (tipo === 'devolucao' && antes.status !== 'devolucao') {
       await criarOuAdicionarDevolucao(r[0], 'validade_risco', req.usuario);
     }
     await checarLiberacaoNota(r[0].nota_id);
     res.json(r[0]);
-  } catch (e) { res.status(500).json({ erro: e.message }); }
+  } catch (e) {
+    console.error('[validades decidir]', e.message);
+    res.status(500).json({ erro: e.message });
+  }
 });
 
 const CD_CNPJ = '17764296000209';
@@ -112,21 +146,77 @@ async function criarOuAdicionarDevolucao(validade, origemTipo, usuario) {
 }
 
 // POST /api/validades-em-risco/decidir-massa  body: { ids:[], tipo, observacao? }
+// Aceita transição entre 'pendente'<->'liberado'<->'devolucao'. Ao reverter 'devolucao'→'liberado',
+// remove o item correspondente da devolução; se a devolução ficar sem itens, cancela ela.
 router.post('/decidir-massa', apenasAdmin, async (req, res) => {
   try {
     const { ids, tipo, observacao } = req.body || {};
     if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ erro: 'ids obrigatório' });
     if (!['liberado', 'devolucao'].includes(tipo)) return res.status(400).json({ erro: 'tipo inválido' });
+
     const r = await query(
-      `UPDATE validades_em_risco
-          SET status=$2, observacao=$3, decidido_em=NOW(), decidido_por=$4
-        WHERE id = ANY($1::int[]) AND status='pendente'
-        RETURNING DISTINCT nota_id`,
+      `WITH antes AS (
+         SELECT id, status AS status_anterior FROM validades_em_risco WHERE id = ANY($1::int[])
+       ),
+       atualizados AS (
+         UPDATE validades_em_risco
+            SET status=$2, observacao=$3, decidido_em=NOW(), decidido_por=$4
+          WHERE id = ANY($1::int[])
+          RETURNING id, nota_id
+       )
+       SELECT u.id, u.nota_id, b.status_anterior
+         FROM atualizados u JOIN antes b USING (id)`,
       [ids, tipo, observacao || null, req.usuario.nome || req.usuario.usuario]
     );
-    for (const row of r) await checarLiberacaoNota(row.nota_id);
-    res.json({ ok: true, atualizados: r.length });
-  } catch (e) { res.status(500).json({ erro: e.message }); }
+
+    // Reversões (devolucao → outro): remover item da devolução vinculada
+    const revertidos = r.filter(x => x.status_anterior === 'devolucao' && tipo !== 'devolucao');
+    const devsAfetadas = new Set();
+    for (const v of revertidos) {
+      const itensRemov = await query(
+        `DELETE FROM devolucoes_itens
+           WHERE origem_tipo='validade_risco' AND origem_id=$1
+           RETURNING devolucao_id`,
+        [v.id]
+      );
+      itensRemov.forEach(x => devsAfetadas.add(x.devolucao_id));
+    }
+    for (const devId of devsAfetadas) {
+      const [resto] = await query(
+        `SELECT COUNT(*)::int AS qtd, COALESCE(SUM(valor_total),0)::numeric AS total
+           FROM devolucoes_itens WHERE devolucao_id=$1`,
+        [devId]
+      );
+      if (resto.qtd === 0) {
+        await query(
+          `UPDATE devolucoes
+              SET status='cancelada',
+                  valor_total=0,
+                  observacao = COALESCE(observacao,'') || ' [auto] cancelada por reversão de validades'
+            WHERE id=$1 AND status='aguardando'`,
+          [devId]
+        );
+      } else {
+        await query(`UPDATE devolucoes SET valor_total=$2 WHERE id=$1`, [devId, resto.total]);
+      }
+    }
+
+    // Novas decisões (qualquer status anterior → devolucao): gera item de devolução
+    if (tipo === 'devolucao') {
+      const novosDev = r.filter(x => x.status_anterior !== 'devolucao');
+      for (const v of novosDev) {
+        const [validade] = await query(`SELECT * FROM validades_em_risco WHERE id=$1`, [v.id]);
+        if (validade) await criarOuAdicionarDevolucao(validade, 'validade_risco', req.usuario);
+      }
+    }
+
+    const notas = [...new Set(r.map(x => x.nota_id))];
+    for (const notaId of notas) await checarLiberacaoNota(notaId);
+    res.json({ ok: true, atualizados: r.length, revertidos: revertidos.length });
+  } catch (e) {
+    console.error('[validades decidir-massa]', e.message);
+    res.status(500).json({ erro: e.message });
+  }
 });
 
 async function checarLiberacaoNota(notaId) {
@@ -135,22 +225,27 @@ async function checarLiberacaoNota(notaId) {
     [notaId]
   );
   if (pend[0].qtd > 0) return;
-  const dec = await query(
-    `SELECT COUNT(*) FILTER (WHERE status='devolucao')::int AS qt_dev FROM validades_em_risco WHERE nota_id=$1`,
-    [notaId]
-  );
-  // Devoluções pendentes (qualquer origem: validade, divergência de quantidade) bloqueiam o fechamento
+  // Só devoluções AGUARDANDO bloqueiam — canceladas/enviadas liberam a nota.
+  // Validades decididas 'devolucao' geram dev em devolucoes; se a dev for cancelada,
+  // a nota volta a poder ser finalizada (dispensa de devolução).
   const devsAbertas = await query(
     `SELECT COUNT(*)::int AS qtd FROM devolucoes WHERE nota_id=$1 AND status='aguardando'`,
     [notaId]
   );
   const [nota] = await query(`SELECT conferida_com_divergencia, origem FROM notas_entrada WHERE id=$1`, [notaId]);
-  const isCD = nota?.origem === 'cd' || nota?.origem === 'transferencia_loja';
+  if (!nota) return;
+  const isCD = nota.origem === 'cd' || nota.origem === 'transferencia_loja';
   let novoStatus;
-  if (dec[0].qt_dev > 0 || devsAbertas[0].qtd > 0) novoStatus = 'aguardando_devolucao';
-  else if (isCD) novoStatus = nota?.conferida_com_divergencia ? 'auditagem' : 'conferida';
-  else novoStatus = 'fechada'; // NF-e fornecedor sem devolução = fecha
-  await query(`UPDATE notas_entrada SET status=$2 WHERE id=$1 AND status='aguardando_admin_validade'`, [notaId, novoStatus]);
+  if (devsAbertas[0].qtd > 0) novoStatus = 'aguardando_devolucao';
+  else if (isCD) novoStatus = nota.conferida_com_divergencia ? 'auditagem' : 'conferida';
+  else novoStatus = 'fechada';
+  await query(
+    `UPDATE notas_entrada
+        SET status=$2::text,
+            fechado_em = CASE WHEN $2::text='fechada' THEN COALESCE(fechado_em, NOW()) ELSE fechado_em END
+      WHERE id=$1 AND status IN ('aguardando_admin_validade','aguardando_devolucao')`,
+    [notaId, novoStatus]
+  );
 }
 
 // POST /:id/alterar-validade  body: { nova_validade: 'yyyy-mm-dd', observacao? }
@@ -225,3 +320,4 @@ router.post('/:id/alterar-validade', autenticar, async (req, res) => {
 });
 
 module.exports = router;
+module.exports.checarLiberacaoNota = checarLiberacaoNota;

@@ -7,6 +7,7 @@ const { query, pool } = require('../db');
 const { autenticar } = require('../auth');
 const { enviarEmail } = require('../mailer');
 const { enviarWhatsapp } = require('../whatsapp');
+const { checarLiberacaoNota } = require('./validades_em_risco');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const upload2 = upload.fields([
@@ -385,10 +386,12 @@ router.post('/:id/cancelar', autenticar, async (req, res) => {
   if (bloquearSeNaoPermitido(req, res)) return;
   try {
     const r = await query(
-      `UPDATE devolucoes SET status='cancelada', observacao=$2 WHERE id=$1 AND status='aguardando' RETURNING id`,
+      `UPDATE devolucoes SET status='cancelada', observacao=$2 WHERE id=$1 AND status='aguardando' RETURNING id, nota_id`,
       [req.params.id, req.body?.observacao || null]
     );
     if (!r.length) return res.status(404).json({ erro: 'Não encontrada ou já tratada' });
+    // Dispensa de devolução: reavalia status da nota (pode finalizar se não houver outras devs pendentes)
+    if (r[0].nota_id) await checarLiberacaoNota(r[0].nota_id);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
