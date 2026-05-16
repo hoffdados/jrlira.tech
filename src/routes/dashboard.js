@@ -18,6 +18,7 @@ router.get('/badges', autenticar, async (req, res) => {
       divergencias_cd,
       acordos_pendentes,
       fornecedores_pendentes,
+      validade_comercial_pendente,
     ] = await Promise.all([
       query(`SELECT COUNT(*)::int AS n FROM pedidos WHERE status = 'aguardando_auditoria' ${lojaId ? 'AND loja_id = $1' : ''}`, lojaId ? [lojaId] : []),
       query(`SELECT COUNT(*)::int AS n FROM notas_entrada WHERE status IN ('em_auditoria','aguardando_admin_validade') ${lojaId ? 'AND loja_id = $1' : ''}`, lojaId ? [lojaId] : []),
@@ -26,6 +27,7 @@ router.get('/badges', autenticar, async (req, res) => {
       query(`SELECT COUNT(*)::int AS n FROM devolucoes WHERE status = 'aguardando'`),
       query(`SELECT COUNT(*)::int AS n FROM acordos_comerciais WHERE status = 'pendente_compras'`),
       query(`SELECT COUNT(*)::int AS n FROM vendedores WHERE status IN ('pendente','aguardando_cadastro')`),
+      query(`SELECT COUNT(*)::int AS n FROM notas_entrada WHERE status = 'aguardando_validade_comercial' ${lojaId ? 'AND loja_id = $1' : ''}`, lojaId ? [lojaId] : []),
     ]);
 
     const aud_ped = auditoria_pedidos[0]?.n || 0;
@@ -35,6 +37,7 @@ router.get('/badges', autenticar, async (req, res) => {
     const div_cd = divergencias_cd[0]?.n || 0;
     const ac = acordos_pendentes[0]?.n || 0;
     const f_pend = fornecedores_pendentes[0]?.n || 0;
+    const vc_pend = validade_comercial_pendente[0]?.n || 0;
     res.json({
       auditoria_pedidos: aud_ped,
       notas_auditoria: n_aud,
@@ -43,7 +46,8 @@ router.get('/badges', autenticar, async (req, res) => {
       divergencias_cd: div_cd,
       auditoria_acordos: ac,
       fornecedores_pendentes: f_pend,
-      aprovacoes_pendentes: aud_ped + vr + ac + f_pend + ag_dev,
+      validade_comercial_pendente: vc_pend,
+      aprovacoes_pendentes: aud_ped + vr + ac + f_pend + ag_dev + vc_pend,
     });
   } catch (err) {
     console.error('[dashboard/badges]', err.message);

@@ -163,13 +163,16 @@ const GRUPOS = [
     { href: '/mkt-contratos', icon: 'megaphone', title: 'Trade MKT — Contratos', desc: 'Aluguel pontos de exposição', perfis: ['admin','ceo','comprador'] },
     { href: '/admin-pontos-exposicao', icon: 'map-pin', title: 'Pontos de Exposição', desc: 'Cadastro dos espaços', perfis: ['admin','ceo'] },
     { href: '/cb-auditoria', icon: 'shield-check', title: 'Casa Branca · Auditoria', desc: 'Saídas CB × entradas lojas', perfis: ['admin','ceo','comprador'] },
+    { href: '/notas-validade-comercial', icon: 'calendar-x', title: 'Validade Comercial Divergente', desc: 'Lote < validade negociada', perfis: ['admin','ceo','comprador'], badge: 'validade_comercial_pendente' },
   ]},
   { id: 'admin', titulo: 'Cadastros / Admin', classe: 'admin', cards: [
     { href: '/produtos-embalagem', icon: 'box', title: 'Cadastro CD', desc: 'Quantidade por embalagem', perfis: ['admin'] },
+    { href: '/cd-produtos-embalagem', icon: 'package-2', title: 'Embalagens por CD', desc: 'Peso e qtd dos CDs (Asa Frio / STM / ITB / NP) + replicar', perfis: ['admin','ceo'] },
     { href: '/embalagens-fornecedor', icon: 'package-search', title: 'Embalagens Fornec', desc: 'Sugestões via NF-e', perfis: ['admin'] },
     { href: '/usuarios', icon: 'shield', title: 'Usuários', desc: 'Perfis de acesso', perfis: ['admin'] },
     { href: '/admin-cds', icon: 'warehouse', title: 'CDs', desc: 'Conexões dos relays', perfis: ['admin'] },
     { href: '/admin-fantasmas', icon: 'ghost', title: 'NFs Fantasma', desc: 'compras_historico corrigidas', perfis: ['admin','ceo'] },
+    { href: '/produtos-sem-validade', icon: 'calendar-off', title: 'Produtos s/ validade', desc: 'EANs isentos (papel, EPI, etc)', perfis: ['admin','ceo','comprador'] },
   ]},
 ];
 

@@ -162,6 +162,9 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:9px 1
           <input type="number" id="itemPreco" min="0.01" step="0.01" placeholder="0,00" oninput="calcItem()">
         </div>
       </div>
+      <label>Validade negociada *</label>
+      <input type="date" id="itemValidade" style="margin-bottom:6px">
+      <div id="itemValidadeHint" style="font-size:11px;color:#64748b;margin-bottom:10px">Validade do lote que vai entregar (mínimo: hoje + 10 dias)</div>
       <div id="itemTotalPreview" style="text-align:right;font-size:13px;color:#4ade80;margin-bottom:10px"></div>
       <button class="btn-primary" onclick="adicionarItem()" style="width:auto;padding:8px 20px">+ Adicionar item</button>
     </div>
@@ -300,6 +303,22 @@ async function buscarProduto() {
       document.getElementById('produtoInfo').style.display = 'block';
     }
     calcItem();
+    sugerirValidade(barcode);
+  } catch {}
+}
+
+async function sugerirValidade(codigo_barras) {
+  if (!codigo_barras) return;
+  try {
+    const r = await fetch(`${API}/api/vendedores/sugerir-validade?codigo_barras=${encodeURIComponent(codigo_barras)}`, { headers: authHeaders() });
+    if (!r.ok) return;
+    const d = await r.json();
+    if (d.validade && !document.getElementById('itemValidade').value) {
+      const dt = String(d.validade).slice(0, 10);
+      document.getElementById('itemValidade').value = dt;
+      document.getElementById('itemValidadeHint').innerHTML = `Sugerida do pedido <b>${d.numero_pedido || ''}</b> (${dt}). Confirme ou altere.`;
+      document.getElementById('itemValidadeHint').style.color = '#22d3ee';
+    }
   } catch {}
 }
 
@@ -318,11 +337,17 @@ async function adicionarItem() {
   const desc = document.getElementById('itemDesc').value.trim();
   const qtde = parseFloat(document.getElementById('itemQtde').value);
   const preco = parseFloat(document.getElementById('itemPreco').value);
+  const validade = document.getElementById('itemValidade').value;
 
   if (!loja_id) return showMsg('Selecione a loja antes de adicionar itens.', 'err');
   if (!precoValidoAte) return showMsg('Informe a data de validade do preço.', 'err');
   if (!condicao) return showMsg('Selecione a condição de pagamento.', 'err');
   if (!desc || !qtde || !preco) return showMsg('Descrição, quantidade e preço são obrigatórios.', 'err');
+  if (validade) {
+    const min = new Date(); min.setDate(min.getDate() + 10);
+    const minIso = min.toISOString().slice(0, 10);
+    if (validade < minIso) return showMsg(`Validade ${validade} abaixo do mínimo (hoje + 10 dias = ${minIso}).`, 'err');
+  }
 
   if (!pedidoAtual) {
     const r = await fetch(`${API}/api/vendedores/pedido`, {
@@ -346,12 +371,12 @@ async function adicionarItem() {
   const r2 = await fetch(`${API}/api/vendedores/pedido/${pedidoAtual}/item`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ codigo_barras: bc || null, descricao: desc, quantidade: qtde, preco_unitario: preco, produto_novo: produtoNovoFlag })
+    body: JSON.stringify({ codigo_barras: bc || null, descricao: desc, quantidade: qtde, preco_unitario: preco, produto_novo: produtoNovoFlag, validade_negociada: validade || null })
   });
   const d2 = await r2.json();
   if (!r2.ok) return showMsg(d2.erro, 'err');
 
-  itensLocais.push({ id: d2.id, codigo_barras: bc, descricao: desc, quantidade: qtde, preco_unitario: preco, valor_total: qtde * preco, produto_novo: produtoNovoFlag });
+  itensLocais.push({ id: d2.id, codigo_barras: bc, descricao: desc, quantidade: qtde, preco_unitario: preco, valor_total: qtde * preco, produto_novo: produtoNovoFlag, validade_negociada: validade || null });
   renderItens();
 
   // Limpa campos
@@ -359,6 +384,9 @@ async function adicionarItem() {
   document.getElementById('itemDesc').value = '';
   document.getElementById('itemQtde').value = '';
   document.getElementById('itemPreco').value = '';
+  document.getElementById('itemValidade').value = '';
+  document.getElementById('itemValidadeHint').innerHTML = 'Validade do lote que vai entregar (mínimo: hoje + 10 dias)';
+  document.getElementById('itemValidadeHint').style.color = '#64748b';
   document.getElementById('produtoInfo').style.display = 'none';
   document.getElementById('itemTotalPreview').textContent = '';
   produtoNovoFlag = false;
@@ -380,6 +408,9 @@ function renderItens() {
           <label style="font-size:10px;color:#64748b">R$</label>
           <input type="number" step="0.0001" min="0" value="${item.preco_unitario.toFixed(4)}" data-idx="${idx}" data-field="preco_unitario"
                  onchange="editarItem(this)" style="width:100px;padding:4px 8px;font-size:12px;background:#0f172a;border:1px solid #334155;color:#e2e8f0;border-radius:4px">
+          <label style="font-size:10px;color:${item.validade_negociada ? '#64748b' : '#f97316'}">Val.</label>
+          <input type="date" value="${item.validade_negociada ? String(item.validade_negociada).slice(0,10) : ''}" data-idx="${idx}" data-field="validade_negociada"
+                 onchange="editarItem(this)" style="width:135px;padding:4px 8px;font-size:12px;background:${item.validade_negociada ? '#0f172a' : '#3b1d10'};border:1px solid ${item.validade_negociada ? '#334155' : '#f97316'};color:#e2e8f0;border-radius:4px">
         </div>
       </div>
       <div class="item-total" id="itemTotal-${idx}">R$ ${item.valor_total.toFixed(2).replace('.',',')}</div>
@@ -392,21 +423,31 @@ function renderItens() {
 async function editarItem(input) {
   const idx = parseInt(input.dataset.idx);
   const field = input.dataset.field;
-  const valor = parseFloat(input.value);
-  if (!Number.isFinite(valor) || valor < 0) { input.value = itensLocais[idx][field]; return; }
   const item = itensLocais[idx];
-  item[field] = valor;
-  item.valor_total = item.quantidade * item.preco_unitario;
-  // Atualiza visualmente
-  document.getElementById(`itemTotal-${idx}`).textContent = `R$ ${item.valor_total.toFixed(2).replace('.',',')}`;
-  const total = itensLocais.reduce((s, i) => s + i.valor_total, 0);
-  document.getElementById('totalPedido').textContent = `R$ ${total.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.')}`;
-  // Persiste no backend (delete + create na rota antiga, ou usa PUT se existir)
+  if (field === 'validade_negociada') {
+    const v = input.value || null;
+    if (v) {
+      const min = new Date(); min.setDate(min.getDate() + 10);
+      if (v < min.toISOString().slice(0, 10)) {
+        input.value = item.validade_negociada ? String(item.validade_negociada).slice(0,10) : '';
+        return showMsg(`Validade ${v} abaixo do mínimo (hoje + 10 dias).`, 'err');
+      }
+    }
+    item.validade_negociada = v;
+  } else {
+    const valor = parseFloat(input.value);
+    if (!Number.isFinite(valor) || valor < 0) { input.value = item[field]; return; }
+    item[field] = valor;
+    item.valor_total = item.quantidade * item.preco_unitario;
+    document.getElementById(`itemTotal-${idx}`).textContent = `R$ ${item.valor_total.toFixed(2).replace('.',',')}`;
+    const total = itensLocais.reduce((s, i) => s + i.valor_total, 0);
+    document.getElementById('totalPedido').textContent = `R$ ${total.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.')}`;
+  }
   try {
     const r = await fetch(`${API}/api/vendedores/pedido/${pedidoAtual}/item/${item.id}`, {
       method: 'PUT',
       headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ quantidade: item.quantidade, preco_unitario: item.preco_unitario })
+      body: JSON.stringify({ quantidade: item.quantidade, preco_unitario: item.preco_unitario, validade_negociada: item.validade_negociada || null })
     });
     if (!r.ok) showMsg('Erro ao salvar alteração do item', 'err');
   } catch { showMsg('Erro de conexão ao editar item', 'err'); }
@@ -621,7 +662,8 @@ async function continuarRascunho(id) {
     itensLocais = (ped.itens || []).map(i => ({
       id: i.id, codigo_barras: i.codigo_barras, descricao: i.descricao,
       quantidade: parseFloat(i.quantidade), preco_unitario: parseFloat(i.preco_unitario),
-      valor_total: parseFloat(i.valor_total), produto_novo: i.produto_novo
+      valor_total: parseFloat(i.valor_total), produto_novo: i.produto_novo,
+      validade_negociada: i.validade_negociada || null
     }));
     renderItens();
     document.getElementById('lojaId').value = ped.loja_id || '';
@@ -670,7 +712,8 @@ async function duplicarPedido(id, btn) {
     itensLocais = (ped.itens || []).map(i => ({
       id: i.id, codigo_barras: i.codigo_barras, descricao: i.descricao,
       quantidade: parseFloat(i.quantidade), preco_unitario: parseFloat(i.preco_unitario),
-      valor_total: parseFloat(i.valor_total), produto_novo: i.produto_novo
+      valor_total: parseFloat(i.valor_total), produto_novo: i.produto_novo,
+      validade_negociada: i.validade_negociada || null
     }));
     renderItens();
     // Limpa cabeçalho — vendedor vai preencher loja/validade/condição

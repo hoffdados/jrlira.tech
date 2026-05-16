@@ -56,6 +56,7 @@ app.use('/api/de-para-eans', require('./src/routes/de_para_eans'));
 app.use('/api/notas-avaria', require('./src/routes/notas_avaria'));
 app.use('/api/finalizadas-f', require('./src/routes/finalizadas_f'));
 app.use('/api/admin/fantasmas', require('./src/routes/fantasmas'));
+app.use('/api/produtos-sem-validade', require('./src/routes/produtos_sem_validade'));
 
 // ── PÁGINAS ───────────────────────────────────────────────────────
 app.get('/favicon.ico', (req, res) => res.redirect(301, '/favicon.svg'));
@@ -2820,6 +2821,60 @@ async function initDB() {
         ON compras_fantasmas (loja_id, numeronfe, fornecedor_cnpj);
       CREATE INDEX IF NOT EXISTS idx_compras_fantasmas_pendentes
         ON compras_fantasmas (status) WHERE status = 'pendente';
+    `);
+
+    // validade_negociada nos itens de pedido: obrigatório quando vendedor envia,
+    // opcional na sugestão do comprador. Tolerância default 7d (lote pode vir
+    // até 7d antes da data negociada sem disparar divergência comercial).
+    await runMigration(client, '20260516_itens_pedido_validade_negociada', `
+      ALTER TABLE itens_pedido ADD COLUMN IF NOT EXISTS validade_negociada DATE;
+      ALTER TABLE itens_pedido ADD COLUMN IF NOT EXISTS validade_tolerancia_dias INT DEFAULT 7;
+      ALTER TABLE itens_pedido ADD COLUMN IF NOT EXISTS validade_origem VARCHAR(20);
+    `);
+
+    // Flag manual de produto isento de validade (papel, EPI, limpeza)
+    await runMigration(client, '20260516_produtos_sem_validade', `
+      CREATE TABLE IF NOT EXISTS produtos_sem_validade (
+        codigo_barras VARCHAR(20) PRIMARY KEY,
+        descricao VARCHAR(300),
+        motivo VARCHAR(80),
+        marcado_por VARCHAR(150),
+        marcado_em TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
+    // Flag de divergência comercial na nota (cruzamento conferência × pedido)
+    await runMigration(client, '20260516_notas_divergencia_validade_comercial', `
+      ALTER TABLE notas_entrada ADD COLUMN IF NOT EXISTS divergencia_validade_comercial BOOLEAN DEFAULT FALSE;
+      ALTER TABLE notas_entrada ADD COLUMN IF NOT EXISTS validade_comercial_decidida_em TIMESTAMPTZ;
+      ALTER TABLE notas_entrada ADD COLUMN IF NOT EXISTS validade_comercial_decidida_por VARCHAR(150);
+      ALTER TABLE notas_entrada ADD COLUMN IF NOT EXISTS validade_comercial_decisao VARCHAR(20);
+    `);
+
+    // Detalhe da divergência por item conferido
+    await runMigration(client, '20260516_divergencias_validade_comercial', `
+      CREATE TABLE IF NOT EXISTS divergencias_validade_comercial (
+        id SERIAL PRIMARY KEY,
+        nota_id INTEGER NOT NULL REFERENCES notas_entrada(id) ON DELETE CASCADE,
+        item_nota_id INTEGER NOT NULL,
+        item_pedido_id INTEGER,
+        codigo_barras VARCHAR(20),
+        descricao VARCHAR(300),
+        validade_negociada DATE NOT NULL,
+        validade_recebida DATE NOT NULL,
+        tolerancia_dias INT DEFAULT 0,
+        dias_diferenca INT NOT NULL,
+        qtd_recebida NUMERIC(12,4),
+        valor_em_risco NUMERIC(14,2),
+        status VARCHAR(20) DEFAULT 'pendente',
+        decidido_em TIMESTAMPTZ,
+        decidido_por VARCHAR(150),
+        observacao TEXT,
+        criado_em TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_div_val_com_nota ON divergencias_validade_comercial (nota_id);
+      CREATE INDEX IF NOT EXISTS idx_div_val_com_pendentes
+        ON divergencias_validade_comercial (status) WHERE status = 'pendente';
     `);
 
     console.log('[DB] Tabelas inicializadas');

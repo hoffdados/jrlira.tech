@@ -7,6 +7,10 @@ const { parseNFe, MAX_XML_BYTES } = require('../parsers/nfe');
 const { parseEmbalagem } = require('../parser_embalagem');
 const { recalcularItensFornecedor } = require('./embalagens_fornecedor');
 
+// Validades acima desse limite passam direto (ok automático), independente
+// de histórico de vendas. Itens com >130 dias têm folga suficiente.
+const VALIDADE_DIAS_AUTO_OK = 130;
+
 // Classifica o preço da NF vs custo do CD.
 //   diferença <= R$ 0,01           → igual    (azul)
 //   variação > 15% (qualquer lado) → auditagem (laranja, exige análise)
@@ -33,6 +37,61 @@ function normalizarDescricao(s) {
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_XML_BYTES } });
 
 function n(v) { return parseFloat(v) || 0; }
+
+// Detecta divergência entre a validade negociada (item_pedido) e a recebida (conferencia_lotes).
+// Só roda se a nota tem pedido vinculado. Insere uma linha em divergencias_validade_comercial
+// por (item_nota, lote) que vier abaixo de negociada - tolerância. Ignora EAN em produtos_sem_validade.
+// Retorna número de divergências criadas; setea nota.divergencia_validade_comercial=TRUE se houve.
+async function detectarDivergenciaValidadeComercial(client, notaId) {
+  const { rows } = await client.query(`
+    SELECT i.id AS item_nota_id, i.ean_nota, i.descricao_nota, i.preco_unitario_nota,
+           ip.id AS item_pedido_id, ip.validade_negociada, ip.validade_tolerancia_dias,
+           cl.validade AS validade_recebida, cl.quantidade AS qtd_recebida
+      FROM itens_nota i
+      JOIN notas_entrada n ON n.id = i.nota_id
+      JOIN itens_pedido ip ON ip.pedido_id = n.pedido_id
+                          AND ip.codigo_barras = i.ean_nota
+                          AND ip.validade_negociada IS NOT NULL
+      JOIN conferencias_estoque ce ON ce.item_id = i.id
+      JOIN conferencia_lotes cl ON cl.conferencia_id = ce.id AND cl.validade IS NOT NULL
+      LEFT JOIN produtos_sem_validade sv ON sv.codigo_barras = i.ean_nota
+     WHERE i.nota_id = $1
+       AND sv.codigo_barras IS NULL
+       AND cl.validade < (ip.validade_negociada - (COALESCE(ip.validade_tolerancia_dias, 0) || ' days')::interval)
+  `, [notaId]);
+
+  if (!rows.length) return 0;
+
+  // Limpa divergências pendentes anteriores (re-auditoria/re-conferência)
+  await client.query(
+    `DELETE FROM divergencias_validade_comercial WHERE nota_id=$1 AND status='pendente'`,
+    [notaId]
+  );
+
+  for (const r of rows) {
+    const dt = new Date(r.validade_recebida);
+    const neg = new Date(r.validade_negociada);
+    const diasDif = Math.round((dt - neg) / 86400000);
+    const valorRisco = (parseFloat(r.qtd_recebida) || 0) * (parseFloat(r.preco_unitario_nota) || 0);
+    await client.query(
+      `INSERT INTO divergencias_validade_comercial
+         (nota_id, item_nota_id, item_pedido_id, codigo_barras, descricao,
+          validade_negociada, validade_recebida, tolerancia_dias, dias_diferenca,
+          qtd_recebida, valor_em_risco)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+      [notaId, r.item_nota_id, r.item_pedido_id, r.ean_nota, r.descricao_nota,
+       r.validade_negociada, r.validade_recebida,
+       r.validade_tolerancia_dias || 0, diasDif,
+       r.qtd_recebida, valorRisco]
+    );
+  }
+
+  await client.query(
+    `UPDATE notas_entrada SET divergencia_validade_comercial = TRUE WHERE id=$1`,
+    [notaId]
+  );
+  return rows.length;
+}
 
 // Importa NF-e parseada: retorna { nota_id, duplicado }
 async function importarNotaParseada(client, header, itens, loja_id, importado_por) {
@@ -1386,7 +1445,7 @@ router.patch('/:id/finalizar-conferencia-transf', autenticar, async (req, res) =
             const motivo = vendasMedia <= 0
               ? 'sem_historico_vendas'
               : (dias < 0 ? 'ja_vencido' : 'risco_por_giro');
-            if (emRisco > 0 || vendasMedia <= 0 || dias < 0) {
+            if (dias <= VALIDADE_DIAS_AUTO_OK && (emRisco > 0 || vendasMedia <= 0 || dias < 0)) {
               const precoUnit = (parseFloat(it.preco_unitario_nota) || 0) / (emb || 1);
               const qtdRiscoUn = vendasMedia <= 0 ? v.qtd : emRisco;
               // Arredonda risco PARA CIMA em caixas inteiras (devolução por caixa fechada)
@@ -1814,9 +1873,17 @@ router.post('/:id/conferencia', autenticar, async (req, res) => {
       resultados.push({ item_id: item.id, status });
     }
 
+    // Detecta divergência de validade comercial (lote recebido < negociada - tolerância)
+    const divComercial = nota.pedido_id
+      ? await detectarDivergenciaValidadeComercial(client, req.params.id)
+      : 0;
+
     let novoStatus = nota.status;
-    if (divergentes === 0) novoStatus = 'fechada';
-    else if (rodada === 2) novoStatus = 'em_auditoria';
+    if (divergentes === 0) {
+      novoStatus = divComercial > 0 ? 'aguardando_validade_comercial' : 'fechada';
+    } else if (rodada === 2) {
+      novoStatus = 'em_auditoria';
+    }
 
     await client.query(
       'UPDATE notas_entrada SET conferencia_rodada=$1, status=$2 WHERE id=$3',
@@ -1843,12 +1910,26 @@ router.post('/:id/auditoria', autenticar, async (req, res) => {
       return res.status(400).json({ erro: 'Itens obrigatórios' });
     const [nota] = await query('SELECT * FROM notas_entrada WHERE id = $1', [req.params.id]);
     if (!nota) return res.status(404).json({ erro: 'Nota não encontrada' });
-    if (nota.status !== 'em_auditoria') return res.status(400).json({ erro: 'Nota não está em auditoria' });
+    // Aceita refazer auditoria de nota presa em aguardando_devolucao (admin/auditor only)
+    const podeRefazer = nota.status === 'aguardando_devolucao' && ['admin', 'auditor'].includes(req.usuario.perfil);
+    if (nota.status !== 'em_auditoria' && !podeRefazer) {
+      return res.status(400).json({ erro: 'Nota não está em auditoria' });
+    }
 
     await client.query('BEGIN');
     // Limpa validades + divergências pendentes anteriores desta nota
     await client.query(`DELETE FROM validades_em_risco WHERE nota_id=$1 AND status='pendente'`, [req.params.id]);
     await client.query(`DELETE FROM auditagem_divergencias WHERE nota_id=$1 AND status='pendente'`, [req.params.id]);
+    // Se refazendo auditoria com nota presa em devolução, cancela devs aguardando da própria nota
+    if (podeRefazer) {
+      await client.query(
+        `UPDATE devolucoes
+            SET status='cancelada',
+                observacao = COALESCE(observacao,'') || ' [auto] cancelada por refazer auditoria por ' || $2
+          WHERE nota_id=$1 AND status='aguardando'`,
+        [req.params.id, req.usuario.nome || req.usuario.usuario]
+      );
+    }
 
     let temValidadeEmRisco = false;
     let temFalta = false;
@@ -1977,7 +2058,7 @@ router.post('/:id/auditoria', autenticar, async (req, res) => {
         const dias = Math.floor((new Date(aud.validade) - Date.now()) / 86400000);
         const consumivel = vendasMedia * Math.max(0, dias);
         const emRisco = Math.max(0, estoquePos - consumivel);
-        if (emRisco > 0 || vendasMedia <= 0 || dias < 0) {
+        if (dias <= VALIDADE_DIAS_AUTO_OK && (emRisco > 0 || vendasMedia <= 0 || dias < 0)) {
           const motivo = vendasMedia <= 0 ? 'sem_historico_vendas'
                        : dias < 0 ? 'ja_vencido' : 'risco_por_giro';
           const precoUnit = (parseFloat(item.preco_unitario_nota) || 0) / (emb || 1);
@@ -2014,12 +2095,19 @@ router.post('/:id/auditoria', autenticar, async (req, res) => {
       );
     }
 
-    // Precedência: validade em risco > falta (devolução) > sobra/ok (fecha)
+    // Detecta divergência de validade comercial (lote recebido < negociada - tolerância)
+    const divComercial = nota.pedido_id
+      ? await detectarDivergenciaValidadeComercial(client, req.params.id)
+      : 0;
+
+    // Precedência: validade em risco > falta (devolução) > validade comercial > sobra/ok (fecha)
     const novoStatus = temValidadeEmRisco
       ? 'aguardando_admin_validade'
       : temFalta
         ? 'aguardando_devolucao'
-        : 'fechada';
+        : divComercial > 0
+          ? 'aguardando_validade_comercial'
+          : 'fechada';
     await client.query(
       `UPDATE notas_entrada SET status=$1::text, fechado_em = CASE WHEN $1::text='fechada' THEN NOW() ELSE fechado_em END WHERE id=$2`,
       [novoStatus, req.params.id]
@@ -2054,6 +2142,139 @@ router.post('/:id/auditoria', autenticar, async (req, res) => {
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     res.status(500).json({ erro: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// GET /api/notas/:id/divergencias-validade-comercial — lista pendentes da nota
+router.get('/:id/divergencias-validade-comercial', autenticar, async (req, res) => {
+  try {
+    const rows = await query(
+      `SELECT d.*, i.preco_unitario_nota
+         FROM divergencias_validade_comercial d
+         JOIN itens_nota i ON i.id = d.item_nota_id
+        WHERE d.nota_id = $1
+        ORDER BY d.status, d.dias_diferenca ASC`,
+      [req.params.id]
+    );
+    res.json(rows);
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
+// POST /api/notas/:id/decidir-validade-comercial
+// body: { decisao: 'liberar' | 'rejeitar', observacao? }
+// liberar → fecha a nota (decisão comercial: aceita o lote como veio)
+// rejeitar → gera devolução dos itens divergentes, vai pra aguardando_devolucao
+router.post('/:id/decidir-validade-comercial', autenticar, async (req, res) => {
+  if (!['admin', 'comprador', 'auditor'].includes(req.usuario.perfil)) {
+    return res.status(403).json({ erro: 'Apenas admin/comprador/auditor' });
+  }
+  const { decisao, observacao } = req.body || {};
+  if (!['liberar', 'rejeitar'].includes(decisao)) {
+    return res.status(400).json({ erro: 'decisao deve ser liberar ou rejeitar' });
+  }
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: [nota] } = await client.query('SELECT * FROM notas_entrada WHERE id=$1', [req.params.id]);
+    if (!nota) { await client.query('ROLLBACK'); return res.status(404).json({ erro: 'Nota não encontrada' }); }
+    if (nota.status !== 'aguardando_validade_comercial') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ erro: `Nota está em "${nota.status}", não em aguardando_validade_comercial` });
+    }
+
+    const { rows: divs } = await client.query(
+      `SELECT * FROM divergencias_validade_comercial WHERE nota_id=$1 AND status='pendente'`,
+      [req.params.id]
+    );
+
+    if (decisao === 'liberar') {
+      await client.query(
+        `UPDATE divergencias_validade_comercial
+            SET status='liberado', decidido_em=NOW(), decidido_por=$2, observacao=$3
+          WHERE nota_id=$1 AND status='pendente'`,
+        [req.params.id, req.usuario.nome, observacao || null]
+      );
+      await client.query(
+        `UPDATE notas_entrada
+            SET status='fechada', fechado_em=NOW(),
+                validade_comercial_decidida_em=NOW(),
+                validade_comercial_decidida_por=$2,
+                validade_comercial_decisao='liberado'
+          WHERE id=$1`,
+        [req.params.id, req.usuario.nome]
+      );
+      await client.query('COMMIT');
+      enviarWebhookEntrada(req.params.id);
+      return res.json({ ok: true, novo_status: 'fechada', decididos: divs.length });
+    }
+
+    // rejeitar: gera devolução pros itens divergentes
+    const destCnpj = (nota.fornecedor_cnpj || '').replace(/\D/g, '');
+    const destNome = nota.fornecedor_nome || 'Fornecedor';
+    const { rows: existeDev } = await client.query(
+      `SELECT id FROM devolucoes WHERE nota_id=$1 AND destinatario_cnpj=$2 AND status='aguardando' LIMIT 1`,
+      [req.params.id, destCnpj]
+    );
+    let devolucaoId = existeDev[0]?.id;
+    if (!devolucaoId) {
+      const { rows: [novoDev] } = await client.query(
+        `INSERT INTO devolucoes (nota_id, loja_id, tipo, destinatario_cnpj, destinatario_nome, motivo, criado_por)
+         VALUES ($1,$2,'fornecedor',$3,$4,'validade_comercial_divergente',$5) RETURNING id`,
+        [req.params.id, nota.loja_id, destCnpj, destNome, req.usuario.nome]
+      );
+      devolucaoId = novoDev.id;
+    }
+    for (const d of divs) {
+      const { rows: [item] } = await client.query(
+        `SELECT i.*, COALESCE(cpe.qtd_embalagem, pe.qtd_embalagem, 1)::numeric AS emb
+           FROM itens_nota i
+           LEFT JOIN cd_produtos_embalagem cpe ON cpe.cd_codigo = $2 AND cpe.mat_codi = i.cd_pro_codi
+           LEFT JOIN produtos_embalagem pe ON pe.mat_codi = i.cd_pro_codi
+          WHERE i.id = $1`,
+        [d.item_nota_id, nota.origem_cd_codigo || '']
+      );
+      if (!item) continue;
+      const emb = parseFloat(item.emb) || 1;
+      const qtdUn = parseFloat(d.qtd_recebida) || 0;
+      const qtdCx = Math.max(1, Math.round(qtdUn / emb));
+      const precoUnit = parseFloat(item.preco_unitario_nota) || 0;
+      const valorTotal = qtdUn * precoUnit;
+      await client.query(
+        `INSERT INTO devolucoes_itens
+           (devolucao_id, item_nota_id, cd_pro_codi, ean, descricao,
+            qtd_caixas, qtd_unidades, qtd_total, valor_unitario, valor_total,
+            origem_tipo, origem_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'validade_comercial',$11)`,
+        [devolucaoId, item.id, item.cd_pro_codi, item.ean_nota, item.descricao_nota,
+         qtdCx, qtdUn, qtdUn, precoUnit, valorTotal, d.id]
+      );
+      await client.query(
+        `UPDATE divergencias_validade_comercial
+            SET status='rejeitado', decidido_em=NOW(), decidido_por=$2, observacao=$3
+          WHERE id=$1`,
+        [d.id, req.usuario.nome, observacao || null]
+      );
+    }
+    await client.query(
+      `UPDATE devolucoes SET valor_total = (SELECT COALESCE(SUM(valor_total),0) FROM devolucoes_itens WHERE devolucao_id=$1) WHERE id=$1`,
+      [devolucaoId]
+    );
+    await client.query(
+      `UPDATE notas_entrada
+          SET status='aguardando_devolucao',
+              validade_comercial_decidida_em=NOW(),
+              validade_comercial_decidida_por=$2,
+              validade_comercial_decisao='rejeitado'
+        WHERE id=$1`,
+      [req.params.id, req.usuario.nome]
+    );
+    await client.query('COMMIT');
+    res.json({ ok: true, novo_status: 'aguardando_devolucao', devolucao_id: devolucaoId, rejeitados: divs.length });
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    res.status(500).json({ erro: e.message });
   } finally {
     client.release();
   }

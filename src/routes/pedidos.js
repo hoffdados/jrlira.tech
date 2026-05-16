@@ -226,9 +226,14 @@ router.post('/de-sugestao', compradorOuAdmin, async (req, res) => {
       const vt = qtd * preco;
       valor_total += vt;
       await dbQuery(
-        `INSERT INTO itens_pedido (pedido_id, codigo_barras, descricao, quantidade, preco_unitario, valor_total)
-         VALUES ($1,$2,$3,$4,$5,$6)`,
-        [ped.id, it.codigo_barras || null, it.descricao, qtd, preco, vt]
+        `INSERT INTO itens_pedido
+           (pedido_id, codigo_barras, descricao, quantidade, preco_unitario, valor_total,
+            validade_negociada, validade_tolerancia_dias, validade_origem)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [ped.id, it.codigo_barras || null, it.descricao, qtd, preco, vt,
+         it.validade_negociada || null,
+         Number.isFinite(parseInt(it.validade_tolerancia_dias)) ? parseInt(it.validade_tolerancia_dias) : 7,
+         it.validade_negociada ? 'comprador' : null]
       );
     }
     await dbQuery('UPDATE pedidos SET valor_total=$1 WHERE id=$2', [valor_total, ped.id]);
@@ -374,19 +379,47 @@ router.patch('/:id/rascunho-validacao', compradorOuAdmin, async (req, res) => {
 // POST /api/pedidos/:id/itens — adiciona item durante validação
 router.post('/:id/itens', compradorOuAdmin, async (req, res) => {
   try {
-    const { codigo_barras, descricao, quantidade, preco_unitario, produto_novo } = req.body;
+    const { codigo_barras, descricao, quantidade, preco_unitario, produto_novo, validade_negociada, validade_tolerancia_dias } = req.body;
     if (!descricao || !quantidade || !preco_unitario) return res.status(400).json({ erro: 'descricao, quantidade e preco obrigatórios' });
     const ped = await dbQuery('SELECT status FROM pedidos WHERE id=$1', [req.params.id]);
     if (!ped.length) return res.status(404).json({ erro: 'Pedido não encontrado' });
     if (ped[0].status === 'vinculado') return res.status(400).json({ erro: 'Pedido vinculado — não editável' });
     const valor_total = parseFloat(quantidade) * parseFloat(preco_unitario);
+    const tol = Number.isFinite(parseInt(validade_tolerancia_dias)) ? parseInt(validade_tolerancia_dias) : 7;
     const r = await dbQuery(
-      `INSERT INTO itens_pedido (pedido_id, codigo_barras, descricao, quantidade, preco_unitario, valor_total, produto_novo, qtd_validada, preco_validado, adicionado_pelo_comprador)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$4,$5,TRUE) RETURNING id`,
-      [req.params.id, codigo_barras || null, descricao, quantidade, preco_unitario, valor_total, !!produto_novo]
+      `INSERT INTO itens_pedido
+         (pedido_id, codigo_barras, descricao, quantidade, preco_unitario, valor_total,
+          produto_novo, qtd_validada, preco_validado, adicionado_pelo_comprador,
+          validade_negociada, validade_tolerancia_dias, validade_origem)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$4,$5,TRUE,$8,$9,$10) RETURNING id`,
+      [req.params.id, codigo_barras || null, descricao, quantidade, preco_unitario, valor_total, !!produto_novo,
+       validade_negociada || null, tol, validade_negociada ? 'comprador' : null]
     );
     await recalcTotalIgnorandoExcluidos(req.params.id);
     res.json({ ok: true, id: r[0].id });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
+// GET /api/pedidos/sugerir-validade?fornecedor_id=&codigo_barras=
+// Retorna a última validade_negociada deste fornecedor pra esse EAN — pra auto-preencher.
+router.get('/sugerir-validade', compradorOuAdmin, async (req, res) => {
+  try {
+    const { fornecedor_id, codigo_barras, vendedor_id } = req.query;
+    if (!codigo_barras) return res.json({ validade: null });
+    const rows = await dbQuery(
+      `SELECT i.validade_negociada AS validade,
+              p.id AS pedido_id, p.numero_pedido, p.criado_em
+         FROM itens_pedido i
+         JOIN pedidos p ON p.id = i.pedido_id
+        WHERE i.codigo_barras = $1
+          AND i.validade_negociada IS NOT NULL
+          AND ($2::int IS NULL OR p.fornecedor_id = $2::int)
+          AND ($3::int IS NULL OR p.vendedor_id   = $3::int)
+        ORDER BY p.criado_em DESC
+        LIMIT 1`,
+      [codigo_barras, fornecedor_id || null, vendedor_id || null]
+    );
+    res.json(rows[0] || { validade: null });
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 

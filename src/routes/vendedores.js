@@ -365,17 +365,42 @@ router.post('/pedido/:id/duplicar', autVendedor, async (req, res) => {
   } finally { client.release(); }
 });
 
+// GET /api/vendedores/sugerir-validade?codigo_barras=...
+// Retorna a última validade_negociada que ESTE vendedor mandou pra esse EAN.
+router.get('/sugerir-validade', autVendedor, async (req, res) => {
+  try {
+    const { codigo_barras } = req.query;
+    if (!codigo_barras) return res.json({ validade: null });
+    const rows = await dbQuery(
+      `SELECT i.validade_negociada AS validade, p.id AS pedido_id, p.numero_pedido, p.criado_em
+         FROM itens_pedido i
+         JOIN pedidos p ON p.id = i.pedido_id
+        WHERE i.codigo_barras = $1
+          AND i.validade_negociada IS NOT NULL
+          AND p.vendedor_id = $2
+        ORDER BY p.criado_em DESC
+        LIMIT 1`,
+      [codigo_barras, req.vendedor.id]
+    );
+    res.json(rows[0] || { validade: null });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
 // POST /api/vendedores/pedido/:id/item
 router.post('/pedido/:id/item', autVendedor, async (req, res) => {
   try {
-    const { codigo_barras, descricao, quantidade, preco_unitario, produto_novo } = req.body;
+    const { codigo_barras, descricao, quantidade, preco_unitario, produto_novo, validade_negociada, validade_tolerancia_dias } = req.body;
     if (!descricao || !quantidade || !preco_unitario)
       return res.status(400).json({ erro: 'descricao, quantidade e preco obrigatórios' });
     const valor_total = parseFloat(quantidade) * parseFloat(preco_unitario);
+    const tol = Number.isFinite(parseInt(validade_tolerancia_dias)) ? parseInt(validade_tolerancia_dias) : 7;
     const rows = await dbQuery(
-      `INSERT INTO itens_pedido (pedido_id, codigo_barras, descricao, quantidade, preco_unitario, valor_total, produto_novo)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-      [req.params.id, codigo_barras || null, descricao, quantidade, preco_unitario, valor_total, produto_novo || false]
+      `INSERT INTO itens_pedido
+         (pedido_id, codigo_barras, descricao, quantidade, preco_unitario, valor_total, produto_novo,
+          validade_negociada, validade_tolerancia_dias, validade_origem)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+      [req.params.id, codigo_barras || null, descricao, quantidade, preco_unitario, valor_total, produto_novo || false,
+       validade_negociada || null, tol, validade_negociada ? 'vendedor' : null]
     );
     await recalcTotal(req.params.id);
     res.json({ ok: true, id: rows[0].id });
@@ -501,10 +526,10 @@ router.delete('/pedido/:id', autVendedor, async (req, res) => {
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
-// PUT /api/vendedores/pedido/:id/item/:itemId — edita qtd/preço de um item
+// PUT /api/vendedores/pedido/:id/item/:itemId — edita qtd/preço/validade de um item
 router.put('/pedido/:id/item/:itemId', autVendedor, async (req, res) => {
   try {
-    const { quantidade, preco_unitario } = req.body;
+    const { quantidade, preco_unitario, validade_negociada, validade_tolerancia_dias } = req.body;
     if (!Number.isFinite(parseFloat(quantidade)) || !Number.isFinite(parseFloat(preco_unitario)))
       return res.status(400).json({ erro: 'quantidade e preco_unitario obrigatórios' });
     // Só permite editar se o pedido ainda for rascunho do próprio vendedor
@@ -514,10 +539,18 @@ router.put('/pedido/:id/item/:itemId', autVendedor, async (req, res) => {
     );
     if (!ok.length) return res.status(403).json({ erro: 'Pedido não editável' });
     const valor_total = parseFloat(quantidade) * parseFloat(preco_unitario);
+    const tol = Number.isFinite(parseInt(validade_tolerancia_dias)) ? parseInt(validade_tolerancia_dias) : null;
     await dbQuery(
-      `UPDATE itens_pedido SET quantidade=$1, preco_unitario=$2, valor_total=$3
-       WHERE id=$4 AND pedido_id=$5`,
-      [quantidade, preco_unitario, valor_total, req.params.itemId, req.params.id]
+      `UPDATE itens_pedido
+          SET quantidade=$1,
+              preco_unitario=$2,
+              valor_total=$3,
+              validade_negociada = COALESCE($6::date, validade_negociada),
+              validade_tolerancia_dias = COALESCE($7::int, validade_tolerancia_dias),
+              validade_origem = CASE WHEN $6::date IS NOT NULL THEN 'vendedor' ELSE validade_origem END
+        WHERE id=$4 AND pedido_id=$5`,
+      [quantidade, preco_unitario, valor_total, req.params.itemId, req.params.id,
+       validade_negociada || null, tol]
     );
     await recalcTotal(req.params.id);
     res.json({ ok: true });
@@ -546,6 +579,27 @@ router.post('/pedido/:id/enviar', autVendedor, async (req, res) => {
     const itens = await dbQuery('SELECT id FROM itens_pedido WHERE pedido_id=$1', [p.id]);
     if (!itens.length) return res.status(400).json({ erro: 'Adicione ao menos um item antes de enviar' });
     if (p.condicao_pagamento == null) return res.status(400).json({ erro: 'Informe a condição de pagamento' });
+
+    // Validade negociada é obrigatória pra todos os itens (exceto EAN marcado como sem_validade).
+    // Regra dos 10 dias mínimos (mesmo guard da conferência) também vale.
+    const minIso = new Date(Date.now() + 10 * 86400000).toISOString().slice(0, 10);
+    const semVal = await dbQuery(
+      `SELECT i.id, i.descricao, i.codigo_barras, i.validade_negociada
+         FROM itens_pedido i
+         LEFT JOIN produtos_sem_validade sv ON sv.codigo_barras = i.codigo_barras
+        WHERE i.pedido_id = $1
+          AND sv.codigo_barras IS NULL
+          AND (i.validade_negociada IS NULL OR i.validade_negociada::text < $2)`,
+      [p.id, minIso]
+    );
+    if (semVal.length) {
+      const detalhes = semVal.slice(0, 3).map(x =>
+        `${x.descricao}${x.validade_negociada ? ` (data ${x.validade_negociada.toISOString().slice(0,10)} abaixo do mínimo ${minIso})` : ' (sem data)'}`
+      ).join('; ');
+      return res.status(400).json({
+        erro: `Validade negociada obrigatória em ${semVal.length} item(s). Mínimo hoje + 10 dias. Ex: ${detalhes}`
+      });
+    }
 
     // Serializa geração de numero_pedido por loja_id pra evitar race condition (2 vendedores enviarem ao mesmo tempo)
     const { pool } = require('../db');

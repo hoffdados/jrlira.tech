@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Produtos sem validade — JR Lira</title>
+<link rel="stylesheet" href="/shared.css">
+<script src="/shared.js"></script>
+<style>
+.wrap{max-width:920px;margin:24px auto;padding:0 16px}
+.card{background:#1e293b;border-radius:10px;padding:16px;margin-bottom:16px}
+.form-row{display:grid;grid-template-columns:1fr 2fr 1fr auto;gap:10px;align-items:end}
+input,select{background:#0f172a;border:1px solid #334155;color:#e2e8f0;border-radius:6px;padding:8px;font-size:13px;width:100%}
+label{font-size:11px;color:#64748b;display:block;margin-bottom:4px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead th{background:#0f172a;padding:8px 10px;text-align:left;color:#64748b;border-bottom:1px solid #334155}
+tbody td{padding:8px 10px;border-bottom:1px solid #334155}
+.btn-rem{background:#dc2626;color:#fff;border:none;padding:4px 10px;border-radius:5px;cursor:pointer;font-size:11px}
+</style>
+</head>
+<body>
+<nav>
+  <span class="brand">JR Lira Tech</span>
+  <span style="color:#475569">/</span>
+  <span style="font-size:14px;color:#94a3b8">Produtos sem validade</span>
+  <span class="nav-user" id="nomeUsuario"></span>
+  <button class="btn-nav btn-ghost" onclick="location.href='/'">← Início</button>
+</nav>
+
+<div class="wrap">
+  <div class="card">
+    <div style="font-size:13px;color:#94a3b8;margin-bottom:10px">
+      EANs aqui não exigem validade no pedido do vendedor e são ignorados pelo detector de divergência comercial.
+      Use pra papel, EPI, limpeza, descartáveis, utensílios — qualquer produto não-perecível.
+    </div>
+    <div id="msg" class="msg" style="display:none"></div>
+    <div class="form-row">
+      <div>
+        <label>Código de barras *</label>
+        <input id="ean" placeholder="EAN do produto">
+      </div>
+      <div>
+        <label>Descrição</label>
+        <input id="desc" placeholder="(opcional, ajuda na busca)">
+      </div>
+      <div>
+        <label>Motivo</label>
+        <select id="motivo">
+          <option value="">(escolher)</option>
+          <option value="papel">Papel</option>
+          <option value="epi">EPI</option>
+          <option value="limpeza">Limpeza</option>
+          <option value="descartavel">Descartável</option>
+          <option value="utensilio">Utensílio</option>
+          <option value="outro">Outro</option>
+        </select>
+      </div>
+      <button class="btn-primary" onclick="salvar()" style="padding:10px 18px">+ Adicionar</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:10px">
+      Cadastrados (<span id="qtd">0</span>)
+    </div>
+    <table>
+      <thead><tr><th>EAN</th><th>Descrição</th><th>Motivo</th><th>Cadastrado por</th><th>Em</th><th></th></tr></thead>
+      <tbody id="lista"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const API = '';
+const token = localStorage.getItem('token');
+if (!token) location.href = '/index.html';
+document.getElementById('nomeUsuario').textContent = localStorage.getItem('nome') || '';
+const H = () => ({ Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' });
+const fmtD = s => s ? new Date(s).toLocaleString('pt-BR') : '';
+
+function msg(t, tipo) {
+  const el = document.getElementById('msg');
+  el.textContent = t; el.className = 'msg msg-' + (tipo === 'err' ? 'err' : 'ok'); el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', 3500);
+}
+
+async function carregar() {
+  const r = await fetch(`${API}/api/produtos-sem-validade`, { headers: H() });
+  const lista = await r.json();
+  document.getElementById('qtd').textContent = lista.length;
+  document.getElementById('lista').innerHTML = lista.map(p => `
+    <tr>
+      <td style="font-family:monospace">${p.codigo_barras}</td>
+      <td>${p.descricao || ''}</td>
+      <td>${p.motivo || ''}</td>
+      <td>${p.marcado_por || ''}</td>
+      <td>${fmtD(p.marcado_em)}</td>
+      <td><button class="btn-rem" onclick="remover('${p.codigo_barras}')">remover</button></td>
+    </tr>
+  `).join('') || '<tr><td colspan="6" style="text-align:center;color:#475569;padding:20px">Nenhum cadastro ainda</td></tr>';
+}
+
+async function salvar() {
+  const codigo_barras = document.getElementById('ean').value.trim();
+  if (!codigo_barras) return msg('Informe o EAN', 'err');
+  const r = await fetch(`${API}/api/produtos-sem-validade`, {
+    method: 'POST', headers: H(),
+    body: JSON.stringify({
+      codigo_barras,
+      descricao: document.getElementById('desc').value.trim() || null,
+      motivo: document.getElementById('motivo').value || null
+    })
+  });
+  const d = await r.json();
+  if (!r.ok) return msg(d.erro || 'Erro ao salvar', 'err');
+  msg('Cadastrado', 'ok');
+  document.getElementById('ean').value = '';
+  document.getElementById('desc').value = '';
+  document.getElementById('motivo').value = '';
+  carregar();
+}
+
+async function remover(ean) {
+  if (!confirm(`Remover ${ean} da lista de isentos?`)) return;
+  const r = await fetch(`${API}/api/produtos-sem-validade/${encodeURIComponent(ean)}`, { method: 'DELETE', headers: H() });
+  if (!r.ok) return msg('Erro ao remover', 'err');
+  carregar();
+}
+
+carregar();
+</script>
+</body>
+</html>

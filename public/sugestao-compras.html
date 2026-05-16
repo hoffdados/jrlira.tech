@@ -170,6 +170,10 @@ tbody tr.selecionado{background:#0c2040}
         <option value="70">70 dias</option>
       </select>
     </div>
+    <div>
+      <div style="font-size:10px;color:#64748b;margin-bottom:3px">Validade negociada</div>
+      <input type="date" id="ftValidade" style="width:155px" title="Opcional — vai sugerida pra todos os itens">
+    </div>
     <div style="flex:1">
       <div style="font-size:10px;color:#64748b;margin-bottom:3px">Observações</div>
       <input type="text" id="ftObs" placeholder="(opcional)" style="width:100%">
@@ -459,11 +463,13 @@ async function gerarPedido(btn) {
   const forn = fornecedores.find(f => f.cnpj === cnpj);
   if (!forn) return alert('Fornecedor não encontrado');
 
+  const validadeGlobal = document.getElementById('ftValidade').value || null;
   const itens = selecionados.map(it => ({
     codigo_barras: it.codigobarra,
     descricao: it.descricao,
     quantidade: parseFloat(it._qtd),
-    preco_unitario: it.custoorigem || 0
+    preco_unitario: it.custoorigem || 0,
+    validade_negociada: validadeGlobal
   }));
 
   const ftMsg = document.getElementById('ftMsg');

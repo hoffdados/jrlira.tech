@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Validade Comercial Divergente — JR Lira</title>
+<link rel="stylesheet" href="/shared.css">
+<script src="/shared.js"></script>
+<style>
+.layout{display:grid;grid-template-columns:380px 1fr;min-height:calc(100vh - 57px)}
+.panel-left{border-right:1px solid #334155;overflow-y:auto}
+.panel-right{padding:20px;overflow-y:auto}
+.row{padding:14px 16px;border-bottom:1px solid #334155;cursor:pointer;border-left:4px solid #f97316}
+.row:hover,.row.selected{background:#1e3a5f}
+.nf-num{font-size:12px;font-family:monospace;color:#38bdf8;font-weight:700}
+.nf-forn{font-size:13px;font-weight:600;margin:2px 0}
+.nf-info{font-size:11px;color:#64748b}
+.card{background:#1e293b;border-radius:10px;padding:16px;margin-bottom:16px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead th{background:#0f172a;padding:8px 10px;text-align:center;color:#64748b;font-weight:600;border-bottom:1px solid #334155}
+thead th.al-left{text-align:left}
+tbody td{padding:8px 10px;border-bottom:1px solid #334155;text-align:center}
+tbody td.al-left{text-align:left}
+.tag-dias{background:#431407;color:#fb923c;padding:2px 8px;border-radius:8px;font-weight:700;font-size:11px}
+.actions{display:flex;gap:10px;margin-top:14px}
+.actions button{flex:1;padding:12px;font-weight:700;border:none;border-radius:8px;cursor:pointer}
+.btn-liberar{background:#16a34a;color:#fff}
+.btn-rejeitar{background:#dc2626;color:#fff}
+.kpi{display:flex;gap:14px;font-size:12px;color:#94a3b8;margin-top:8px}
+.kpi strong{color:#fb923c}
+</style>
+</head>
+<body>
+<nav>
+  <span class="brand">JR Lira Tech</span>
+  <span style="color:#475569">/</span>
+  <span style="font-size:14px;color:#94a3b8">Validade Comercial</span>
+  <span class="nav-user" id="nomeUsuario"></span>
+  <button class="btn-nav btn-ghost" onclick="location.href='/'">← Início</button>
+</nav>
+
+<div class="layout">
+  <div class="panel-left">
+    <div style="padding:14px;border-bottom:1px solid #334155;display:flex;align-items:center;gap:10px">
+      <strong>Aguardando decisão</strong>
+      <span id="contador" style="background:#431407;color:#f97316;padding:2px 10px;border-radius:10px;font-size:11px;font-weight:700">0</span>
+    </div>
+    <div id="listaNotas"><div style="color:#475569;text-align:center;padding:24px">Carregando...</div></div>
+  </div>
+
+  <div class="panel-right">
+    <div id="painelVazio" style="color:#475569;padding:60px;text-align:center;font-size:14px">← Selecione uma nota</div>
+    <div id="painelNota" style="display:none">
+      <div id="msgNota" class="msg" style="display:none"></div>
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+          <div>
+            <div class="nf-num" id="d-num"></div>
+            <div class="nf-forn" id="d-forn"></div>
+            <div class="nf-info" id="d-loja"></div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:11px;color:#64748b">Valor da nota</div>
+            <div style="font-size:18px;font-weight:700;color:#fbbf24" id="d-valor"></div>
+          </div>
+        </div>
+        <div class="kpi">
+          <div><strong id="d-qtd-div">0</strong> item(ns) divergente(s)</div>
+          <div><strong id="d-valor-risco">R$ 0,00</strong> em risco</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div style="font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:10px">Itens com validade abaixo do negociado</div>
+        <table>
+          <thead>
+            <tr>
+              <th class="al-left">Produto</th>
+              <th>EAN</th>
+              <th>Negociada</th>
+              <th>Recebida</th>
+              <th>Diferença</th>
+              <th>Qtd</th>
+              <th>Valor</th>
+            </tr>
+          </thead>
+          <tbody id="d-itens"></tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <label style="font-size:11px;color:#64748b">Observação (opcional)</label>
+        <textarea id="obs" rows="2" style="width:100%;background:#0f172a;border:1px solid #334155;color:#e2e8f0;border-radius:6px;padding:8px;font-size:13px;margin-top:4px"></textarea>
+        <div class="actions">
+          <button class="btn-liberar" onclick="decidir('liberar')">✓ Liberar (aceita o lote)</button>
+          <button class="btn-rejeitar" onclick="decidir('rejeitar')">✕ Rejeitar (gera devolução)</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '';
+const token = localStorage.getItem('token');
+if (!token) location.href = '/index.html';
+document.getElementById('nomeUsuario').textContent = localStorage.getItem('nome') || '';
+let notaAtual = null;
+let notas = [];
+
+const H = () => ({ Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' });
+const fmtR = v => 'R$ ' + (parseFloat(v) || 0).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+const fmtD = s => s ? new Date(s).toLocaleDateString('pt-BR') : '';
+
+async function carregarLista() {
+  const r = await fetch(`${API}/api/notas?status=aguardando_validade_comercial`, { headers: H() });
+  if (!r.ok) { showMsg('Erro ao carregar', 'err'); return; }
+  notas = await r.json();
+  document.getElementById('contador').textContent = notas.length;
+  const html = notas.length
+    ? notas.map(n => `
+        <div class="row" data-id="${n.id}" onclick="abrir(${n.id})">
+          <div class="nf-num">NF ${n.numero_nota || ''}/${n.serie || ''}</div>
+          <div class="nf-forn">${n.fornecedor_nome || ''}</div>
+          <div class="nf-info">Loja ${n.loja_id || ''} · ${fmtR(n.valor_total)}</div>
+        </div>`).join('')
+    : '<div style="color:#475569;text-align:center;padding:24px">Nenhuma nota pendente</div>';
+  document.getElementById('listaNotas').innerHTML = html;
+}
+
+async function abrir(id) {
+  document.querySelectorAll('.row').forEach(r => r.classList.toggle('selected', +r.dataset.id === id));
+  const nota = notas.find(n => n.id === id);
+  notaAtual = id;
+  document.getElementById('painelVazio').style.display = 'none';
+  document.getElementById('painelNota').style.display = 'block';
+  document.getElementById('d-num').textContent = `NF ${nota.numero_nota}/${nota.serie}`;
+  document.getElementById('d-forn').textContent = nota.fornecedor_nome || '';
+  document.getElementById('d-loja').textContent = `Loja ${nota.loja_id} · emitida em ${fmtD(nota.data_emissao)}`;
+  document.getElementById('d-valor').textContent = fmtR(nota.valor_total);
+
+  const r = await fetch(`${API}/api/notas/${id}/divergencias-validade-comercial`, { headers: H() });
+  const divs = await r.json();
+  document.getElementById('d-qtd-div').textContent = divs.length;
+  const valorRisco = divs.reduce((s, d) => s + (parseFloat(d.valor_em_risco) || 0), 0);
+  document.getElementById('d-valor-risco').textContent = fmtR(valorRisco);
+
+  document.getElementById('d-itens').innerHTML = divs.map(d => `
+    <tr>
+      <td class="al-left">${d.descricao || ''}</td>
+      <td>${d.codigo_barras || ''}</td>
+      <td>${fmtD(d.validade_negociada)}</td>
+      <td style="color:#f87171">${fmtD(d.validade_recebida)}</td>
+      <td><span class="tag-dias">${d.dias_diferenca}d</span></td>
+      <td>${parseFloat(d.qtd_recebida || 0).toFixed(2)}</td>
+      <td>${fmtR(d.valor_em_risco)}</td>
+    </tr>`).join('');
+  document.getElementById('obs').value = '';
+}
+
+async function decidir(decisao) {
+  if (!notaAtual) return;
+  const msg = decisao === 'liberar'
+    ? 'Liberar essa nota? O lote será aceito como veio.'
+    : 'Rejeitar? Vai gerar devolução dos itens divergentes.';
+  if (!confirm(msg)) return;
+  const r = await fetch(`${API}/api/notas/${notaAtual}/decidir-validade-comercial`, {
+    method: 'POST', headers: H(),
+    body: JSON.stringify({ decisao, observacao: document.getElementById('obs').value || null })
+  });
+  const d = await r.json();
+  if (!r.ok) return showMsg(d.erro || 'Erro ao decidir', 'err');
+  showMsg(decisao === 'liberar' ? 'Nota liberada e fechada' : `Devolução #${d.devolucao_id} criada`, 'ok');
+  notaAtual = null;
+  document.getElementById('painelNota').style.display = 'none';
+  document.getElementById('painelVazio').style.display = 'block';
+  carregarLista();
+}
+
+function showMsg(t, tipo) {
+  const el = document.getElementById('msgNota');
+  el.textContent = t; el.className = 'msg msg-' + (tipo === 'err' ? 'err' : 'ok'); el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', 4000);
+}
+
+carregarLista();
+</script>
+</body>
+</html>
