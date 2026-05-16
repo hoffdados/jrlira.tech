@@ -859,11 +859,16 @@ router.get('/', autenticar, async (req, res) => {
       SELECT n.*,
         COUNT(i.id)::int AS total_itens,
         COUNT(CASE WHEN i.produto_novo THEN 1 END)::int AS total_novos,
-        COUNT(CASE WHEN i.status_preco = 'divergente' THEN 1 END)::int AS total_divergentes
+        COUNT(CASE WHEN i.status_preco = 'divergente' THEN 1 END)::int AS total_divergentes,
+        cr.conferido_por AS rascunho_por,
+        cr.itens_preenchidos AS rascunho_preenchidos,
+        cr.total_itens AS rascunho_total,
+        cr.atualizado_em AS rascunho_em
       FROM notas_entrada n
       LEFT JOIN itens_nota i ON i.nota_id = n.id
+      LEFT JOIN conferencia_rascunho cr ON cr.nota_id = n.id
       ${where}
-      GROUP BY n.id
+      GROUP BY n.id, cr.conferido_por, cr.itens_preenchidos, cr.total_itens, cr.atualizado_em
       ORDER BY n.importado_em DESC
     `, params);
     res.json(notas);
@@ -1437,6 +1442,7 @@ router.patch('/:id/finalizar-conferencia-transf', autenticar, async (req, res) =
           WHERE id=$1`,
         [req.params.id, quem, novoStatus, comDivergencia]
       );
+      await client.query('DELETE FROM conferencia_rascunho WHERE nota_id=$1', [req.params.id]);
       await client.query('COMMIT');
       res.json({ ok: true, novo_status: novoStatus, com_divergencia: comDivergencia, validade_em_risco: temValidadeEmRisco, divergencias: detalhes });
     } catch (e) {
@@ -1689,6 +1695,64 @@ router.patch('/:id/liberar', autenticar, async (req, res) => {
   } catch (err) { res.status(500).json({ erro: err.message }); }
 });
 
+// ── Rascunho de conferência (pausar/retomar) ─────────────────────
+// GET /api/notas/:id/rascunho-conferencia — retorna rascunho atual ou null
+router.get('/:id/rascunho-conferencia', autenticar, async (req, res) => {
+  try {
+    const [r] = await query(
+      `SELECT nota_id, tipo, rodada, conferido_por, dados,
+              total_itens, itens_preenchidos, criado_em, atualizado_em
+         FROM conferencia_rascunho WHERE nota_id=$1`,
+      [req.params.id]
+    );
+    res.json(r || null);
+  } catch (err) { res.status(500).json({ erro: err.message }); }
+});
+
+// PUT /api/notas/:id/rascunho-conferencia — upsert
+// body: { tipo: 'fornecedor'|'transferencia', rodada, dados, total_itens, itens_preenchidos }
+router.put('/:id/rascunho-conferencia', autenticar, async (req, res) => {
+  try {
+    const { tipo, rodada, dados, total_itens, itens_preenchidos } = req.body || {};
+    if (tipo !== 'fornecedor' && tipo !== 'transferencia') {
+      return res.status(400).json({ erro: 'tipo inválido' });
+    }
+    if (!dados || typeof dados !== 'object') {
+      return res.status(400).json({ erro: 'dados obrigatórios' });
+    }
+    const [nota] = await query('SELECT status FROM notas_entrada WHERE id=$1', [req.params.id]);
+    if (!nota) return res.status(404).json({ erro: 'Nota não encontrada' });
+    if (nota.status !== 'em_conferencia') {
+      return res.status(400).json({ erro: 'Nota não está em conferência' });
+    }
+    const quem = _quemSou(req);
+    await query(
+      `INSERT INTO conferencia_rascunho
+         (nota_id, tipo, rodada, conferido_por, dados, total_itens, itens_preenchidos, atualizado_em)
+       VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,NOW())
+       ON CONFLICT (nota_id) DO UPDATE SET
+         tipo=EXCLUDED.tipo,
+         rodada=EXCLUDED.rodada,
+         conferido_por=EXCLUDED.conferido_por,
+         dados=EXCLUDED.dados,
+         total_itens=EXCLUDED.total_itens,
+         itens_preenchidos=EXCLUDED.itens_preenchidos,
+         atualizado_em=NOW()`,
+      [req.params.id, tipo, rodada || 1, quem, JSON.stringify(dados),
+       total_itens || 0, itens_preenchidos || 0]
+    );
+    res.json({ ok: true, conferido_por: quem });
+  } catch (err) { res.status(500).json({ erro: err.message }); }
+});
+
+// DELETE /api/notas/:id/rascunho-conferencia — descarta
+router.delete('/:id/rascunho-conferencia', autenticar, async (req, res) => {
+  try {
+    await query('DELETE FROM conferencia_rascunho WHERE nota_id=$1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ erro: err.message }); }
+});
+
 // POST /api/notas/:id/conferencia
 router.post('/:id/conferencia', autenticar, async (req, res) => {
   const client = await pool.connect();
@@ -1758,6 +1822,7 @@ router.post('/:id/conferencia', autenticar, async (req, res) => {
       'UPDATE notas_entrada SET conferencia_rodada=$1, status=$2 WHERE id=$3',
       [rodada, novoStatus, req.params.id]
     );
+    await client.query('DELETE FROM conferencia_rascunho WHERE nota_id=$1', [req.params.id]);
     await client.query('COMMIT');
     if (novoStatus === 'fechada') enviarWebhookEntrada(req.params.id);
     res.json({ ok: true, rodada, divergentes, novo_status: novoStatus, resultados });

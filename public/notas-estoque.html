@@ -130,8 +130,12 @@ button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 1
     <div id="conferencia" style="display:none">
       <div class="nota-info" id="notaInfo"></div>
       <div id="rodadaInfo" class="rodada-info"></div>
+      <div id="rascunhoInfo" style="display:none"></div>
       <div id="listaItens"></div>
-      <button class="btn-success" id="btnEnviar" onclick="enviarConferencia()" disabled>Enviar Conferência</button>
+      <div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap">
+        <button class="btn-success" id="btnEnviar" onclick="enviarConferencia()" disabled style="flex:2;min-width:200px">Enviar Conferência</button>
+        <button class="btn-primary" id="btnRascunho" onclick="salvarRascunho()" style="flex:1;min-width:160px;padding:14px;font-size:15px;background:#0891b2">💾 Salvar Rascunho</button>
+      </div>
     </div>
 
     <div id="resultado" style="display:none"></div>
@@ -195,6 +199,9 @@ async function carregarNotas() {
       if (isTransf && n.status === 'em_transito') badgeStatus = '<span class="badge" style="background:#451a03;color:#fbbf24">Marcar Recebida</span>';
       else if (isTransf) badgeStatus = '<span class="badge b-em_conferencia">Conferir</span>';
       else badgeStatus = `<span class="badge b-em_conferencia">Conferência ${rodada}</span>`;
+      const rascunhoBadge = n.rascunho_por
+        ? `<span class="badge" style="background:#0e4a52;color:#67e8f9" title="${n.rascunho_por} em ${new Date(n.rascunho_em).toLocaleString('pt-BR')}">📝 ${n.rascunho_preenchidos||0}/${n.rascunho_total||0}</span>`
+        : '';
       return `<div class="nota-card" id="card-${n.id}" onclick="abrirNota(${n.id})">
         <div class="nc-num">${titulo}</div>
         <div class="nc-forn">${n.fornecedor_nome}</div>
@@ -203,6 +210,7 @@ async function carregarNotas() {
           ${isCd ? '<span class="badge" style="background:#0c4a6e;color:#7dd3fc">CD</span>' : ''}
           ${isLoja ? '<span class="badge" style="background:#3b0a4a;color:#e9d5ff">Loja</span>' : ''}
           ${badgeStatus}
+          ${rascunhoBadge}
         </div>
       </div>`;
     }).join('');
@@ -223,7 +231,13 @@ async function abrirNota(id) {
   try {
     const { nota, itens } = await fetchApi(`/api/notas/${id}`);
     const isTransf = nota.origem === 'cd' || nota.origem === 'transferencia_loja';
-    if (isTransf) { renderTransfSimples(nota, itens); return; }
+    if (isTransf) {
+      tipoConferenciaAtual = 'transferencia';
+      renderTransfSimples(nota, itens);
+      await carregarRascunho();
+      return;
+    }
+    tipoConferenciaAtual = 'fornecedor';
     rodadaAtual = (nota.conferencia_rodada || 0) + 1;
 
     document.getElementById('notaInfo').innerHTML = `
@@ -267,6 +281,7 @@ async function abrirNota(id) {
     }
 
     renderItens();
+    await carregarRascunho();
   } catch (e) { showMsg(e.message, 'err'); }
 }
 
@@ -390,6 +405,119 @@ function checarPreenchimento() {
   document.getElementById('btnEnviar').disabled = !todosPreenchidos;
 }
 
+// ── Rascunho (fornecedor) ──────────────────────────────────────────
+let tipoConferenciaAtual = 'fornecedor'; // ou 'transferencia'
+
+function coletarRascunhoFornecedor() {
+  const itens = [];
+  let preenchidos = 0;
+  for (const i of itensConf) {
+    const qtdEl = document.getElementById(`qty-${i.id}`);
+    const qtd_contada = qtdEl?.value || '';
+    const lotes = [];
+    let idx = 0;
+    while (document.getElementById(`lote-l-${i.id}-${idx}`)) {
+      const lote = document.getElementById(`lote-l-${i.id}-${idx}`)?.value || '';
+      const d = document.getElementById(`vd-${i.id}-${idx}`)?.value || '';
+      const m = document.getElementById(`vm-${i.id}-${idx}`)?.value || '';
+      const y = document.getElementById(`vy-${i.id}-${idx}`)?.value || '';
+      const quantidade = document.getElementById(`lote-q-${i.id}-${idx}`)?.value || '';
+      if (lote || d || m || y || quantidade) {
+        lotes.push({ lote, d, m, y, quantidade });
+      }
+      idx++;
+    }
+    if (qtd_contada !== '' || lotes.length) preenchidos++;
+    itens.push({ item_id: i.id, qtd_contada, lotes });
+  }
+  return { itens, preenchidos };
+}
+
+function aplicarRascunhoFornecedor(dados) {
+  if (!dados || !Array.isArray(dados.itens)) return;
+  for (const it of dados.itens) {
+    const qtdEl = document.getElementById(`qty-${it.item_id}`);
+    if (qtdEl && it.qtd_contada !== '' && it.qtd_contada != null) {
+      qtdEl.value = it.qtd_contada;
+    }
+    for (let idx = 0; idx < (it.lotes || []).length; idx++) {
+      // garante linha de lote
+      if (idx > 0 && !document.getElementById(`lote-l-${it.item_id}-${idx}`)) {
+        addLote(it.item_id);
+      }
+      const l = it.lotes[idx];
+      const setVal = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
+      setVal(`lote-l-${it.item_id}-${idx}`, l.lote);
+      setVal(`vd-${it.item_id}-${idx}`, l.d);
+      setVal(`vm-${it.item_id}-${idx}`, l.m);
+      setVal(`vy-${it.item_id}-${idx}`, l.y);
+      setVal(`lote-q-${it.item_id}-${idx}`, l.quantidade);
+    }
+  }
+  checarPreenchimento();
+}
+
+async function salvarRascunho() {
+  const btn = document.getElementById('btnRascunho') || document.getElementById('btnRascunhoTransf');
+  if (btn) { btn.disabled = true; btn.textContent = 'Salvando...'; }
+  try {
+    let payload;
+    if (tipoConferenciaAtual === 'fornecedor') {
+      const { itens, preenchidos } = coletarRascunhoFornecedor();
+      payload = {
+        tipo: 'fornecedor',
+        rodada: rodadaAtual,
+        dados: { itens },
+        total_itens: itensConf.length,
+        itens_preenchidos: preenchidos,
+      };
+    } else {
+      const { itens, preenchidos, total } = coletarRascunhoTransf();
+      payload = {
+        tipo: 'transferencia',
+        rodada: 1,
+        dados: { itens },
+        total_itens: total,
+        itens_preenchidos: preenchidos,
+      };
+    }
+    await fetchApi(`/api/notas/${notaAtualId}/rascunho-conferencia`, 'PUT', payload);
+    showMsg('Rascunho salvo. Você pode continuar depois.', 'ok');
+    await carregarNotas();
+  } catch (e) {
+    showMsg(e.message, 'err');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = btn.id === 'btnRascunhoTransf' ? '💾 Salvar Rascunho' : '💾 Salvar Rascunho';
+    }
+  }
+}
+
+async function carregarRascunho() {
+  try {
+    const r = await fetchApi(`/api/notas/${notaAtualId}/rascunho-conferencia`);
+    if (!r) return;
+    const info = document.getElementById('rascunhoInfo');
+    if (info) {
+      info.style.display = 'block';
+      info.style.cssText = 'background:#0e4a52;border:1px solid #06b6d4;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:#67e8f9;display:block';
+      info.innerHTML = `📝 <strong>Continuando rascunho</strong> de <strong>${r.conferido_por}</strong> · ${r.itens_preenchidos || 0}/${r.total_itens || 0} itens preenchidos · salvo em ${new Date(r.atualizado_em).toLocaleString('pt-BR')}
+        <button onclick="descartarRascunho()" style="float:right;background:transparent;border:1px solid #67e8f9;color:#67e8f9;padding:3px 10px;border-radius:4px;cursor:pointer;font-size:11px">Descartar e recomeçar</button>`;
+    }
+    if (r.tipo === 'fornecedor') aplicarRascunhoFornecedor(r.dados);
+    else aplicarRascunhoTransf(r.dados);
+  } catch (e) { /* sem rascunho ou erro silencioso */ }
+}
+
+async function descartarRascunho() {
+  if (!confirm('Descartar o rascunho e começar do zero?')) return;
+  try {
+    await fetchApi(`/api/notas/${notaAtualId}/rascunho-conferencia`, 'DELETE');
+    abrirNota(notaAtualId);
+  } catch (e) { showMsg(e.message, 'err'); }
+}
+
 async function enviarConferencia() {
   const btn = document.getElementById('btnEnviar');
   btn.disabled = true;
@@ -511,6 +639,7 @@ function renderTransfSimples(nota, itens) {
   } else if (isConferindo) {
     acoes = `
       <button class="btn-success" onclick="finalizarConferenciaAuto()" style="margin-right:8px">✓ Finalizar Conferência</button>
+      <button class="btn-primary" id="btnRascunhoTransf" onclick="salvarRascunho()" style="margin-right:8px;background:#0891b2">💾 Salvar Rascunho</button>
       <span style="font-size:12px;color:#64748b">Sem divergência → conferida · Com divergência → auditagem</span>`;
   }
 
@@ -545,6 +674,8 @@ function renderTransfSimples(nota, itens) {
 
   // Mapa pra buscar item por EAN (qualquer formato — limpa zeros)
   itensIndex = {};
+  totalItensTransf = itens.length;
+  itensIdsTransf = itens.map(i => i.id);
   for (const i of itens) {
     const k = norm0(i.ean_nota);
     if (k) itensIndex[k] = i.id;
@@ -560,6 +691,7 @@ function renderTransfSimples(nota, itens) {
     : '';
 
   el.innerHTML = `
+    <div id="rascunhoInfo" style="display:none"></div>
     <div style="background:#1e293b;border-radius:10px;padding:20px;margin-bottom:16px;position:sticky;top:0;z-index:10">
       <h2 style="font-size:16px;color:#38bdf8;margin-bottom:8px">${titulo}</h2>
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;font-size:13px">
@@ -592,6 +724,45 @@ function renderTransfSimples(nota, itens) {
 // ── helpers de lote (multi-validade por item) — TRANSFERÊNCIA ──
 let itensIndex = {};   // { ean_normalizado: item.id }
 let lotesCountTransf = {};   // { item_id: nº de lotes adicionados }
+let totalItensTransf = 0;
+let itensIdsTransf = [];
+
+function coletarRascunhoTransf() {
+  const out = [];
+  let preenchidos = 0;
+  for (const itemId of itensIdsTransf) {
+    const wrap = document.getElementById('lotes-' + itemId);
+    if (!wrap) { out.push({ item_id: itemId, lotes: [] }); continue; }
+    const linhas = wrap.querySelectorAll('[data-lote]');
+    const lotes = [];
+    linhas.forEach(l => {
+      const idx = l.dataset.lote;
+      const cx = document.getElementById(`cx-${itemId}-${idx}`)?.value || '';
+      const un = document.getElementById(`un-${itemId}-${idx}`)?.value || '';
+      const validade = document.getElementById(`val-${itemId}-${idx}`)?.value || '';
+      if (cx || un || validade) lotes.push({ cx, un, validade });
+    });
+    if (lotes.length) preenchidos++;
+    out.push({ item_id: itemId, lotes });
+  }
+  return { itens: out, preenchidos, total: totalItensTransf };
+}
+
+function aplicarRascunhoTransf(dados) {
+  if (!dados || !Array.isArray(dados.itens)) return;
+  for (const it of dados.itens) {
+    for (let idx = 0; idx < (it.lotes || []).length; idx++) {
+      if (idx > 0 && !document.getElementById(`cx-${it.item_id}-${idx}`)) {
+        addLoteTransf(it.item_id);
+      }
+      const l = it.lotes[idx];
+      const setVal = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
+      setVal(`cx-${it.item_id}-${idx}`, l.cx);
+      setVal(`un-${it.item_id}-${idx}`, l.un);
+      setVal(`val-${it.item_id}-${idx}`, l.validade);
+    }
+  }
+}
 
 function loteRowTransf(itemId, idx) {
   return `<div style="display:flex;gap:4px;align-items:center;justify-content:center;margin-bottom:3px" data-lote="${idx}">
