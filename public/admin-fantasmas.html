@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NFs Fantasma — compras_historico</title>
+<link rel="stylesheet" href="/shared.css">
+<script src="/shared.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+nav{background:#1e293b;padding:12px 20px;display:flex;align-items:center;gap:14px;border-bottom:1px solid #334155}
+.brand{font-family:'Segoe UI Black','Segoe UI',sans-serif;font-weight:900;font-size:18px;color:#38bdf8}
+.btn-nav{background:#0ea5e9;color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:12px;cursor:pointer}
+.main{padding:18px 20px;max-width:1500px;margin:0 auto}
+input,select{background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;padding:7px 11px;font-size:13px}
+button{cursor:pointer;border:none;border-radius:6px;font-size:13px;padding:8px 14px;font-weight:600}
+.btn-primary{background:#0ea5e9;color:#fff}
+.btn-danger{background:#ef4444;color:#fff}
+.btn-ghost{background:#1e293b;color:#94a3b8;border:1px solid #334155}
+.btn-warn{background:#f59e0b;color:#0f172a}
+.filtros{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:18px;padding:14px;background:#1e293b;border-radius:10px}
+.filtros label{font-size:11px;color:#64748b;display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:18px}
+.kpi{background:#1e293b;border-radius:10px;padding:14px 16px;border-left:4px solid #475569}
+.kpi.pendente{border-left-color:#f59e0b}
+.kpi.apagado{border-left-color:#22c55e}
+.kpi.ignorado{border-left-color:#64748b}
+.kpi .label{font-size:11px;color:#94a3b8;text-transform:uppercase;font-weight:700}
+.kpi .v{font-size:28px;font-weight:900;color:#e2e8f0;margin-top:6px;line-height:1}
+.kpi .extra{font-size:11px;color:#94a3b8;margin-top:4px}
+.painel{background:#1e293b;border-radius:10px;padding:16px;margin-bottom:18px}
+.painel-titulo{font-size:13px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead th{background:#0f172a;padding:8px 10px;text-align:center;color:#64748b;font-weight:600;border-bottom:1px solid #334155;white-space:nowrap;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+thead th.left{text-align:left}
+tbody td{padding:7px 10px;border-bottom:1px solid #1e293b;vertical-align:middle;text-align:center;font-size:12px}
+tbody td.left{text-align:left}
+tbody td.right{text-align:right;font-variant-numeric:tabular-nums}
+.empty{text-align:center;color:#475569;padding:40px;font-size:13px}
+.pill{display:inline-block;padding:1px 7px;background:#0f172a;border:1px solid #334155;border-radius:10px;font-size:10px;color:#94a3b8}
+.pill.warn{background:#422006;color:#fde047;border-color:#92400e}
+.pill.ok{background:#052e16;color:#86efac;border-color:#166534}
+.acoes{display:flex;gap:6px;justify-content:center}
+.acoes button{padding:4px 10px;font-size:11px}
+.tabs{display:flex;gap:6px;margin-bottom:14px}
+.tab{padding:8px 14px;background:#1e293b;color:#94a3b8;border:1px solid #334155;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600}
+.tab.ativa{background:#0ea5e9;color:#fff;border-color:#0ea5e9}
+.aviso{padding:12px 14px;background:#422006;border:1px solid #92400e;border-radius:8px;color:#fde047;margin-bottom:14px;font-size:12px;line-height:1.55}
+.msg{padding:10px 14px;border-radius:8px;margin:10px 0;font-size:13px}
+.msg.ok{background:#052e16;color:#86efac;border:1px solid #166534}
+.msg.err{background:#450a0a;color:#fca5a5;border:1px solid #7f1d1d}
+</style>
+</head>
+<body>
+<nav>
+  <span class="brand">JR Lira Tech</span>
+  <span style="color:#475569">/</span>
+  <span style="font-size:13px;color:#94a3b8">NFs Fantasma</span>
+  <span style="margin-left:auto;font-size:11px;color:#64748b" id="nomeUsuario"></span>
+  <button class="btn-nav" onclick="location.href='/'">← Início</button>
+</nav>
+
+<div class="main">
+  <div class="aviso">
+    <strong>O que é fantasma?</strong> Nota em <code>compras_historico</code> cuja origem foi corrigida/cancelada no Ecocentauro,
+    mas o sync Pentaho só faz UPSERT — nunca apaga. Detectamos automaticamente quando existe outra NF (mesma loja+fornecedor)
+    com itens idênticos (heurística <code>twin_substituiu</code>). Admin revisa e apaga em massa.
+  </div>
+
+  <div class="filtros">
+    <button class="btn-primary" onclick="rodarDetector()">🔍 Rodar Detector Agora</button>
+    <span id="msg" style="margin-left:auto"></span>
+  </div>
+
+  <div id="kpis" class="kpis"></div>
+
+  <div class="tabs">
+    <div class="tab ativa" data-st="pendente" onclick="trocarTab('pendente')">⏳ Pendentes</div>
+    <div class="tab" data-st="apagado" onclick="trocarTab('apagado')">🗑️ Apagados</div>
+    <div class="tab" data-st="ignorado" onclick="trocarTab('ignorado')">🙈 Ignorados</div>
+  </div>
+
+  <div class="painel">
+    <div class="painel-titulo">
+      <span id="painelTitulo">Carregando…</span>
+      <span style="margin-left:auto" id="acoesEmMassa"></span>
+    </div>
+    <div id="conteudo"><div class="empty">Carregando…</div></div>
+  </div>
+</div>
+
+<script>
+const token = localStorage.getItem('jrlira_token') || localStorage.getItem('token');
+if (!token) location.href = '/';
+const NOMES_LOJA = { 1:'L1 Econômico', 2:'L2 BR', 3:'L3 J. Pessoa', 4:'L4 Floresta', 5:'L5 S. José', 6:'L6 Santarém' };
+
+let DADOS = null;
+let statusAtivo = 'pendente';
+
+function fmtBRL(v) { return Number(v||0).toLocaleString('pt-BR', { style:'currency', currency:'BRL' }); }
+function fmtN(v) { return Number(v||0).toLocaleString('pt-BR'); }
+function dtPt(s) { if(!s) return '—'; return new Date(s).toLocaleDateString('pt-BR'); }
+function dtHr(s) { if(!s) return '—'; return new Date(s).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); }
+function esc(s) { return String(s||'').replace(/[<>&"']/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'})[c]); }
+
+function showMsg(txt, kind='ok') {
+  const m = document.getElementById('msg');
+  m.innerHTML = `<span class="msg ${kind}">${esc(txt)}</span>`;
+  if (kind === 'ok') setTimeout(() => { m.innerHTML = ''; }, 5000);
+}
+
+async function api(path, method='GET', body) {
+  const r = await fetch(path, {
+    method, headers: { 'Content-Type':'application/json', 'Authorization': 'Bearer ' + token },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (r.status === 401) { localStorage.clear(); location.href='/'; throw new Error('401'); }
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.erro || ('HTTP ' + r.status));
+  return d;
+}
+
+async function carregar() {
+  document.getElementById('conteudo').innerHTML = '<div class="empty">Carregando…</div>';
+  try {
+    DADOS = await api('/api/admin/fantasmas?status=' + statusAtivo);
+    renderKPIs();
+    renderLista();
+  } catch (e) {
+    document.getElementById('conteudo').innerHTML = '<div class="empty">Erro: ' + esc(e.message) + '</div>';
+  }
+}
+
+function renderKPIs() {
+  const map = new Map((DADOS.totais || []).map(t => [t.status, t]));
+  const get = k => map.get(k) || { qtd:0, valor:0 };
+  const p = get('pendente'), a = get('apagado'), i = get('ignorado');
+  document.getElementById('kpis').innerHTML = `
+    <div class="kpi pendente">
+      <div class="label">⏳ Pendentes</div>
+      <div class="v">${fmtN(p.qtd)}</div>
+      <div class="extra"><strong>${fmtBRL(p.valor)}</strong></div>
+    </div>
+    <div class="kpi apagado">
+      <div class="label">🗑️ Apagados</div>
+      <div class="v">${fmtN(a.qtd)}</div>
+      <div class="extra"><strong>${fmtBRL(a.valor)}</strong></div>
+    </div>
+    <div class="kpi ignorado">
+      <div class="label">🙈 Ignorados</div>
+      <div class="v">${fmtN(i.qtd)}</div>
+      <div class="extra"><strong>${fmtBRL(i.valor)}</strong></div>
+    </div>`;
+}
+
+function renderLista() {
+  const rows = DADOS.fantasmas || [];
+  document.getElementById('painelTitulo').textContent =
+    `${fmtN(rows.length)} NF(s) "${statusAtivo}"`;
+  document.getElementById('acoesEmMassa').innerHTML = statusAtivo === 'pendente' && rows.length
+    ? `<button class="btn-danger" onclick="apagarTudo()">🗑️ Apagar TODOS pendentes (${rows.length})</button>`
+    : '';
+  if (!rows.length) {
+    document.getElementById('conteudo').innerHTML = '<div class="empty">Nenhuma NF nesta categoria</div>';
+    return;
+  }
+  const cellsAcoes = (f) => statusAtivo === 'pendente'
+    ? `<div class="acoes">
+         <button class="btn-danger" onclick="apagarUm(${f.id})" title="Apagar de compras_historico">🗑️</button>
+         <button class="btn-ghost" onclick="ignorarUm(${f.id})" title="Marcar como ignorado">🙈</button>
+       </div>`
+    : `<span class="pill">${esc(f.resolucao||'')}</span><br><small style="color:#64748b">${esc(f.resolvido_por||'')} · ${dtHr(f.resolvido_em)}</small>`;
+
+  document.getElementById('conteudo').innerHTML = `
+    <table>
+      <thead><tr>
+        <th>Loja</th>
+        <th>Data Entrada</th>
+        <th class="left">NF Fantasma</th>
+        <th class="left">NF Twin</th>
+        <th class="left">Fornecedor</th>
+        <th>Itens</th>
+        <th class="right">Valor</th>
+        <th>Detectado</th>
+        <th>Ações</th>
+      </tr></thead>
+      <tbody>` +
+    rows.map(f => `<tr>
+      <td><strong>${esc(NOMES_LOJA[f.loja_id] || ('L'+f.loja_id))}</strong></td>
+      <td>${dtPt(f.data_entrada)}</td>
+      <td class="left"><span class="pill warn">${esc(f.numeronfe)}</span></td>
+      <td class="left"><span class="pill ok">${esc(f.twin_numeronfe || '—')}</span></td>
+      <td class="left">${esc(f.fornecedor_nome || f.fornecedor_cnpj)}</td>
+      <td>${fmtN(f.qtd_itens)}</td>
+      <td class="right"><strong>${fmtBRL(f.valor_total)}</strong></td>
+      <td><small style="color:#64748b">${dtHr(f.detectado_em)}</small></td>
+      <td>${cellsAcoes(f)}</td>
+    </tr>`).join('') + `</tbody></table>`;
+}
+
+async function rodarDetector() {
+  showMsg('Rodando detector…', 'ok');
+  try {
+    const r = await api('/api/admin/fantasmas/detectar', 'POST');
+    showMsg(`✓ ${r.candidatos} candidato(s), ${r.novos} novo(s)`, 'ok');
+    carregar();
+  } catch (e) { showMsg('❌ ' + e.message, 'err'); }
+}
+
+async function apagarUm(id) {
+  if (!confirm('Apagar definitivamente essa NF de compras_historico? Esta ação não tem volta.')) return;
+  try {
+    const r = await api(`/api/admin/fantasmas/${id}/apagar`, 'POST');
+    showMsg(`✓ ${r.rows_apagadas} linha(s) apagada(s)`, 'ok');
+    carregar();
+  } catch (e) { showMsg('❌ ' + e.message, 'err'); }
+}
+
+async function ignorarUm(id) {
+  const motivo = prompt('Motivo do "ignorar" (opcional):') || '';
+  try {
+    await api(`/api/admin/fantasmas/${id}/ignorar`, 'POST', { motivo });
+    showMsg('✓ Marcada como ignorada', 'ok');
+    carregar();
+  } catch (e) { showMsg('❌ ' + e.message, 'err'); }
+}
+
+async function apagarTudo() {
+  const rows = DADOS.fantasmas || [];
+  if (!rows.length) return;
+  if (!confirm(`Apagar ${rows.length} NF(s) fantasma de compras_historico? Esta ação não tem volta.`)) return;
+  showMsg('Apagando em massa…', 'ok');
+  try {
+    const r = await api('/api/admin/fantasmas/apagar-em-massa', 'POST', { ids: rows.map(f => f.id) });
+    const ok = r.resultados.filter(x => x.ok).length;
+    const erros = r.resultados.filter(x => !x.ok).length;
+    showMsg(`✓ ${ok} apagada(s)${erros ? ' / '+erros+' falharam' : ''}`, erros ? 'err' : 'ok');
+    carregar();
+  } catch (e) { showMsg('❌ ' + e.message, 'err'); }
+}
+
+function trocarTab(st) {
+  statusAtivo = st;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('ativa', t.dataset.st === st));
+  carregar();
+}
+
+document.getElementById('nomeUsuario').textContent = localStorage.getItem('jrlira_nome') || '';
+carregar();
+</script>
+</body>
+</html>
