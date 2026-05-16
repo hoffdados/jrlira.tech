@@ -2502,6 +2502,24 @@ router.post('/', adminOuCeo, async (req, res) => {
       );
     }
 
+    // Limpa rascunho — feito SERVER-SIDE depois da geracao salva, garantindo:
+    //  1) atomicidade (CSVs estao em pedidos_distrib_geracoes, podem ser baixados depois)
+    //  2) sem race com salvarQtd debounced do frontend (que disparava DEPOIS do DELETE
+    //     separado e reinjetava a qtd na tabela)
+    let removidos = 0;
+    try {
+      const delParams = [cd_origem_codigo];
+      let delWhere = `cd_origem_codigo = $1 AND qtd > 0`;
+      if (destino_id) { delParams.push(parseInt(destino_id)); delWhere += ` AND destino_id = $${delParams.length}`; }
+      const del = await dbQuery(
+        `DELETE FROM pedidos_distrib_quantidades WHERE ${delWhere} RETURNING 1`,
+        delParams
+      );
+      removidos = del.length;
+    } catch (e) {
+      console.warn('[pedidos-distrib POST] falha limpando rascunho:', e.message);
+    }
+
     res.json({
       ok: true,
       geracao_id: ger.id,
@@ -2510,6 +2528,7 @@ router.post('/', adminOuCeo, async (req, res) => {
       total_pedidos: pedidosResumo.length,
       total_itens: totalItensGeral,
       valor_total: valorTotalGeral,
+      rascunho_removidos: removidos,
       pedidos: pedidosResumo,
       download: {
         p_pedidos: `/api/pedidos-distribuidora/csv/${ger.id}/P_PEDIDOS.csv`,
