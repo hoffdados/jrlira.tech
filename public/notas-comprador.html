@@ -311,30 +311,14 @@ async function renderAcoes(nota, itens) {
     </div>`;
 
   if (nota.status === 'importada' && !nota.pedido_id) {
-    // Inclui validado + faturado + aguardando_validacao — fornecedor pode ter CNPJs diferentes por filial/CD
-    let pedidosHtml = '<option value="">Carregando...</option>';
-    try {
-      const r = await apiFetch(`${API}/api/pedidos?status=validado,faturado,aguardando_validacao`);
-      const pedidos = await r.json();
-      const ord = { faturado:0, validado:1, aguardando_validacao:2 };
-      pedidos.sort((a,b) => (ord[a.status] ?? 9) - (ord[b.status] ?? 9));
-      pedidosHtml = pedidos.length
-        ? pedidos.map(p => {
-            const cnpjMatch = p.fornecedor_cnpj && nota.fornecedor_cnpj &&
-              p.fornecedor_cnpj.replace(/\D/g,'') === nota.fornecedor_cnpj.replace(/\D/g,'');
-            const stTag = p.status === 'faturado' ? ' [FATURADO]' : (p.status === 'aguardando_validacao' ? ' [AG. VAL.]' : '');
-            const label = `${p.numero_pedido||'#'+p.id} — ${p.fornecedor_fantasia||p.fornecedor_nome||'—'} — ${p.loja_nome||''}${stTag}${cnpjMatch ? ' ✓' : ''}`;
-            return `<option value="${p.id}">${label}</option>`;
-          }).join('')
-        : '<option value="">Nenhum pedido em aberto</option>';
-    } catch { pedidosHtml = '<option value="">Erro ao buscar pedidos</option>'; }
-
+    const cnpjLimpo = (nota.fornecedor_cnpj || '').replace(/\D/g,'');
     el.innerHTML = botoesBase + `
       <div class="card">
         <div class="card-title">Vincular a Pedido</div>
-        <p style="font-size:12px;color:#475569;margin-bottom:10px">Pedidos validados, faturados e aguardando validação são exibidos. Faturados aparecem primeiro. CNPJ coincidente: ✓.</p>
+        <p style="font-size:12px;color:#475569;margin-bottom:10px">Pedidos validados, faturados e aguardando validação. Faturados aparecem primeiro.</p>
+        <div id="filtroPedidoInfo" style="font-size:12px;color:#94a3b8;background:#0c1628;border:1px solid #334155;border-radius:6px;padding:8px 10px;margin-bottom:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"></div>
         <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
-          <select id="selPedido" style="flex:1"><option value="">-- selecione --</option>${pedidosHtml}</select>
+          <select id="selPedido" style="flex:1"><option value="">Carregando...</option></select>
           <button class="btn-primary" onclick="vincularPedido(this)">Vincular</button>
         </div>
       </div>
@@ -343,6 +327,7 @@ async function renderAcoes(nota, itens) {
         <p style="font-size:13px;color:#94a3b8;margin-bottom:12px">Não há pedido para esta nota. Marque como emergencial para enviar à aprovação do administrador antes de seguir para o cadastro.</p>
         <button class="btn-warn" onclick="marcarEmergencial(this)">⚠ Marcar como Emergencial</button>
       </div>`;
+    carregarPedidosVinculo(nota, cnpjLimpo, true);
 
   } else if (nota.status === 'importada' && nota.pedido_id) {
     el.innerHTML = botoesBase + `
@@ -540,6 +525,47 @@ async function desvincularPedido(btn) {
       carregarNotas();
     } catch { showMsg('Erro ao desvincular', 'err'); }
   }, 'Desvinculando...');
+}
+
+async function carregarPedidosVinculo(nota, cnpjLimpo, filtrado) {
+  const sel = document.getElementById('selPedido');
+  const info = document.getElementById('filtroPedidoInfo');
+  if (!sel || !info) return;
+  sel.innerHTML = '<option value="">Carregando...</option>';
+  const params = ['status=validado,faturado,aguardando_validacao'];
+  if (filtrado) {
+    if (cnpjLimpo) params.push(`fornecedor_cnpj=${cnpjLimpo}`);
+    if (nota.loja_id) params.push(`loja_id=${nota.loja_id}`);
+  }
+  try {
+    const r = await apiFetch(`${API}/api/pedidos?${params.join('&')}`);
+    const pedidos = await r.json();
+    const ord = { faturado:0, validado:1, aguardando_validacao:2 };
+    pedidos.sort((a,b) => (ord[a.status] ?? 9) - (ord[b.status] ?? 9));
+    const opts = pedidos.length
+      ? pedidos.map(p => {
+          const cnpjMatch = p.fornecedor_cnpj && cnpjLimpo &&
+            p.fornecedor_cnpj.replace(/\D/g,'') === cnpjLimpo;
+          const stTag = p.status === 'faturado' ? ' [FATURADO]' : (p.status === 'aguardando_validacao' ? ' [AG. VAL.]' : '');
+          const label = `${p.numero_pedido||'#'+p.id} — ${p.fornecedor_fantasia||p.fornecedor_nome||'—'} — ${p.loja_nome||''}${stTag}${cnpjMatch ? ' ✓' : ''}`;
+          return `<option value="${p.id}">${label}</option>`;
+        }).join('')
+      : '<option value="">Nenhum pedido nesse filtro</option>';
+    sel.innerHTML = '<option value="">-- selecione --</option>' + opts;
+
+    const filtros = [];
+    if (filtrado) {
+      if (nota.loja_id) filtros.push(`Loja <strong>${LOJAS[nota.loja_id] || nota.loja_id}</strong>`);
+      if (cnpjLimpo) filtros.push(`Fornecedor <strong>${nota.fornecedor_nome || cnpjLimpo}</strong>`);
+    }
+    const labelFiltro = filtros.length ? `🔎 Filtrado por ${filtros.join(' · ')}` : '👁 Mostrando todos';
+    info.innerHTML = `
+      <span style="color:#94a3b8">${labelFiltro} — <strong style="color:#e2e8f0">${pedidos.length}</strong> pedido(s)</span>
+      <button class="btn-ghost btn-sm" style="margin-left:auto" onclick="carregarPedidosVinculo(window.notaAtual, '${cnpjLimpo}', ${!filtrado})">${filtrado ? 'Mostrar todos' : 'Voltar ao filtro'}</button>`;
+  } catch {
+    sel.innerHTML = '<option value="">Erro ao buscar pedidos</option>';
+    info.innerHTML = '<span style="color:#f87171">Falha ao carregar</span>';
+  }
 }
 
 async function vincularPedido(btn) {

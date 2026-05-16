@@ -58,6 +58,7 @@ router.get('/', compradorOuAdmin, async (req, res) => {
       conds.push("p.status != 'rascunho'");
     }
     if (fornecedor_cnpj) { params.push(fornecedor_cnpj.replace(/\D/g,'')); conds.push(`REGEXP_REPLACE(f.cnpj,'\\D','','g')=$${params.length}`); }
+    if (req.query.loja_id) { params.push(Number(req.query.loja_id)); conds.push(`p.loja_id=$${params.length}`); }
     const where = 'WHERE ' + conds.join(' AND ');
     const rows = await dbQuery(
       `SELECT p.id, p.numero_pedido, p.status, p.valor_total, p.condicao_pagamento,
