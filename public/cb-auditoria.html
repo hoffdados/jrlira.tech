@@ -152,9 +152,9 @@ function renderKPIs() {
       <div class="extra"><strong>${fmtBRL(k.confirmadas.valor)}</strong></div>
     </div>
     <div class="card transito">
-      <div class="label">⏳ Em Trânsito (sem match)</div>
+      <div class="label">⏳ Em Trânsito (acumulado)</div>
       <div class="v">${fmtN(k.em_transito.qtd)}</div>
-      <div class="extra"><strong>${fmtBRL(k.em_transito.valor)}</strong></div>
+      <div class="extra"><strong>${fmtBRL(k.em_transito.valor)}</strong>${k.em_transito.mais_antiga ? ' · desde <strong>'+dtPt(k.em_transito.mais_antiga)+'</strong>' : ''}</div>
     </div>
     <div class="card desconhecida">
       <div class="label">⚠️ Origem Desconhecida</div>
@@ -232,8 +232,11 @@ async function renderConteudo() {
     if (abaAtiva === 'transito') {
       const CB_CLI_LOJA = {'0000001495':'L1 Econômico','0000002610':'L2 BR','0000003308':'L3 J. Pessoa','0000004342':'L4 Floresta','0000005153':'L5 São Jose','0000005271':'L6 Santarém'};
       const TIPO_LABEL = {'3':'Venda PDV','4':'Faturada'};
+      const escopoNota = d.escopo === 'historico_total'
+        ? ' <span class="pill" style="background:#422006;color:#fde047;border-color:#92400e">histórico acumulado (ignora filtro de mês)</span>'
+        : '';
       html = `<div class="painel">
-        <div class="painel-titulo">⏳ ${fmtN(d.total)} saídas CB sem entrada confirmada</div>
+        <div class="painel-titulo">⏳ ${fmtN(d.total)} saídas CB sem entrada confirmada${escopoNota}</div>
         <table><thead><tr><th>Data</th><th>Tipo</th><th class="left">CAP_SEQU</th><th class="left">Loja Destino</th><th>Vendedor</th><th class="right">Valor</th></tr></thead><tbody>` +
         d.notas.map(n => `<tr>
           <td>${dtPt(n.data)}</td>

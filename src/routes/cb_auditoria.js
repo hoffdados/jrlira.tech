@@ -30,6 +30,39 @@ const CB_CLI_LOJA = {
 };
 const CB_CLI_CODIS = Object.keys(CB_CLI_LOJA);
 
+// Detecta NFs "fantasma" — desconhecidas que tem uma gêmea confirmada (mesma loja+
+// fornecedor+conjunto de itens, mas numeronfe diferente). Acontece quando a loja
+// corrige o lançamento: o sync Pentaho só faz UPSERT (não apaga), então a versão
+// errada persiste em compras_historico. Filtramos essas pra não inflar a lista de
+// "Origem Desconhecida".
+//
+// Retorna array de { loja_id, numeronfe } a esconder.
+async function detectarDupesStale(dbQuery) {
+  const matchInline = matchSaidaCb('ch').replace(/\$CB_CLIS/g, '$2');
+  return dbQuery(`
+    WITH sig AS (
+      SELECT loja_id, numeronfe,
+             STRING_AGG(codigobarra || '|' || custo_total::text, ',' ORDER BY codigobarra, custo_total) AS s
+        FROM compras_historico
+       WHERE REGEXP_REPLACE(fornecedor_cnpj,'\\D','','g') = $1
+       GROUP BY loja_id, numeronfe
+    ),
+    match_cb AS (
+      SELECT DISTINCT ch.loja_id, ch.numeronfe
+        FROM compras_historico ch
+       WHERE REGEXP_REPLACE(ch.fornecedor_cnpj,'\\D','','g') = $1
+         AND ${matchInline}
+    )
+    SELECT s1.loja_id, s1.numeronfe
+      FROM sig s1
+     WHERE NOT EXISTS (SELECT 1 FROM match_cb m WHERE m.loja_id=s1.loja_id AND m.numeronfe=s1.numeronfe)
+       AND EXISTS (
+         SELECT 1 FROM sig s2
+         JOIN match_cb m ON m.loja_id=s2.loja_id AND m.numeronfe=s2.numeronfe
+          WHERE s2.loja_id=s1.loja_id AND s2.numeronfe<>s1.numeronfe AND s2.s=s1.s
+       )`, [CB_CNPJ, CB_CLI_CODIS]);
+}
+
 // Cláusulas SQL compartilhadas — match capa OR match movcompra
 function matchSaidaCb(chAlias = 'ch') {
   return `(
@@ -59,6 +92,10 @@ router.get('/resumo', adminOuCeo, async (req, res) => {
     const mes = String(req.query.mes || new Date().toISOString().slice(0, 7));
     const matchSQL = matchSaidaCb('ch').replace(/\$CB_CLIS/g, '$3');
 
+    // NFs fantasma (lançamento corrigido pela loja — versão antiga persiste no sync)
+    const dupesStale = await detectarDupesStale(dbQuery);
+    const dupesPairs = dupesStale.map(d => `${d.loja_id}|${d.numeronfe}`);
+
     const confirmadas = await dbQuery(`
       SELECT ch.loja_id,
              COUNT(DISTINCT ch.numeronfe)::int AS qtd,
@@ -77,10 +114,12 @@ router.get('/resumo', adminOuCeo, async (req, res) => {
        WHERE REGEXP_REPLACE(ch.fornecedor_cnpj, '\\D', '', 'g') = $1
          AND TO_CHAR(ch.data_entrada, 'YYYY-MM') = $2
          AND NOT ${matchSQL}
-       GROUP BY ch.loja_id`, [CB_CNPJ, mes, CB_CLI_CODIS]);
+         AND (ch.loja_id || '|' || ch.numeronfe) <> ALL($4::text[])
+       GROUP BY ch.loja_id`, [CB_CNPJ, mes, CB_CLI_CODIS, dupesPairs]);
 
-    // Em trânsito = saídas CB com cli_codi de loja sem entrada em compras_historico
-    // Só PDV (cd_capa) — cd_movcompra não tem identificação de destino confiável
+    // Em trânsito = saídas CB com cli_codi de loja sem entrada em compras_historico.
+    // SEM filtro de mês — acumula histórico todo pra mostrar o tamanho real do gap.
+    // Só PDV (cd_capa) — cd_movcompra não tem identificação de destino confiável.
     const transito = await dbQuery(`
       WITH saidas AS (
         SELECT cc.cap_sequ AS doc, cc.cap_dtem AS data, cc.cli_codi AS cli,
@@ -91,17 +130,18 @@ router.get('/resumo', adminOuCeo, async (req, res) => {
          WHERE cc.cd_codigo = $1 AND cc.cap_tipo IN ('3','4')
            AND COALESCE(cc.cap_stvd,'') <> 'C'
            AND cc.cli_codi = ANY($2)
-           AND TO_CHAR(cc.cap_dtem, 'YYYY-MM') = $3
       )
       SELECT COUNT(*)::int AS qtd,
-             COALESCE(SUM(valor), 0)::numeric(14,2) AS valor
+             COALESCE(SUM(valor), 0)::numeric(14,2) AS valor,
+             MIN(data)::date AS mais_antiga,
+             MAX(data)::date AS mais_recente
         FROM saidas s
        WHERE NOT EXISTS (
          SELECT 1 FROM compras_historico ch
-          WHERE REGEXP_REPLACE(ch.fornecedor_cnpj, '\\D', '', 'g') = $4
+          WHERE REGEXP_REPLACE(ch.fornecedor_cnpj, '\\D', '', 'g') = $3
             AND REGEXP_REPLACE(COALESCE(ch.numeronfe,''),'^0+','') =
                 REGEXP_REPLACE(COALESCE(s.doc,''),'^0+','')
-       )`, [CB_CD_CODIGO, CB_CLI_CODIS, mes, CB_CNPJ]);
+       )`, [CB_CD_CODIGO, CB_CLI_CODIS, CB_CNPJ]);
 
     // Saídas CB total no mês (só vendas pras lojas — cli_codi mapeado)
     const saidasCb = await dbQuery(`
@@ -128,10 +168,17 @@ router.get('/resumo', adminOuCeo, async (req, res) => {
       kpis: {
         saidas_cb_mes: { qtd: saidasCb[0]?.qtd || 0, valor: parseFloat(saidasCb[0]?.valor || 0) },
         confirmadas: totConf,
-        em_transito: { qtd: transito[0]?.qtd || 0, valor: parseFloat(transito[0]?.valor || 0) },
+        em_transito: {
+          qtd: transito[0]?.qtd || 0,
+          valor: parseFloat(transito[0]?.valor || 0),
+          mais_antiga: transito[0]?.mais_antiga || null,
+          mais_recente: transito[0]?.mais_recente || null,
+          escopo: 'historico_total',
+        },
         origem_desconhecida: totDesc,
       },
       por_loja: { confirmadas, desconhecidas },
+      dupes_stale: dupesStale, // NFs escondidas (lançamento corrigido, versão antiga persiste)
       lojas,
     });
   } catch (e) {
@@ -204,7 +251,11 @@ router.get('/notas', adminOuCeo, async (req, res) => {
       ? req.query.categoria : 'confirmadas';
 
     if (categoria === 'transito') {
-      // Só PDV (cd_capa) com cli_codi de loja — saídas identificadas sem confirmação
+      // Em trânsito acumula histórico todo (sem filtro de mês). User precisa
+      // enxergar o tamanho do gap. Filtro de loja segue funcionando via cli_codi.
+      const cliFiltrados = lojaId
+        ? Object.entries(CB_CLI_LOJA).filter(([_, lid]) => lid === lojaId).map(([cli]) => cli)
+        : CB_CLI_CODIS;
       const rows = await dbQuery(`
         SELECT cc.cap_sequ AS doc, cc.cap_dtem::date AS data, cc.cli_codi AS cli,
                cc.ven_codi AS ven, cc.cap_tipo AS tipo,
@@ -215,16 +266,15 @@ router.get('/notas', adminOuCeo, async (req, res) => {
          WHERE cc.cd_codigo = $1 AND cc.cap_tipo IN ('3','4')
            AND COALESCE(cc.cap_stvd,'') <> 'C'
            AND cc.cli_codi = ANY($2)
-           AND TO_CHAR(cc.cap_dtem, 'YYYY-MM') = $3
            AND NOT EXISTS (
              SELECT 1 FROM compras_historico ch
-              WHERE REGEXP_REPLACE(ch.fornecedor_cnpj, '\\D', '', 'g') = $4
+              WHERE REGEXP_REPLACE(ch.fornecedor_cnpj, '\\D', '', 'g') = $3
                 AND REGEXP_REPLACE(COALESCE(ch.numeronfe,''),'^0+','') =
                     REGEXP_REPLACE(COALESCE(cc.cap_sequ,''),'^0+','')
            )
          ORDER BY cc.cap_dtem DESC
-         LIMIT 500`, [CB_CD_CODIGO, CB_CLI_CODIS, mes, CB_CNPJ]);
-      return res.json({ mes, categoria, total: rows.length, notas: rows });
+         LIMIT 2000`, [CB_CD_CODIGO, cliFiltrados, CB_CNPJ]);
+      return res.json({ mes, categoria, escopo: 'historico_total', total: rows.length, notas: rows });
     }
 
     // confirmadas / desconhecidas — operam em compras_historico
@@ -233,6 +283,15 @@ router.get('/notas', adminOuCeo, async (req, res) => {
     if (lojaId) { params.push(lojaId); lojaCond = `AND ch.loja_id = $${params.length}`; }
     params.push(CB_CLI_CODIS);
     const cliIdx = params.length;
+
+    // Desconhecidas: esconde NFs fantasma (lançamento corrigido, versão antiga persiste)
+    let dupesCond = '';
+    if (categoria === 'desconhecidas') {
+      const dupesStale = await detectarDupesStale(dbQuery);
+      const dupesPairs = dupesStale.map(d => `${d.loja_id}|${d.numeronfe}`);
+      params.push(dupesPairs);
+      dupesCond = `AND (ch.loja_id || '|' || ch.numeronfe) <> ALL($${params.length}::text[])`;
+    }
 
     const matchClause = `(
       EXISTS (
@@ -264,6 +323,7 @@ router.get('/notas', adminOuCeo, async (req, res) => {
          AND TO_CHAR(ch.data_entrada,'YYYY-MM') = $2
          ${lojaCond}
          AND ${filtroMatch}
+         ${dupesCond}
        GROUP BY ch.loja_id, ch.numeronfe, ch.data_entrada
        ORDER BY ch.data_entrada DESC
        LIMIT 500`, params);
